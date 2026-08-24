@@ -13,8 +13,8 @@
       "description": "Создать новый проект из шаблона"
     },
     "cost-report": {
-      "template": "Собери отчёт о расходах на API вызовы. Прочитай .memory/activeContext.md — найди все записи с TYPE: api_call. Сгруппируй по агентам и моделям. Выдай сводку: общая стоимость, топ-3 дорогих агента, топ-3 дорогих модели. Если данных нет — скажи что отчёт пока пустой и предложи включить cost-логирование.",
-      "description": "Отчёт о расходах на API вызовы"
+      "template": "Собери отчёт о стоимости. Проверь: (1) все модели в opencode.json — бесплатные (mimo-v2.5-free, nemotron-3.5-lightning-free, nemotron-3-ultra-free), (2) прочитай .memory/traces/ — найди логи переключений моделей, (3) подсчитай количество вызовов по моделям. Формат:\n\n```\n=== Cost Report ===\nМодели: все бесплатные ($0)\nВсего вызовов: N\nПо моделям:\n  - mimo-v2.5-free: N вызовов\n  - nemotron-3.5-lightning-free: N вызовов\n  - nemotron-3-ultra-free: N вызовов\nПереключений: N\nСтатус: OK (все бесплатно)\n```\nЕсли данных нет — выведи 'Данных пока нет, логирование не включено'.",
+      "description": "Отчёт о стоимости (все модели бесплатные)"
     },
     "team-report": {
       "template": "Собери отчёт о работе команды. Прочитай .memory/KNOWLEDGE-BASE.md и .memory/progress.md. Выдай: (1) выполненные задачи за последнюю сессию, (2) открытые блокеры, (3) принятые архитектурные решения, (4) рекомендации. Если данных недостаточно — сообщи и предложи агентам активнее логировать.",
@@ -71,8 +71,8 @@
     "model_router": true,
     "context_compression": true,
     "distributed_tracing": true,
-    "performance_scoring": false,
-    "plugins": false,
+    "performance_scoring": true,
+    "plugins": true,
     "health_monitoring": true
   }
 }

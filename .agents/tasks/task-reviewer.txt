@@ -1,0 +1,19 @@
+Проведи code review новых файлов системы agent-hq (ты read-only, ничего не меняй):
+
+1. D:\Тест\agent-hq\.agents\scripts\sync-agents.ps1 — генерация секции agent из JSON-базы
+2. D:\Тест\agent-hq\.opencode\plugins\tracer.js — плагин distributed tracing
+3. D:\Тест\agent-hq\.opencode\plugins\scoring.js — плагин performance scoring
+4. D:\Тест\agent-hq\.agents\scripts\health-check.ps1 — health monitor
+5. D:\Тест\agent-hq\FULL_PLAN.md — консистентность плана (быстро, только структура)
+
+Критерии: корректность, обработка ошибок (особенно try/catch в плагинах — они обязаны никогда не падать), безопасность (нет секретов, нет инъекций путей), PowerShell 5.1 совместимость (нет &&, нет ?? оператора).
+
+Формат ответа:
+## Code Review: agent-hq infra
+### Оценка: X/10
+### Критические замечания
+- [ ] файл:строка — проблема → как исправить
+### Рекомендации
+- [ ] файл:строка — предложение
+### Итог
+APPROVED / NEEDS FIXES / REJECTED

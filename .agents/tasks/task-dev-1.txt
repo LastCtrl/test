@@ -1,0 +1,17 @@
+Создай два плагина opencode в папке D:\Тест\agent-hq\.opencode\plugins\ (создай её если нет). Плагины — ES-module JS, экспортируют async-функцию, возвращают объект хуков. Работают в рантайме Bun (доступен import fs from "node:fs"). Все операции в try/catch — плагин НИКОГДА не должен ломать работу opencode.
+
+ФАЙЛ 1: D:\Тест\agent-hq\.opencode\plugins\tracer.js
+Distributed tracing. Экспорт TracerPlugin.
+Хуки:
+1) "tool.execute.before": async (input, output) => {} — зафиксировать старт (Map по ключу callID если есть, иначе игнорировать время старта).
+2) "tool.execute.after": async (input, output) => {} — дописать JSONL-строку в .memory/traces/traces.jsonl относительно корня проекта directory: {"ts":"ISO","type":"tool","tool":input.tool,"ms":<duration или 0>}.
+3) event: async ({event}) => {} — при event.type === "session.created" писать {"ts","type":"session_start","id"}; при "session.error" — {"ts","type":"error","id":event.properties?.sessionID,"message":String(...).slice(0,300)}; при "session.idle" — {"ts","type":"session_end","id"}.
+Папку .memory/traces создавай рекурсивно при каждой записи (fs.mkdirSync recursive:true). Файл открывай appendSync c UTF-8.
+
+ФАЙЛ 2: D:\Тест\agent-hq\.opencode\plugins\scoring.js
+Performance scoring. Экспорт ScoringPlugin.
+Внутри замыкания: const sessions = new Map() (sessionID -> startTs).
+event-хук: session.created → sessions.set(id, Date.now()); session.idle → если есть старт: дописать JSONL в .memory/traces/performance.jsonl: {"ts","session_id","duration_ms","score"} где score = max(0, 100 - Math.round(duration_ms/60000)) (минус 1 балл за минуту). После записи удалить из Map.
+Также хук "tool.execute.after": если input.tool === "task" — дописать в тот же performance.jsonl: {"ts","type":"delegation","tool":"task"}.
+
+Проверь себя: после создания обоих файлов выполни node --check на каждом (если node доступен; иначе bun -e "import('...')") и сообщи результат. В ответе перечисли созданные файлы и результат проверки.

@@ -1,0 +1,16 @@
+Создай скрипт D:\Тест\agent-hq\.agents\scripts\health-check.ps1 — Health Monitor системы agent-hq.
+
+Скрипт (PowerShell 5.1, без &&, param() вверху):
+Корень определяет как Split-Path (Split-Path $PSScriptRoot -Parent) -Parent.
+
+Проверки (каждая выводит [OK]/[WARN]/[FAIL] с цветом Green/Yellow/Red):
+1. Traces: существует ли .memory\traces\traces.jsonl. Если да — посчитать строки с "type":"error" за последние 60 минут (парсить JSON построчно, поле ts ISO). >5 за час = FAIL, 1-5 = WARN.
+2. Inbox backlog: суммарное число *.json во всех подпапках .memory\inbox\. >20 = WARN, >50 = FAIL.
+3. Outbox: число *.json в .memory\outbox\ (информативно).
+4. Worktrees: вывести список веток командой git worktree list (запускать из корня).
+5. Performance: существует ли .memory\traces\performance.jsonl; если да — средняя длительность сессий duration_ms за всё время.
+6. Диск: свободное место на диске корня в ГБ (Get-PSDrive).
+
+Итог: "HEALTH: PASS" если нет FAIL, иначе "HEALTH: FAIL"; exit 0/1 соответственно.
+
+После создания прогони скрипт один раз и включи его вывод в свой ответ.

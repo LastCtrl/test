@@ -1,0 +1,20 @@
+Расширь скрипт D:\Тест\agent-hq\.agents\scripts\verify-phase.ps1 — добавь новые проверки ПОСЛЕ существующих, в тех же функциях Test-Check (сохраняя счётчики pass/fail/total). Не ломай старые проверки.
+
+Новые блоки:
+
+"Phase B2: Agent Registration"
+- opencode.json содержит секцию "agent" (прочитать как JSON через ConvertFrom-Json, проверить свойство agent)
+- В секции agent минимум 19 записей
+- Папка .opencode\agents\prompts существует и содержит минимум 19 .txt файлов
+
+"Phase D2: Context Bus"
+- CONTEXT-BUFFER.md существует в корне и не пуст
+- AGENTS.md существует в корне и не пуст
+
+"Phase E2: Real Code Features"
+- .opencode\plugins\tracer.js существует
+- .opencode\plugins\scoring.js существует
+- .agents\scripts\health-check.ps1 существует
+- .memory\traces\traces.jsonl существует (плагин уже писал события)
+
+После создания прогони скрипт полностью и включи вывод в ответ. Если какая-то проверка FAIL — не чинить файлы самому, просто сообщить.

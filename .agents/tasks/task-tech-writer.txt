@@ -1,0 +1,30 @@
+Создай два файла в D:\Тест\agent-hq\:
+
+ФАЙЛ 1: D:\Тест\agent-hq\CONTEXT-BUFFER.md
+Живая шина коммуникации агентов. Формат записи:
+[TIMESTAMP] АГЕНТ → ЦЕЛЬ:
+TYPE: update|blocker|decision | PRIORITY: low|medium|high|critical
+CONTENT: текст
+STATUS: open|resolved
+
+Структура файла: заголовок "# Context Buffer — шина агентов agent-hq", секция "## Правила" (перед задачей читать посл. 30 строк; после завершения писать TYPE: update STATUS: resolved; блокер — TYPE: blocker PRIORITY: critical; решения дублировать в decisionLog.md; сообщения старше 7 дней архивировать в .memory/archive/), затем пустая секция "## Active messages".
+
+В конец добавь первую запись:
+[2026-08-24] team-lead → all:
+TYPE: decision | PRIORITY: high
+CONTENT: Система запущена: 19 агентов зарегистрированы в opencode.json через sync-agents.ps1, делегирование проверено (build→qa-engineer OK). Единый план — FULL_PLAN.md.
+STATUS: resolved
+
+ФАЙЛ 2: D:\Тест\agent-hq\AGENTS.md
+Правила работы для любой сессии opencode в этой папке. Разделы:
+1) Модели (только бесплатные): mimo-v2.5-free основная, nemotron-3.5-lightning-free быстрая, nemotron-3-ultra-free запасная. Платные запрещены.
+2) Роли: я = Team Lead (оркестрирую, код не пишу кроме конфигов/док/правок 1-2 строк); субагенты — 19 специалистов (.opencode/agents/).
+3) Протокол: перед задачей прочитать посл. 30 строк CONTEXT-BUFFER.md; после — записать результат; блокер — эскалация.
+4) Параллельность: независимые задачи в одном сообщении несколькими вызовами task.
+5) Retry: макс 2 попытки на агента → откат изменений → передача другому агенту → эскалация пользователю.
+6) Skills-first: перед работой подгружать скиллы из .agents/skills/.
+7) Качество: перед сдачей code-reviewer и security-auditor; финал — tech-writer.
+8) Команды: /status /sync /new-project /cost-report /team-report.
+9) Полный план: FULL_PLAN.md. Скрипты: sync-agents.ps1, verify-phase.ps1, health-check.ps1, message-queue.ps1, create-project.ps1.
+10) PowerShell: не использовать && (сломан), использовать ;.
+Пиши кратко, по-русски, без воды.

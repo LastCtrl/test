@@ -1,35 +1,20 @@
 # Active Context — Текущий контекст сессии
 
-## Дата обновления: 2026-08-21
+## Дата обновления: 2026-08-24
 
 ## Текущий статус
-- **Этап**: MVP (Foundation + Core Logic) — фазы 2.5, 0, 0.5, 1, 3, 5, 7, 14
-- **Система**: agent-hq структура создана, Memory Bank заполнен, inbox/outbox работает
+- **Этап**: Все фазы A–F закрыты. Система полностью работоспособна.
+- **Верификация**: verify-phase.ps1 = 29/29 PASSED; health-check.ps1 = HEALTH: PASS
+- **Worktrees**: main + agent/dev-1
+- **Трейсы**: traces.jsonl живой; performance.jsonl — 3 сессии, avg 36.4s
+- **Команда**: 19 агентов зарегистрированы, делегирование работает
 - **Модели**: mimo-v2.5-free (основная), nemotron-3.5-lightning-free (быстрая), nemotron-3-ultra-free (запасная)
 
-## Активные задачи
-1. **lk-fl verify-code** (PENDING) — Spring Boot + Angular + Docker Compose, D:\ЛичныйКабинет\lk_fl-main
-   - verify-code ПОЧИНЕН (AUTH_CODE_TTL как миллисекунды → @DurationUnit(SECONDS))
-   - JIT-ошибка ПОЧИНЕНА (ng-query-params-service → TypeScript)
-   - Осталось: убрать debug-логи [MOCK], удалить Dockerfile.checkstyle (СДЕЛАНО)
-
-2. **news-bot** (RESOLVED) — D:\Тест\news-bot\
-   - AI-анализатор: duration_minutes влияет на объём саммари
-   - TTS-озвучка: предзагрузка кэша, прогресс-сообщения
-   - Дайджест: AI-анализ вместо сырого RSS
-   - Баг: попадание текстов reply-кнопок в темы/поиск
-
-## Недавняя активность (из CONTEXT-BUFFER.md)
-
-### Последние resolved задачи
-- [2026-08-18] backend: verify-code ПОЧИНЕН (AUTH_CODE_TTL milliseconds bug)
-- [2026-08-18] frontend: JIT-ошибка ПОЧИНЕНА (ng-query-params-service → TypeScript)
-- [2026-08-18] tech-writer: KNOWLEDGE-BASE.md дополнен разделом lk-fl
-- [2026-08-18] code-reviewer: APPROVE-WITH-COMMENTS (8/10) - найден родственный баг M1
-- [2026-08-18] security-auditor: аудит lk-fl завершён
-
-### Последние открытые задачи
-- [2026-08-18] user: "ошибки во фронте: verify-code → 400, JIT compiler unavailable" → ПОЧИНЕН
+## Остаток
+- **#7** Коммит + push — единственная незавершённая задача (team-lead)
+- **/sync** — закрыт этим прогоном (2026-08-24): activeContext, progress, decisionLog обновлены
+- **/team-report** — закрыт этим прогоном: отчёт создан в .memory/reports/team-report-2026-08-24.md
+- **Inbox**: 12 старых тестовых файлов — тимлид архивирует
 
 ## Блокеры
 - opencode-go: лимиты 7/30 дней, 80% месячного лимита израсходовано за 3 дня
@@ -45,3 +30,4 @@
 - ADR-007: Отказ от платных моделей (ограничения подписки)
 - ADR-008: RSS как основной источник новостей (Google News RSS)
 - ADR-009: Отказ от LLM-слоя для простых запросов (fallback на format_simple_list)
+- ADR-010: Прямой доступ к 19 именованным агентам через task tool (ограничение №2 FULL_PLAN снято)

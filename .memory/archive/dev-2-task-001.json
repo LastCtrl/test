@@ -1,0 +1,13 @@
+{
+  "id": "task-001",
+  "from": "team-lead",
+  "to": "dev-2",
+  "type": "task",
+  "priority": "high",
+  "payload": {
+    "description": "Создать JSON-файлы для 5 агентов в agent-hq (.opencode/agents/*.json) с полями: name, description, model, temperature, permissions, rules, skills_required",
+    "files": [".opencode/agents/dev-1.json", ".opencode/agents/dev-2.json", ".opencode/agents/dev-3.json", ".opencode/agents/frontend.json", ".opencode/agents/backend.json"]
+  },
+  "created_at": "2026-08-21T11:00:00Z",
+  "status": "pending"
+}

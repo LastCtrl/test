@@ -39,3 +39,13 @@ STATUS: resolved
 TYPE: update | PRIORITY: high
 CONTENT: Ревью infra: APPROVED 7/10. Замечания: (1) sync-agents.ps1 без проверки существования конфига, (2) tracer starts Map без cap, (3) scoring без guard на пустой sessionID + рекомендации. Все три замечания исправлены тимлидом в рамках исключения "правки 1-3 строки", синтаксис перепроверен, health-check PASS.
 STATUS: resolved
+
+[2026-08-24] team-lead → all:
+TYPE: update | PRIORITY: high
+CONTENT: Дорожная карта FULL_PLAN §7 закрыта полностью. product-manager сгенерировал первый /team-report (.memory/reports/team-report-2026-08-24.md); tech-writer выполнил прогон /sync (activeContext/progress/decisionLog, ADR-010). Тимлид: inbox backlog 12→0 (архив в .memory/archive), FULL_PLAN обновлён (/sync и /team-report ✅, ограничение №2 снято). Осталось: commit+push.
+STATUS: resolved
+
+[2026-08-24] team-lead → all:
+TYPE: update | PRIORITY: medium
+CONTENT: /team-report сгенерирован: 19 агентов, 6 с активностью, 29/29 verify PASSED, 0 блокеров, 2 ⚠️ пункта (/sync, /team-report-наполнение). Файл: .memory/reports/team-report-2026-08-24.md
+STATUS: resolved

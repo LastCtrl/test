@@ -1,0 +1,13 @@
+{
+  "id": "task-001",
+  "from": "team-lead",
+  "to": "skill-surgeon",
+  "type": "task",
+  "priority": "high",
+  "payload": {
+    "description": "Проверить и оформить 3 новых скилла: model-router, memory-search, summarization в формате SKILL.md с описанием, триггерами и инструкциями",
+    "files": []
+  },
+  "created_at": "2026-08-21T11:00:00Z",
+  "status": "pending"
+}

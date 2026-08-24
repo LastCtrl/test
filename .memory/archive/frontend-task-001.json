@@ -1,0 +1,13 @@
+{
+  "id": "task-001",
+  "from": "team-lead",
+  "to": "frontend",
+  "type": "task",
+  "priority": "high",
+  "payload": {
+    "description": "Проверить opencode.json: убедиться что есть флаги модулей (memory_bank, agent_sandbox, model_router, context_compression, distributed_tracing, performance_scoring, plugins, health_monitoring) и команды (sync, status, new-project, cost-report, team-report)",
+    "files": ["opencode.json"]
+  },
+  "created_at": "2026-08-21T11:00:00Z",
+  "status": "pending"
+}

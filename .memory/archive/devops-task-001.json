@@ -1,0 +1,13 @@
+{
+  "id": "task-001",
+  "from": "team-lead",
+  "to": "devops",
+  "type": "task",
+  "priority": "high",
+  "payload": {
+    "description": "Инициализировать git worktree изоляцию: создать worktrees для dev-1, dev-2, frontend, backend и настроить .gitignore",
+    "files": [".agents/worktrees/dev-1", ".agents/worktrees/dev-2", ".agents/worktrees/frontend", ".agents/worktrees/backend", ".gitignore"]
+  },
+  "created_at": "2026-08-21T11:00:00Z",
+  "status": "pending"
+}

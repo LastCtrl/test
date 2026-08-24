@@ -1,3 +1,7 @@
 {"ts":"2026-08-24T12:59:20.380Z","session_id":"ses_fcc258119ffeBQnkq0nrZbtk0y","duration_ms":7886,"score":100}
 {"ts":"2026-08-24T13:00:45.675Z","session_id":"ses_fcc24c363ffeuDyJAcVF012at9","duration_ms":44613,"score":99}
 {"ts":"2026-08-24T13:00:57.912Z","session_id":"ses_fcc24c2d5ffeRw9AQ1Jpevv9o9","duration_ms":56709,"score":99}
+{"ts":"2026-08-24T13:27:41.869Z","session_id":"ses_fcc0c6b09ffenhnzs1PJZVax1T","duration_ms":65332,"score":99}
+{"ts":"2026-08-24T13:27:41.871Z","type":"delegation","tool":"task"}
+{"ts":"2026-08-24T13:28:45.124Z","session_id":"ses_fcc0b33f5ffeqSTA2CPJB3PDTH","duration_ms":48951,"score":99}
+{"ts":"2026-08-24T13:28:45.126Z","type":"delegation","tool":"task"}

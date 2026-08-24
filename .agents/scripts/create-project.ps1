@@ -7,7 +7,7 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
-$baseDir = Split-Path $PSScriptRoot -Parent
+$baseDir = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
 $projectsDir = Join-Path $baseDir "projects"
 $projectDir = Join-Path $projectsDir $ProjectName
 

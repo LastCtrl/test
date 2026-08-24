@@ -1,0 +1,213 @@
+{
+  "agents": {
+    "team-lead": {
+      "model": "opencode/nemotron-3-ultra-free",
+      "role": "orchestrator",
+      "permissions": ["edit", "bash", "read", "glob", "grep", "skill", "question"],
+      "specialization": {
+        "primary": ["orchestration", "architecture", "delegation"],
+        "secondary": ["code-review", "security"],
+        "avoid": ["frontend", "mobile"]
+      },
+      "description": "Технический Лидер — декомпозирует задачи, назначает агентов, контролирует качество"
+    },
+    "dev-1": {
+      "model": "opencode/mimo-v2.5-free",
+      "role": "developer",
+      "permissions": ["edit", "bash", "read", "glob", "grep", "skill"],
+      "specialization": {
+        "primary": ["python", "fastapi", "postgres"],
+        "secondary": ["docker", "git"],
+        "avoid": ["frontend", "mobile"]
+      },
+      "description": "Универсальный разработчик (основной)"
+    },
+    "dev-2": {
+      "model": "opencode/nemotron-3.5-lightning-free",
+      "role": "developer",
+      "permissions": ["edit", "bash", "read", "glob", "grep", "skill"],
+      "specialization": {
+        "primary": ["python", "javascript"],
+        "secondary": ["docker"],
+        "avoid": ["mobile"]
+      },
+      "description": "Универсальный разработчик (быстрый)"
+    },
+    "dev-3": {
+      "model": "opencode/mimo-v2.5-free",
+      "role": "developer",
+      "permissions": ["edit", "bash", "read", "glob", "grep", "skill"],
+      "specialization": {
+        "primary": ["sql", "data"],
+        "secondary": ["python"],
+        "avoid": ["frontend"]
+      },
+      "description": "Универсальный разработчик (надежность)"
+    },
+    "frontend": {
+      "model": "opencode/mimo-v2.5-free",
+      "role": "frontend-dev",
+      "permissions": ["edit", "bash", "read", "glob", "grep", "skill"],
+      "specialization": {
+        "primary": ["react", "typescript", "css"],
+        "secondary": ["vite"],
+        "avoid": ["backend", "database"]
+      },
+      "description": "Frontend специалист"
+    },
+    "backend": {
+      "model": "opencode/nemotron-3.5-lightning-free",
+      "role": "backend-dev",
+      "permissions": ["edit", "bash", "read", "glob", "grep", "skill"],
+      "specialization": {
+        "primary": ["python", "fastapi", "redis"],
+        "secondary": ["docker", "sql"],
+        "avoid": ["frontend"]
+      },
+      "description": "Backend специалист"
+    },
+    "db-specialist": {
+      "model": "opencode/mimo-v2.5-free",
+      "role": "db-specialist",
+      "permissions": ["edit", "bash", "read", "glob", "grep", "skill"],
+      "specialization": {
+        "primary": ["sql", "nosql", "orm"],
+        "secondary": ["python"],
+        "avoid": ["frontend", "mobile"]
+      },
+      "description": "SQL/NoSQL специалист"
+    },
+    "mobile-dev": {
+      "model": "opencode/nemotron-3.5-lightning-free",
+      "role": "mobile-dev",
+      "permissions": ["edit", "bash", "read", "glob", "grep", "skill"],
+      "specialization": {
+        "primary": ["react-native", "flutter"],
+        "secondary": ["python"],
+        "avoid": ["database"]
+      },
+      "description": "Mobile разработчик"
+    },
+    "devops": {
+      "model": "opencode/nemotron-3.5-lightning-free",
+      "role": "devops",
+      "permissions": ["edit", "bash", "read", "glob", "grep", "skill"],
+      "specialization": {
+        "primary": ["docker", "ci-cd", "k8s"],
+        "secondary": ["python"],
+        "avoid": ["frontend"]
+      },
+      "description": "DevOps инженер"
+    },
+    "integration-specialist": {
+      "model": "opencode/mimo-v2.5-free",
+      "role": "integration-specialist",
+      "permissions": ["edit", "bash", "read", "glob", "grep", "skill"],
+      "specialization": {
+        "primary": ["api", "grpc", "kafka"],
+        "secondary": ["python", "sql"],
+        "avoid": ["frontend"]
+      },
+      "description": "Integration specialist"
+    },
+    "data-engineer": {
+      "model": "opencode/mimo-v2.5-free",
+      "role": "data-engineer",
+      "permissions": ["edit", "bash", "read", "glob", "grep", "skill"],
+      "specialization": {
+        "primary": ["etl", "airflow", "clickhouse"],
+        "secondary": ["python", "sql"],
+        "avoid": ["frontend"]
+      },
+      "description": "Data engineer"
+    },
+    "qa-engineer": {
+      "model": "opencode/mimo-v2.5-free",
+      "role": "qa-engineer",
+      "permissions": ["read", "grep", "skill"],
+      "specialization": {
+        "primary": ["testing", "pytest", "code-review"],
+        "secondary": ["security"],
+        "avoid": []
+      },
+      "description": "QA Engineer"
+    },
+    "security-auditor": {
+      "model": "opencode/mimo-v2.5-free",
+      "role": "security-auditor",
+      "permissions": ["read", "grep"],
+      "specialization": {
+        "primary": ["security", "owasp"],
+        "secondary": ["code-review"],
+        "avoid": ["frontend"]
+      },
+      "description": "Security Auditor"
+    },
+    "code-reviewer": {
+      "model": "opencode/mimo-v2.5-free",
+      "role": "code-reviewer",
+      "permissions": ["read", "grep"],
+      "specialization": {
+        "primary": ["code-review", "clean-code"],
+        "secondary": ["security"],
+        "avoid": []
+      },
+      "description": "Code Reviewer"
+    },
+    "product-manager": {
+      "model": "opencode/mimo-v2.5-free",
+      "role": "product-manager",
+      "permissions": ["read", "glob", "question"],
+      "specialization": {
+        "primary": ["requirements", "user-stories"],
+        "secondary": ["api-design"],
+        "avoid": ["code"]
+      },
+      "description": "Product Manager"
+    },
+    "tech-writer": {
+      "model": "opencode/mimo-v2.5-free",
+      "role": "tech-writer",
+      "permissions": ["read", "glob"],
+      "specialization": {
+        "primary": ["docs", "markdown"],
+        "secondary": ["api"],
+        "avoid": ["code"]
+      },
+      "description": "Tech Writer"
+    },
+    "skill-surgeon": {
+      "model": "opencode/mimo-v2.5-free",
+      "role": "skill-surgeon",
+      "permissions": ["edit", "bash", "read", "glob", "grep", "skill"],
+      "specialization": {
+        "primary": ["skills", "tools"],
+        "secondary": ["webfetch"],
+        "avoid": ["code"]
+      },
+      "description": "Ищет, скачивает, создаёт скиллы под любую технологию"
+    },
+    "legal-advisor": {
+      "model": "opencode/mimo-v2.5-free",
+      "role": "legal-advisor",
+      "permissions": ["read", "glob", "grep", "webfetch"],
+      "specialization": {
+        "primary": ["laws", "contracts", "taxes"],
+        "secondary": ["api"],
+        "avoid": ["code"]
+      },
+      "description": "Legal Advisor"
+    },
+    "smm-strategist": {
+      "model": "opencode/mimo-v2.5-free",
+      "role": "smm-strategist",
+      "permissions": ["read", "glob", "grep", "webfetch"],
+      "specialization": {
+        "primary": ["promotion", "ЦА", "воронка"],
+        "secondary": ["webfetch"],
+        "avoid": ["code"]
+      },
+      "description": "SMM Strategist"
+    }
+  }
+}

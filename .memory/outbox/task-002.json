@@ -1,0 +1,13 @@
+{
+  "id": "task-002",
+  "from": "dev-1",
+  "to": "team-lead",
+  "type": "result",
+  "priority": "high",
+  "payload": {
+    "description": "Создан файл теста структуры agent-hq: D:\\Тест\\agent-hq\\test-structure.txt с содержимым: 'agent-hq structure OK: Memory Bank, inbox/outbox, git worktree functional'",
+    "files": ["D:\\Тест\\agent-hq\\test-structure.txt"]
+  },
+  "created_at": "2026-08-21T11:30:00Z",
+  "status": "done"
+}

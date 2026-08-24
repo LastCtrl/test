@@ -1,0 +1,78 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "context7": {
+      "type": "local",
+      "command": ["npx", "-y", "@upstash/context7-mcp"],
+      "enabled": true
+    }
+  },
+  "command": {
+    "new-project": {
+      "template": "Создай новый проект из шаблона. Спроси у пользователя: (1) имя проекта, (2) тип шаблона (full-stack / api-only / mobile / data-pipeline). Затем запусти .opencode/scripts/create-project.ps1 с нужными параметрами: powershell -File .opencode/scripts/create-project.ps1 -ProjectName <имя> -TemplateType <тип>. Если скрипт отработал — покажи результат и предложи следующий шаг.",
+      "description": "Создать новый проект из шаблона"
+    },
+    "cost-report": {
+      "template": "Собери отчёт о расходах на API вызовы. Прочитай .memory/activeContext.md — найди все записи с TYPE: api_call. Сгруппируй по агентам и моделям. Выдай сводку: общая стоимость, топ-3 дорогих агента, топ-3 дорогих модели. Если данных нет — скажи что отчёт пока пустой и предложи включить cost-логирование.",
+      "description": "Отчёт о расходах на API вызовы"
+    },
+    "team-report": {
+      "template": "Собери отчёт о работе команды. Прочитай .memory/KNOWLEDGE-BASE.md и .memory/progress.md. Выдай: (1) выполненные задачи за последнюю сессию, (2) открытые блокеры, (3) принятые архитектурные решения, (4) рекомендации. Если данных недостаточно — сообщи и предложи агентам активнее логировать.",
+      "description": "Отчёт о работе команды"
+    },
+    "sync": {
+      "template": "Прочитай .memory/activeContext.md, .memory/progress.md, .memory/decisionLog.md. Обнови activeContext.md: добавь текущую дату и статус выполненных задач. Если есть новые файлы в .memory/outbox/ — упомяни их. Выведи краткую сводку: что делаем, что сделано, что дальше.",
+      "description": "Синхронизация контекста из Memory Bank"
+    },
+    "status": {
+      "template": "Проверь статус agent-hq: (1) ls .memory/outbox/ — сколько выполненных задач, (2) ls .memory/inbox/ — сколько открытых, (3) прочитай .memory/progress.md — какие фазы завершены, (4) проверь .agents/worktrees/ — какие ветки активны. Выведи сводку по каждому пункту.",
+      "description": "Статус системы agent-hq"
+    }
+  },
+  "agents": {
+    "defaults": {
+      "temperature": 0.2,
+      "skills_first": true,
+      "max_retries": 2
+    },
+    "models": {
+      "primary": "opencode/mimo-v2.5-free",
+      "fast": "opencode/nemotron-3.5-lightning-free",
+      "fallback": "opencode/nemotron-3-ultra-free"
+    }
+  },
+  "memory": {
+    "bank_path": ".memory/",
+    "archive_ttl_days": 7,
+    "compression": {
+      "enabled": true,
+      "max_size_kb": 50,
+      "strategy": "summary+archive"
+    }
+  },
+  "workspace": {
+    "root": "D:\\Тест\\",
+    "sandbox_per_agent": true,
+    "merge_strategy": "git-branch"
+  },
+  "projects": {
+    "news-bot": {
+      "type": "telegram-bot",
+      "agents": ["backend", "devops", "qa-engineer", "tech-writer"]
+    },
+    "pong-advanced": {
+      "type": "full-stack",
+      "agents": ["frontend", "backend", "devops", "qa-engineer"]
+    }
+  },
+  "modules": {
+    "memory_bank": true,
+    "agent_sandbox": true,
+    "model_router": true,
+    "context_compression": false,
+    "distributed_tracing": false,
+    "performance_scoring": false,
+    "plugins": false,
+    "health_monitoring": true
+  }
+}

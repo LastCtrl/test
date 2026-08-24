@@ -1,0 +1,40 @@
+# Dependencies
+node_modules/
+__pycache__/
+*.pyc
+.venv/
+venv/
+env/
+
+# Build
+dist/
+build/
+*.egg-info/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+Thumbs.db
+Desktop.ini
+.DS_Store
+
+# Agent runtime
+.agents/worktrees/*/
+.memory/inbox/*/
+.memory/outbox/*/
+.memory/dead-letter/*/
+.memory/archive/*/
+.memory/traces/*/
+
+# Secrets
+.env
+.env.local
+.env.*.local
+
+# Logs
+*.log
+logs/

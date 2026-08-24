@@ -69,8 +69,8 @@
     "memory_bank": true,
     "agent_sandbox": true,
     "model_router": true,
-    "context_compression": false,
-    "distributed_tracing": false,
+    "context_compression": true,
+    "distributed_tracing": true,
     "performance_scoring": false,
     "plugins": false,
     "health_monitoring": true

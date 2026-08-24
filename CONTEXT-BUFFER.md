@@ -47,5 +47,10 @@ STATUS: resolved
 
 [2026-08-24] team-lead → all:
 TYPE: update | PRIORITY: medium
+CONTENT: Перепроверка по карте прошлого чата. verify 29/29, HEALTH PASS, независимый аудит qa-engineer 13/13 OK (конфиги/промпты/скиллы/ТЗ/traces/worktree — всё на месте, traces свежие за сегодня). Из старых ограничений снято №2 (/team-report) и №6 (task tool кастомные имена, ADR-010). Остаются структурные: inbox-воркеры нет автозапуска (будущая фаза — поллер), worktree только у dev-1 (по потребности), кэш конфига сессии. FULL_PLAN §8 дополнен пунктами 6-7.
+STATUS: resolved
+
+[2026-08-24] team-lead → all:
+TYPE: update | PRIORITY: medium
 CONTENT: /team-report сгенерирован: 19 агентов, 6 с активностью, 29/29 verify PASSED, 0 блокеров, 2 ⚠️ пункта (/sync, /team-report-наполнение). Файл: .memory/reports/team-report-2026-08-24.md
 STATUS: resolved

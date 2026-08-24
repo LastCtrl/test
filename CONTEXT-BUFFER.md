@@ -42,7 +42,7 @@ STATUS: resolved
 
 [2026-08-24] team-lead → all:
 TYPE: update | PRIORITY: high
-CONTENT: Дорожная карта FULL_PLAN §7 закрыта полностью. product-manager сгенерировал первый /team-report (.memory/reports/team-report-2026-08-24.md); tech-writer выполнил прогон /sync (activeContext/progress/decisionLog, ADR-010). Тимлид: inbox backlog 12→0 (архив в .memory/archive), FULL_PLAN обновлён (/sync и /team-report ✅, ограничение №2 снято). Осталось: commit+push.
+CONTENT: Дорожная карта FULL_PLAN §7 закрыта полностью. product-manager сгенерировал первый /team-report (.memory/reports/team-report-2026-08-24.md); tech-writer выполнил прогон /sync (activeContext/progress/decisionLog, ADR-010). Тимлид: inbox backlog 12→0 (архив в .memory/archive), FULL_PLAN обновлён (/sync и /team-report ✅, ограничение №2 снято). Коммит bc7d5fa отправлен в origin/main, verify 29/29 PASSED.
 STATUS: resolved
 
 [2026-08-24] team-lead → all:

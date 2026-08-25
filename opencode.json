@@ -27,7 +27,18 @@
                                                             "@modelcontextprotocol/server-sequential-thinking"
                                                         ],
                                             "enabled":  true
-                                        }
+                                        },
+                "serena":  {
+                               "type":  "local",
+                               "command":  [
+                                               "uvx",
+                                               "--from",
+                                               "git+https://github.com/oraios/serena",
+                                               "serena",
+                                               "start-mcp-server"
+                                           ],
+                               "enabled":  true
+                           }
             },
     "command":  {
                     "new-project":  {
@@ -125,7 +136,7 @@
                                   "prompt":  "{file:.opencode/agents/prompts/backend.txt}"
                               },
                   "code-reviewer":  {
-                                        "description":  "Code Reviewer — code review, best practices, clean code, антипаттерны. Только чтение.",
+                                        "description":  "Code Reviewer РІР‚вЂќ code review, best practices, clean code, Р В°Р Р…РЎвЂљР С‘Р С—Р В°РЎвЂљРЎвЂљР ВµРЎР‚Р Р…РЎвЂ№. Р СћР С•Р В»РЎРЉР С”Р С• РЎвЂЎРЎвЂљР ВµР Р…Р С‘Р Вµ.",
                                         "mode":  "subagent",
                                         "model":  "opencode-go/ox-alpha-free",
                                         "temperature":  0.1,
@@ -315,7 +326,7 @@
                                           "prompt":  "{file:.opencode/agents/prompts/product-manager.txt}"
                                       },
                   "qa-engineer":  {
-                                      "description":  "QA Engineer — тесты, edge cases, баг-репорты, регрессия.",
+                                      "description":  "QA Engineer РІР‚вЂќ РЎвЂљР ВµРЎРѓРЎвЂљРЎвЂ№, edge cases, Р В±Р В°Р С–-РЎР‚Р ВµР С—Р С•РЎР‚РЎвЂљРЎвЂ№, РЎР‚Р ВµР С–РЎР‚Р ВµРЎРѓРЎРѓР С‘РЎРЏ.",
                                       "mode":  "subagent",
                                       "model":  "opencode-go/ox-alpha-free",
                                       "temperature":  0.2,
@@ -331,7 +342,7 @@
                                       "prompt":  "{file:.opencode/agents/prompts/qa-engineer.txt}"
                                   },
                   "security-auditor":  {
-                                           "description":  "Security Auditor — OWASP, уязвимости, поиск secrets и утечек. Только чтение.",
+                                           "description":  "Security Auditor РІР‚вЂќ OWASP, РЎС“РЎРЏР В·Р Р†Р С‘Р СР С•РЎРѓРЎвЂљР С‘, Р С—Р С•Р С‘РЎРѓР С” secrets Р С‘ РЎС“РЎвЂљР ВµРЎвЂЎР ВµР С”. Р СћР С•Р В»РЎРЉР С”Р С• РЎвЂЎРЎвЂљР ВµР Р…Р С‘Р Вµ.",
                                            "mode":  "subagent",
                                            "model":  "opencode-go/ox-alpha-free",
                                            "temperature":  0,

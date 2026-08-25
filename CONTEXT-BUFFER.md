@@ -120,8 +120,12 @@ TYPE: update | PRIORITY: high
 CONTENT: Независимая переприёмка string-utils после фикса dev-2. 6/6 PASS: (1) test suite 20/20 pass 0 fail — OK, (2) slugify("Привет Мир 2026") → "привет-мир-2026" — OK (previously was ""), (3) truncate("hello world",5) → "he..." len=5 — OK, (4) truncate("abc",5) → "abc" — OK, (5) truncate("x",-1) и truncate("x","n") → TypeError — OK, (6) capitalize(null) → "" без краша — OK. Запись dev-2 в CONTEXT-BUFFER подтверждена (строки 103-106). Баг slugify с кириллицей ИСПРАВЛЕН (regex /[\p{L}\p{N}]+/gu). Блокер снят.
 STATUS: resolved
 [2026-08-25] team-lead → all:
-TYPE: update | PRIORITY: high
+TYPE: update | PRIORITY: medium
 CONTENT: Полный живой цикл разработки подтверждён: dev-1 построил string-utils (14 тестов) → code-reviewer+qa нашли 5 реальных багов (critical: slugify резал кириллицу) → dev-2 исправил → re-review APPROVED 9/10 → re-test 8/8 PASS (20/20). Проверяющие работают на opencode-go/ox-alpha-free — подтверждено живьём. MCP context7 подтверждён в проектном конфиге (enabled). tech-writer создал README.md (295 строк: архитектура, быстрый старт, модели, MCP, правила, плюсы/минусы, роадмап). verify 29/29, HEALTH PASS.
+
+[2026-08-25] team-lead → all:
+TYPE: decision | PRIORITY: high
+CONTENT: BSL Language Server reconnaissance (rep D): Java not installed (Get-Command java failed, java -version failed). Latest BSL LS release: v1.1.0-rc.3 (23 Aug 2026, pre-release), v1.0.7 (08 Aug 2026, stable). GroupId: io.github.1c-syntax, Artifact: bsl-language-server. Since Java is absent, BSL LS cannot be run locally. Verdict: НУЖНА JAVA. Winget command for Java 17: `winget install --id EclipseAdoptium.Temurin.17`. Integration assessment: verify-phase.ps1 needs new Phase F2 — find *.bsl in projects\, run BSL LS diagnostic, FAIL on error levels. Command template: `java -jar bsl-ls.jar --diagnostic-language ru --reporter console --srcDir projects\test-project\src`. No temp files created (Java unavailable). Decision: wait for JDK 17 installation before BSL LS integration.
 STATUS: resolved
 
 [2026-08-25] team-lead → all:
@@ -194,4 +198,32 @@ STATUS: resolved
 [2026-08-25] tech-writer → team-lead:
 TYPE: update | PRIORITY: medium
 CONTENT: IMPROVEMENTS.md дополнен разделом «6. Волна 2 — разведка [2026-08-25]» (стр. 395–452): Таблица А (7 кандидатов общих усилений), Таблица Б (6 кандидатов 1С-стека), блок «Минимальный высокоимпактный 1С-стек» (mcp-1c → BSL LS/Sonar → Vanessa), рекомендации (6 пунктов). Существующие разделы 1–5 не изменены. Файл стал 452 строки (было 395). Коммит НЕ выполнялся.
+STATUS: resolved
+
+[2026-08-25] dev-3 → team-lead:
+TYPE: update | PRIORITY: high
+CONTENT: Создан .agents/scripts/generate-agent-cards.ps1 — генератор машиночитаемых паспортов агентов (A2A Agent Card паттерн). Скрипт: параметры -Root/-OutDir, чтение .opencode/agents/*.json (кроме registry.json), эвристика capabilities (MCP/skills-first/read-only/delegation), role_summary первые 200 символов, UTF-8 без BOM. Выход: .agents/cards/<name>.json + index.json. Прогон: 19/19 агентов, self-check PASS, 20 файлов (19 карточек + index).
+STATUS: resolved
+
+[2026-08-25] integration-specialist → all:
+TYPE: update | PRIORITY: high
+CONTENT: Serena MCP server integration: uv 0.12.5 + uvx 0.12.5 installed via pip. Command in opencode.json: ["uvx","--from","git+https://github.com/oraios/serena","serena","start-mcp-server"]. JSON validated with ConvertFrom-Json SUCCESS. Test run: MCP server started with 21 tools, initialized stdio communication, confirmed working before PowerShell language server crash (pwsh not installed - separate issue, not MCP error). Dependencies: Python 3.13 present, uv installed minimally-invasively. serena added to opencode.json MCP section with minimal flags. STATUS: resolved
+
+[2026-08-25] qa-engineer → team-lead:
+TYPE: blocker | PRIORITY: critical
+CONTENT: Независимая приёмка 4 артефактов (read-only) — 3/4 OK, 1 BLOCKER. Таблица:
+
+| # | Пункт | Результат | Детали |
+|---|-------|-----------|--------|
+| 1 | generate-agent-cards.ps1 существует + запуск + 20 файлов + spot-check qa-engineer | ✅ OK | Скрипт запущен: 19/19 агентов, 20 файлов (19 карточек + index.json), self-check PASS. Spot-check qa-engineer.json: name=qa-engineer ✓, model=opencode-go/ox-alpha-free ✓, mode=subagent ✓, capabilities=[skills-first,read-only] ✓, generated_at=2026-08-25T16:13:39Z ✓ |
+| 2 | prompt-gate.ps1 существует + -Check + exit code + стабильность | ❌ FAIL | BLOCKER: скрипт НЕ ВЫПОЛНЯЕТСЯ. Причина: нет UTF-8 BOM (байты 0x23 0x21 0x2F) + 4 символа em-dash (U+2014) → PowerShell 5.1 на русской Windows читает как cp1251 → ParserError на строке 79. Exit code: 1. Отчёт не создан. Идентичный сбой на двух прогонах (стабилен в ошибке). Тот же баг что был у inbox-poller.ps1 (исправлен сегодня добавлением BOM). Дополнительно: параметр -Mode объявлен Mandatory но нигде не используется в логике. Стабильность (сравнение двух прогонов) не может быть проверена — скрипт падает до формирования отчёта. |
+| 3 | opencode.json: 4 MCP-сервера, все enabled, JSON валиден, serena=uvx | ✅ OK | ConvertFrom-Json SUCCESS. Серверы: context7 (npx) ✓, hermes-atlas-mcp (npx) ✓, sequential-thinking (npx) ✓, serena (uvx --from git+... serena start-mcp-server) ✓. Все enabled=true ✓ |
+| 4 | AGENTS.md §3 содержит правило Skill-пиннинг | ✅ OK | Строка 21: «Skill-пиннинг: тимлид при делегировании САМ подкладывает в ТЗ пути к нужным SKILL.md (пример: «сначала прочитай .agents/skills/1c-config-router/SKILL.md, затем 1c-query») — не полагаться на память агента.» ✓ |
+
+ВЕРДИКТ: ВОЗВРАТЬ — 1 BLOCKER. prompt-gate.ps1 не запускается из-за отсутствия UTF-8 BOM при наличии em-dash символов. Исправление: добавить UTF-8 BOM (EF BB BF) в начало файла — ровно как для inbox-poller.ps1.
+STATUS: open
+
+[2026-08-25] team-lead → all:
+TYPE: update | PRIORITY: high
+CONTENT: Блок усиления закрыт. serena подключён как 4-й MCP (uv 0.12.5 установлен, сервер стартует, 21 тул). generate-agent-cards.ps1: 19 карточек + index.json (A2A-паттерн). prompt-gate.ps1: 6 проверок G1-G6, доведён до PASS 19/19 (починены BOM/param/G5/G6, ревьюерам добавлен READ-ONLY маркер). Skill-пиннинг закреплён в AGENTS.md §3. BSL LS готов к внедрению после установки JDK 17 (winget EclipseAdoptium.Temurin.17) — ждёт решения пользователя. Ротация моделей: штатные механизмы opencode подтверждены (/models, per-agent override, small_model), LiteLLM-рецепт требует добивки.
 STATUS: resolved

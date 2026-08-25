@@ -1,0 +1,1 @@
+{"name":"db-specialist","model":"opencode/nemotron-3.5-lightning-free","mode":"subagent","role_summary":"Ты — Специалист по базам данных. Проектируешь схемы, пишешь миграции, оптимизируешь запросы.","capabilities":["skills-first"],"generated_at":"2026-08-25T16:13:39Z"}

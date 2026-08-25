@@ -43,3 +43,7 @@ logs/
 # Agent temp artifacts
 temp_*
 add_mcp.py
+
+ps_output*
+serena-output*
+transcript*

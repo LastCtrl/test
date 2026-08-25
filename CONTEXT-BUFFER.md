@@ -89,3 +89,37 @@ STATUS: resolved
 TYPE: heartbeat | PRIORITY: low
 CONTENT: POLLER OK
 STATUS: resolved
+
+[2026-08-25] dev-1 → team-lead:
+TYPE: update | PRIORITY: medium
+CONTENT: Созданы два файла в projects/test-project/src/ и tests/: (1) string-utils.js — экспортирует slugify(str), truncate(str, maxLen), capitalize(str), чистый Node.js без зависимостей. (2) string-utils.test.js — 14 тестов через node:test + node:assert/strict, покрывают нормальные кейсы и граничные (null, пустая строка, длина ровно maxLen). Результат запуска: 14 pass, 0 fail, 3 suites.
+STATUS: resolved
+
+[2026-08-25] qa-engineer → team-lead:
+TYPE: blocker | PRIORITY: critical
+CONTENT: Независимая приёмка string-utils: 5/6 пунктов PASS, 1 FAIL. BUG: slugify() удаляет entire non-ASCII (кириллицу). slugify("Привет Мир Тест") → "" вместо "привет-мир-тест". Корневая причина: regex /[^a-z0-9]+/g обрабатывает только латиницу. Тесты dev-1 не покрывают non-ASCII (14/14 pass, но тест неполный). truncate/capitalize — OK. Файлы существуют. Запись dev-1 в CONTEXT-BUFFER — OK.
+STATUS: open
+
+[2026-08-25] dev-2 → team-lead:
+TYPE: update | PRIORITY: high
+CONTENT: Исправлены string-utils.js и string-utils.test.js по результатам ревью и qa: (1) slugify — switched to Unicode regex /[\\p{L}\\p{N}]+/gu, now slugify('Привет Мир 2026') → 'привет-мир-2026', (2) truncate — added TypeError validation for maxLen, ellipsis budget logic (maxLen<=3 returns ...'.slice(0,maxLen)), (3) capitalize test renamed from 'lowercases rest of string' to 'preserves rest of string', (4) added 8 new tests — all 20 tests pass. STATUS: resolved
+STATUS: resolved
+
+[2026-08-25] qa-engineer → team-lead:
+TYPE: update | PRIORITY: high
+CONTENT: E2E тест inbox-poller.ps1 — ФИНАЛЬНЫЙ после исправления 10 багов. Результат: 5/5 шагов OK. (1) Ревью скрипта: Write-Log до вызова OK, if/else вместо -or OK, Complete-InboxFile+Send-DeadLetter существуют OK, $script:Utf8NoBom вынесен OK, Mutex в try/finally OK. (2) Тестовое сообщение создано OK. (3) Запуск -Once: exit 0, агент qa-engineer обработал OK. (4) Проверка: outbox status=String "done" (НЕ Boolean), archive exists, inbox removed, poller.log записи за сегодня. (5) Очистка OK. КЛЮЧЕВОЕ: статус в outbox — строковый "done", все поля строковые. Баг-фикс -or "" → if/else подтверждён работоспособным.
+STATUS: resolved
+
+[2026-08-25] bus → team-lead:
+TYPE: heartbeat | PRIORITY: low
+CONTENT: POLLER OK
+STATUS: resolved
+
+[2026-08-25] qa-engineer → team-lead:
+TYPE: update | PRIORITY: high
+CONTENT: Независимая переприёмка string-utils после фикса dev-2. 6/6 PASS: (1) test suite 20/20 pass 0 fail — OK, (2) slugify("Привет Мир 2026") → "привет-мир-2026" — OK (previously was ""), (3) truncate("hello world",5) → "he..." len=5 — OK, (4) truncate("abc",5) → "abc" — OK, (5) truncate("x",-1) и truncate("x","n") → TypeError — OK, (6) capitalize(null) → "" без краша — OK. Запись dev-2 в CONTEXT-BUFFER подтверждена (строки 103-106). Баг slugify с кириллицей ИСПРАВЛЕН (regex /[\p{L}\p{N}]+/gu). Блокер снят.
+STATUS: resolved
+[2026-08-25] team-lead → all:
+TYPE: update | PRIORITY: high
+CONTENT: Полный живой цикл разработки подтверждён: dev-1 построил string-utils (14 тестов) → code-reviewer+qa нашли 5 реальных багов (critical: slugify резал кириллицу) → dev-2 исправил → re-review APPROVED 9/10 → re-test 8/8 PASS (20/20). Проверяющие работают на opencode-go/ox-alpha-free — подтверждено живьём. MCP context7 подтверждён в проектном конфиге (enabled). tech-writer создал README.md (295 строк: архитектура, быстрый старт, модели, MCP, правила, плюсы/минусы, роадмап). verify 29/29, HEALTH PASS.
+STATUS: resolved

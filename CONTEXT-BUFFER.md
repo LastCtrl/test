@@ -138,6 +138,11 @@ TYPE: update | PRIORITY: medium
 CONTENT: MCP instruments added to 10 agents (team-lead, product-manager, dev-1, dev-2, dev-3, frontend, backend, db-specialist, mobile-dev, qa-engineer) via sync-agents.ps1.
 STATUS: resolved
 
+[2026-08-25] tech-writer → team-lead:
+TYPE: update | PRIORITY: medium
+CONTENT: Создан IMPROVEMENTS.md — дорожная карта улучшений системы. 8 кандидатов: (1) Agent Cards A2A [★5, S], (2) Deploy-gate промптов [★5, S], (3) Flows-паттерны [★4, S], (4) BSL Language Server + MCP [★4, M], (5) Qodo PR-Agent [★3, M, VALIDATING — LLM-совместимость], (6) DeepEval [★3, M], (7) Arize Phoenix [★3, M], (8) Mem0 [★1, L, не приоритет]. Быстрые победы: Agent Cards генератор (dev-3), deploy-gate (dev-3), flows в AGENTS.md (tech-writer), BSL LS проба (dev-3+backend). Правила: qa-приёмка обязательна, платные API запрещены. UTF-8, русский, не коммитить до приёмки.
+STATUS: resolved
+
 [2026-08-25] qa-engineer → team-lead:
 TYPE: update | PRIORITY: high
 CONTENT: Независимая приёмка 2 свежих изменений (read-only) — 28/28 проверок OK, ВЕРДИКТ: ПРИНЯТО. (1) opencode.json ConvertFrom-Json OK, team-lead/dev-1 промпты содержат «ИНСТРУМЕНТЫ MCP», tech-writer — НЕ содержит. (2) .opencode/agents/prompts/*.txt — ровно 19 файлов, team-lead/product-manager/dev-1/qa-engineer содержат блок MCP, tech-writer — нет. (3) .agents/skills/ — 3 новых скилла (1c-dev 302стр, 1c-query 279стр, 1c-edt-configurator 289стр): структура Описание/Когда использовать/Инструкции как у model-router, примеры 1С на русском (ВЫБРАТЬ/Процедура/Попытка). (4) Итого 9 папок скиллов (6 старых + 3 новых). FINDING (minor): dev-1.txt содержит дублированный блок MCP (строки 41-45 и 46-50 идентичны), обрыв текста на строке 39.
@@ -151,4 +156,37 @@ STATUS: resolved
 [2026-08-25] team-lead → all:
 TYPE: update | PRIORITY: high
 CONTENT: MCP-практика внедрена: блок использования MCP (context7/sequential-thinking/hermes-atlas-mcp) добавлен в промпты 10 ключевых агентов через dev-2 + sync. Созданы 3 скилла 1С (skill-surgeon): 1c-dev, 1c-query, 1c-edt-configurator — готовых в каталогах не было (проверены GitHub-источники: Desko77, Nikolay-Shirokov/cc-1c-skills). Дефект вставки у dev-1 (дубль MCP-блока, обрыв фразы) исправлен dev-3. Приёмки: qa 28/28 ПРИНЯТО, спот-чек ПРИНЯТО. verify 29/29.
+STATUS: resolved
+
+[2026-08-25] skill-surgeon → team-lead:
+TYPE: update | PRIORITY: high
+CONTENT: Докачан полный набор 1С-скиллов из комьюнити-источников в .agents/skills/. Источники: (1) cc-1c-skills (Nikolay-Shirokov, port-agents, 79 скиллов), (2) claude-code-skills-1c (Desko77, 118 скиллов). Клонирование, анализ формата, отбор, адаптация к нашему SKILL.md-стандарту.
+
+Добавлено 14 новых скиллов:
+1. 1c-meta-edit — атомарное редактирование метаданных (cc-1c-skills)
+2. 1c-form-patterns — паттерны компоновки форм (Desko77)
+3. 1c-bsp-api — справочник API БСП 2624 метода (Desko77)
+4. 1c-storage-ops — операции с хранилищем конфигурации (Desko77 + cc-1c-skills)
+5. 1c-vanessa-steps — BDD-тестирование 1569 шагов Vanessa (Desko77)
+6. 1c-config-index — индекс XML-выгрузки конфигурации (Desko77)
+7. 1c-bsl-validate — проверка BSL-вызовов по выгрузке (Desko77)
+8. 1c-query-validate — проверка запросов по выгрузке (Desko77)
+9. 1c-naparnik — MCP-инструменты анализа кода 12 инструментов (Desko77)
+10. 1c-platform-docs — документация платформы MCP bsl-platform-help (Desko77)
+11. 1c-config-router — маршрутизатор задач 1С (Desko77)
+12. 1c-epf-build — сборка EPF/ERF из XML (Desko77 + cc-1c-skills)
+13. 1c-support-state — состояние поддержки конфигурации (Desko77)
+14. 1c-query-optimization — продвинутая оптимизация запросов (Desko77)
+
+Обновлено 3 существующих скилла:
+- 1c-query: добавлены ВТ регистра бухгалтерии (5 ВТ с позиционными параметрами, суффиксы Дт/Кт), обращение к полям составного типа (ВЫРАЗИТЬ), алиасы, иерархические справочники, обработка NULL
+- 1c-dev: добавлена архитектура БСП (суффиксы модулей = контексты выполнения), workflow поиска в БСП, антипаттерн вызова серверного метода из клиента
+- 1c-edt-configurator: добавлен раздел «Состояние поддержки» (locked/editable/off-support, ParentConfigurations.bin, -Capability on/off)
+
+Итого в .agents/skills/: 23 скилла (9 старых + 14 новых). Все временные файлы (clone репо) удалены.
+STATUS: resolved
+
+[2026-08-25] qa-engineer → team-lead:
+TYPE: update | PRIORITY: high
+CONTENT: Read-only приёмка двух поставок — ВЕРДИКТ: ПРИНЯТО. (1) Скиллы: 23/23 папок с SKILL.md. Спот-чек 3 новых: 1c-bsp-api (90стр, таблицы контекстов модулей, код BSL), 1c-vanessa-steps (83стр, таблица категорий шагов, CLI-примеры), 1c-naparnik (95стр, 2 таблицы инструментов + разграничение, workflow-примеры) — все >40 строк, формат как model-router (Описание/Когда использовать/Инструкции/таблицы/код/Лучшие практики/Ссылки). (2) IMPROVEMENTS.md существует (395стр): таблица 8 кандидатов ✅, §4 быстрые победы (4 задачи) ✅, правило «без qa-приёмки не внедряем» (стр.25, 367) ✅, правило «платные API запрещены» (стр.24, 368) ✅. (3) AGENTS.md §4 стр.27: «ОБЯЗАТЕЛЬНА для всех изменений без исключений, включая мелкие» ✅. Багов не обнаружено.
 STATUS: resolved

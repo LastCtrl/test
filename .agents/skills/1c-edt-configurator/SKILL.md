@@ -257,6 +257,39 @@ edtcli build --project /path/to/project
 
 **Рекомендация:** для командной разработки — EDT; для единичных правок — Конфигуратор.
 
+### 8. Состояние поддержки конфигурации
+
+При работе с типовыми (вендорскими) конфигурациями объекты находятся «на замке» — их нельзя править. Состояние поддержки управляется через файл `Ext/ParentConfigurations.bin` в XML-выгрузке.
+
+**Семантика состояний:**
+
+| Состояние | Правило 1С | Правка | Обновления вендора |
+|-----------|-----------|:------:|:------------------:|
+| `locked` (на замке) | На замке | ✗ | ✓ |
+| `editable` (редактируется) | Редактируется | ✓ | ✓ |
+| `off-support` (снят с поддержки) | Снят с поддержки | ✓ | ✗ |
+
+**Использование:**
+
+```powershell
+# Показать состояние
+/support-state <путь>
+
+# Разрешить правку (поддержка сохраняется)
+/support-state <путь> -Set editable
+
+# Снять с поддержки (полное)
+/support-state <путь> -Set off-support
+
+# Вернуть на замок
+/support-state <путь> -Set locked
+
+# Включить/выключить возможность изменения конфигурации
+/support-state <корень> -Capability on|off
+```
+
+**Важно:** изменения затрагивают ТОЛЬКО файлы выгрузки. Чтобы подействовали в базе — загрузи выгрузку обратно. Под git изменение `.bin` видно в диффе и откатывается штатно.
+
 ## Лучшие практики
 
 - **EDT для команд** — Git-интеграция, code review, параллельная работа
@@ -285,5 +318,6 @@ edtcli build --project /path/to/project
 - [1С:EDT — официальная документация](https://its.1c.ru/db/edtdoc)
 - [1С:EDT — руководство разработчика](https://its.1c.ru/db/metod8dev/doc/2372914)
 - [cc-1c-skills (Nikolay-Shirokov)](https://github.com/Nikolay-Shirokov/cc-1c-skills) — 560★, cf-init, cfe-init, db-load-git
-- [cursor-1c-skills (Desko77)](https://github.com/Desko77/cursor-1c-skills) — 94 скила для EDT/Конфигуратора
-- [1c-devtools-cursor (Aradotso)](https://github.com/Aradotso/devtools-skills) — IDE-интеграция для 1С
+- [claude-code-skills-1c (Desko77)](https://github.com/Desko77/claude-code-skills-1c) — 95 скилов для 1С
+- [1c-support-state](../1c-support-state/SKILL.md) — управление состоянием поддержки
+- [1c-storage-ops](../1c-storage-ops/SKILL.md) — операции с хранилищем конфигурации

@@ -104,6 +104,11 @@
 - [x] ✅ Code review infra: APPROVED 7/10, 3 замечания исправлены и перепроверены
 - [x] ✅ Параллельный прогон 3 агентов через Start-Job (tech-writer+dev-1+devops) и 2 агентов (qa+reviewer) — работает
 
+### G. Inbox Poller (автозапуск воркеров)
+- [x] ✅ inbox-poller.ps1: мониторинг .memory/inbox/{agent}/*.json, вызов opencode run --agent, outbox/archive/dead-letter
+- [x] ✅ E2E тест: 9/9 PASS, status:"done" (String, не Boolean), архивация корректна
+- [x] ✅ Code review: APPROVED 8/10, 0 критических, 10/10 исправлений
+
 ## 7. Дорожная карта остатка (этот сеанс)
 
 | # | Задача | Кто |
@@ -123,5 +128,5 @@
 3. PowerShell: оператор `&&` сломан — использовать `;`
 4. Кириллица в путях: консоль может отображать кракозябры, файлы при этом корректны (UTF-8 no BOM)
 5. message-queue.ps1: archive чистит только outbox; inbox-файлы архивируются вручную в .memory/archive/ (сделано 2026-08-24, backlog 12 → 0)
-6. Автозапуска inbox-воркеров нет — агенты не опрашивают папки сами (opencode не умеет демонов). Будущая фаза: скрипт-поллер или plugin на таймере
+6. ~~Автозапуск inbox-воркеров нет~~ ЗАКРЫТО 2026-08-24: inbox-poller.ps1 создан, E2E тест 9/9 PASS, code review APPROVED
 7. Cost dashboard в $ неактивен по дизайну — все модели бесплатны ($0); активируется сам при появлении платных

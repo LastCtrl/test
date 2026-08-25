@@ -1,0 +1,16 @@
+Task: Create inbox-poller worker script for agent-hq
+
+Requirements:
+1. Parameters: -Once (process and exit), -IntervalSeconds int=30 (poll loop), -DryRun (show plan only)
+2. Scans .memory\inbox\{agent}\*.json (ignore .gitkeep). JSON format: id/from/to/type/priority/payload/created
+3. Target agent = field to, otherwise folder name
+4. For each message: generate prompt "Ты получил задачу из шины agent-hq. Прочитай последние 30 строк D:\Тест\agent-hq\CONTEXT-BUFFER.md (протокол iron rules), выполни задачу, результат запиши в CONTEXT-BUFFER.md, ответь кратко. ЗАДАЧА: <payload>" and call: opencode run --agent <имя> "<промпт>" (working directory D:\Тест\agent-hq; call via & opencode run ... ; capture output)
+5. Result: write .memory\outbox\<id>.json with status done|failed, agent, startedAt/finishedAt, response (truncate to 4000 chars)
+6. done → move original inbox file to .memory\archive\{agent}-{original_name}. failed → 1 retry, then move to .memory\dead-letter\
+7. Log: Write-Host with timestamps + append to .memory\traces\poller.log (plain text, don't touch *.jsonl plugins)
+8. Guards: empty payload → immediately dead-letter; opencode not in PATH → error + exit 1; concurrent execution via global mutex
+9. Syntax check: powershell -NoProfile -Command "$null = [System.Management.Automation.PSParser]::Tokenize((Get-Content -Raw '<path>'), [ref]$null)" or PSParser equivalent
+10. Save copy of this TZ to .agents\tasks\task-inbox-poller.txt
+
+Script: .agents\scripts\inbox-poller.ps1
+DryRun result: 0 messages (inbox is empty, this is normal)

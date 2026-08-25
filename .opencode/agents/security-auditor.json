@@ -1,7 +1,7 @@
 {
   "name": "security-auditor",
   "description": "Security Auditor — OWASP, уязвимости, поиск secrets и утечек. Только чтение.",
-  "model": "opencode/mimo-v2.5-free",
+  "model": "opencode-go/ox-alpha-free",
   "mode": "subagent",
   "temperature": 0.0,
   "permissions": ["read", "glob", "grep"],

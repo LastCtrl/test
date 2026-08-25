@@ -1,7 +1,7 @@
 {
   "name": "qa-engineer",
   "description": "QA Engineer — тесты, edge cases, баг-репорты, регрессия.",
-  "model": "opencode/mimo-v2.5-free",
+  "model": "opencode-go/ox-alpha-free",
   "mode": "subagent",
   "temperature": 0.2,
   "permissions": ["edit", "bash", "read", "glob", "grep", "skill"],

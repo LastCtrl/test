@@ -109,7 +109,7 @@
                   "code-reviewer":  {
                                         "description":  "Code Reviewer — code review, best practices, clean code, антипаттерны. Только чтение.",
                                         "mode":  "subagent",
-                                        "model":  "opencode/mimo-v2.5-free",
+                                        "model":  "opencode-go/ox-alpha-free",
                                         "temperature":  0.1,
                                         "permission":  {
                                                            "read":  "allow",
@@ -299,7 +299,7 @@
                   "qa-engineer":  {
                                       "description":  "QA Engineer — тесты, edge cases, баг-репорты, регрессия.",
                                       "mode":  "subagent",
-                                      "model":  "opencode/mimo-v2.5-free",
+                                      "model":  "opencode-go/ox-alpha-free",
                                       "temperature":  0.2,
                                       "permission":  {
                                                          "read":  "allow",
@@ -315,7 +315,7 @@
                   "security-auditor":  {
                                            "description":  "Security Auditor — OWASP, уязвимости, поиск secrets и утечек. Только чтение.",
                                            "mode":  "subagent",
-                                           "model":  "opencode/mimo-v2.5-free",
+                                           "model":  "opencode-go/ox-alpha-free",
                                            "temperature":  0,
                                            "permission":  {
                                                               "read":  "allow",

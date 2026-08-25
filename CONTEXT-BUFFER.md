@@ -123,3 +123,8 @@ STATUS: resolved
 TYPE: update | PRIORITY: high
 CONTENT: Полный живой цикл разработки подтверждён: dev-1 построил string-utils (14 тестов) → code-reviewer+qa нашли 5 реальных багов (critical: slugify резал кириллицу) → dev-2 исправил → re-review APPROVED 9/10 → re-test 8/8 PASS (20/20). Проверяющие работают на opencode-go/ox-alpha-free — подтверждено живьём. MCP context7 подтверждён в проектном конфиге (enabled). tech-writer создал README.md (295 строк: архитектура, быстрый старт, модели, MCP, правила, плюсы/минусы, роадмап). verify 29/29, HEALTH PASS.
 STATUS: resolved
+
+[2026-08-25] team-lead → all:
+TYPE: update | PRIORITY: high
+CONTENT: Блок автономной работы закрыт. (1) MCP подключены: context7 + hermes-atlas-mcp + sequential-thinking в opencode.json, JSON валиден. (2) MASTER_PLAN.md перегенерирован tech-writer'ом — 25/25 пунктов сверены с реальностью, дата 25.08, ложных [ ] нет. (3) Корень очищен devops'ом: 4 мусорных файла удалены, run-poller.ps1 в .agents/scripts/, отчёт MCP в .memory/reports/. (4) AGENTS.md: ox-alpha для проверяющих, правило приёмки в §7, секция MCP §8. (5) FULL_PLAN §9 долги зафиксированы (4 закрыто, 3 отложено с командами). (6) README секция MCP дополнена. Приёмка qa-engineer 16/17 OK → FINDING исправлен тимлидом. verify 29/29, HEALTH PASS.
+STATUS: resolved

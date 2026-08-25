@@ -5,6 +5,7 @@
 - mimo-v2.5-free — основная
 - nemotron-3.5-lightning-free — быстрая
 - nemotron-3-ultra-free — запасная
+- ox-alpha-free (opencode-go) — все проверяющие (qa-engineer, code-reviewer, security-auditor), пока бесплатна
 - Платные модели запрещены.
 
 ## 2. Роли
@@ -37,8 +38,16 @@
 
 - Перед сдачей: code-reviewer + security-auditor.
 - Финал: tech-writer.
+- СТАТУС «ГОТОВО» присваивается ТОЛЬКО после независимой приёмки qa-engineer/code-reviewer с записью в шину. Самоотчёт исполнителя «готово» приёмкой не считается.
 
-## 8. Команды
+## 8. MCP
+
+- context7 — актуальная документация библиотек (вместо памяти модели).
+- hermes-atlas-mcp — каталог скиллов/тулов Hermes Atlas.
+- sequential-thinking — структурированное планирование сложных задач.
+- Конфигурация: секция "mcp" в opencode.json.
+
+## 9. Команды
 
 /status — статус системы
 /sync — синхронизация агентов

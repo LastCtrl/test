@@ -170,23 +170,23 @@ opencode
 
 ## MCP
 
-### Context7
+Три сервера подключены в проектном `opencode.json` (секция `mcp`), доступны всем агентам автоматически:
 
-Подключён в проектном `opencode.json`:
+| Сервер | Назначение |
+|--------|-----------|
+| **context7** | Актуальная документация библиотек в реальном времени: свежие API, примеры, миграции — вместо устаревших знаний модели |
+| **hermes-atlas-mcp** | Каталог 100+ скиллов/тулов экосистемы Hermes Atlas (Nous Research) — поиск и установка готовых скиллов |
+| **sequential-thinking** | Структурированное пошаговое планирование сложных задач |
+
+Конфигурация:
 
 ```json
 "mcp": {
-    "context7": {
-        "type": "local",
-        "command": ["npx", "-y", "@upstash/context7-mcp"],
-        "enabled": true
-    }
+    "context7":            { "type": "local", "command": ["npx", "-y", "@upstash/context7-mcp"], "enabled": true },
+    "hermes-atlas-mcp":    { "type": "local", "command": ["npx", "-y", "hermes-atlas-mcp"], "enabled": true },
+    "sequential-thinking": { "type": "local", "command": ["npx", "-y", "@modelcontextprotocol/server-sequential-thinking"], "enabled": true }
 }
 ```
-
-**Что делает**: Предоставляет актуальную документацию библиотек и фреймворков в реальном времени. Вместо устаревших знаний из данных обучения агенты получают свежие API-ссылки, примеры кода и инструкции по миграции.
-
-**Доступен**: Всем агентам сессии автоматически.
 
 ---
 

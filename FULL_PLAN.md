@@ -23,6 +23,7 @@
 | `opencode/mimo-v2.5-free` | Основная (качество, русский) | 5-6 сек |
 | `opencode/nemotron-3.5-lightning-free` | Быстрая (рутина) | 3-4 сек |
 | `opencode/nemotron-3-ultra-free` | Запасная (глубокий анализ) | 7-8 сек |
+| `opencode-go/ox-alpha-free` | Все проверяющие (qa/review/security) — пока бесплатна | — |
 
 Запрещены (нет в подписке): kimi-k2.x, glm-5.x, deepseek-v4-pro/flash, qwen-plus, minimax-m2.x/m3
 
@@ -130,3 +131,17 @@
 5. message-queue.ps1: archive чистит только outbox; inbox-файлы архивируются вручную в .memory/archive/ (сделано 2026-08-24, backlog 12 → 0)
 6. ~~Автозапуск inbox-воркеров нет~~ ЗАКРЫТО 2026-08-24: inbox-poller.ps1 создан, E2E тест 9/9 PASS, code review APPROVED
 7. Cost dashboard в $ неактивен по дизайну — все модели бесплатны ($0); активируется сам при появлении платных
+
+## 9. Долги из прошлых сессий (закрыты 2026-08-25)
+
+Долги найдены археологией по старым сессиям/докам (explore) и закрыты:
+
+1. ✅ MCP-пакет: context7 + hermes-atlas-mcp (каталог скиллов Hermes Atlas/Nous Research) + sequential-thinking подключены в opencode.json; fetch не нужен (встроенный webfetch)
+2. ✅ MASTER_PLAN.md устарел (17 агентов, ложные [ ]) — перегенерирован tech-writer'ом, 25/25 пунктов сверены с реальностью
+3. ✅ Мусор в корне удалён: test-param.ps1, test-simple.ps1, test-structure.txt, opencode.json.bak; run-poller.ps1 → .agents/scripts/; mcp-addition-report → .memory/reports/
+4. ✅ Правило приёмки в AGENTS.md §7: «Готово» только после независимой qa/review приёмки
+5. ⏳ Автозапуск poller через Task Scheduler — команда для ручной активации:
+   schtasks /Create /TN "agent-hq-poller" /SC MINUTE /MO 5 /TR "powershell -NoProfile -ExecutionPolicy Bypass -File D:\Тест\agent-hq\.agents\scripts\inbox-poller.ps1 -Once"
+   (не зарегистрирован — требует решения пользователя о фоновом процессе)
+6. ⏳ Worktree-песочницы остальным агентам — выдаются по потребности: git worktree add .agents\worktrees\{имя} -b agent/{имя}
+7. ⏳ CI GitHub Actions с прогоном verify-phase на push — кандидат в следующую сессию

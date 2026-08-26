@@ -145,3 +145,4 @@
    (не зарегистрирован — требует решения пользователя о фоновом процессе)
 6. ⏳ Worktree-песочницы остальным агентам — выдаются по потребности: git worktree add .agents\worktrees\{имя} -b agent/{имя}
 7. ⏳ CI GitHub Actions с прогоном verify-phase на push — кандидат в следующую сессию
+8. ✅ Рейтинг моделей внедрён (`.memory/ratings.jsonl` + `.agents/scripts/model-leaderboard.ps1`)

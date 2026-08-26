@@ -30,14 +30,17 @@
 
 | # | Кандидат | Источник | Лицензия | Effort | Польза | Приоритет | Статус |
 |---|---------|----------|----------|--------|--------|-----------|--------|
-| 1 | **Agent Cards (A2A)** | [A2A Project](https://github.com/a2aproject/A2A) — 25.5k★ | Apache-2.0 (Linux Foundation) | **S** | Структурное обнаружение агентов; JSON-карточки в `.well-known/` | **★★★★★** | IDEAS |
-| 2 | **Deploy-gate для промптов** | Паттерн GEPA / agent-self-evolution | N/A (собственный) | **S** | Защита от деградации промптов; baseline в git + qa-оценка | **★★★★★** | IDEAS |
-| 3 | **Flows-паттерны (LangGraph/CrewAI)** | LangGraph, CrewAI | MIT / Apache-2.0 | **S** | Event-driven flows, conditional routing между агентами | **★★★★☆** | IDEAS |
-| 4 | **BSL Language Server + MCP** | [mcp-bsl-platform-context](https://github.com/topics/bsl-language-server), [mcp-1c](https://github.com/topics/mcp-1c), [code-index-mcp](https://github.com/topics/code-index-mcp), Claude Code BSL LSP plugin | LGPL-3 | **M** | Статический анализ кода 1С нашими агентами | **★★★★☆** | IDEAS |
+| 1 | **Agent Cards (A2A)** | [A2A Project](https://github.com/a2aproject/A2A) — 25.5k★ | Apache-2.0 (Linux Foundation) | **S** | Структурное обнаружение агентов; JSON-карточки в `.well-known/` | **★★★★★** | ВНЕДРЕНО |
+| 2 | **Deploy-gate для промптов** | Паттерн GEPA / agent-self-evolution | N/A (собственный) | **S** | Защита от деградации промптов; baseline в git + qa-оценка | **★★★★★** | ВНЕДРЕНО |
+| 3 | **Flows-паттерны (LangGraph/CrewAI)** | LangGraph, CrewAI | MIT / Apache-2.0 | **S** | Event-driven flows, conditional routing между агентами | **★★★★☆** | ВНЕДРЕНО |
+| 4 | **BSL Language Server + MCP** | [mcp-bsl-platform-context](https://github.com/topics/bsl-language-server), [mcp-1c](https://github.com/topics/mcp-1c), [code-index-mcp](https://github.com/topics/code-index-mcp), Claude Code BSL LSP plugin | LGPL-3 | **M** | Статический анализ кода 1С нашими агентами | **★★★★☆** | ЖДЁТ |
 | 5 | **Qodo PR-Agent** | [Qodo PR-Agent](https://github.com/Codium-ai/pr-agent) — 12.7k★ | MIT | **M** | Авто-ревью PR на GitHub; требует LLM-провайдера | **★★★☆☆** | VALIDATING |
 | 6 | **DeepEval** | [DeepEval](https://github.com/confident-ai/deepeval) — Apache-2.0 | Apache-2.0 | **M** | Eval-рамка для оценки качества промптов агентов | **★★★☆☆** | IDEAS |
 | 7 | **Arize Phoenix** | [Arize Phoenix](https://github.com/Arize-ai/phoenix) — Apache-2.0 | Apache-2.0 | **M** | Self-host наблюдаемость поверх traces.jsonl (OTel-native) | **★★★☆☆** | IDEAS |
 | 8 | **Mem0** | [Mem0](https://github.com/mem0ai/mem0) — 63.8k★ | Apache-2.0 | **L** | Долговременная память фактов; требует Python + embeddings | **★☆☆☆☆** | IDEAS |
+| 9 | **OmniRoute** | [OmniRoute](https://github.com/diegosouzapw/OmniRoute) | MIT | **S** | Шлюз-ротатор 350+ бесплатных моделей, авто-fallback, единый эндпоинт | **★★★★☆** | ЖДЁТ |
+| 10 | **codebase-memory-mcp** | MCP-сервер семантического поиска по кодовой базе | — | **M** | Контекстная память для агентов при работе с крупной кодовой базой | **★★★☆☆** | ПАУЗА |
+| 11 | **Рейтинг моделей** | Внутренний: ratings.jsonl + model-leaderboard.ps1 | N/A (собственный) | **S** | Оценка моделей/агентов после приёмки, таблица лидеров для делегирования | **★★★★☆** | ВНЕДРЕНО |
 
 ### Матрица приоритетов
 
@@ -310,6 +313,8 @@ MCP-обёртки.allow our agents to call BSL Language Server через MCP-�
 
 **Команда:** dev-1 или dev-3 (PowerShell).
 
+**Статус:** ✅ ВНЕДРЕНО — скрипт `generate-agent-cards.ps1` работает, генерирует карточки для 19 агентов.
+
 ---
 
 ### 4.2. Deploy-gate скрипт (Effort: S)
@@ -325,6 +330,8 @@ MCP-обёртки.allow our agents to call BSL Language Server через MCP-�
 **Приёмка:** qa-engineer проверяет: (1) деградация блокируется, (2) улучшение проходит, (3) log-файл корректен.
 
 **Команда:** dev-3 (PowerShell).
+
+**Статус:** ✅ ВНЕДРЕНО — `prompt-gate.ps1`, PASS 19/19 промптов.
 
 ---
 
@@ -342,6 +349,8 @@ MCP-обёртки.allow our agents to call BSL Language Server через MCP-�
 
 **Команда:** dev-3 + backend (для MCP-интеграции).
 
+**Статус:** ⏳ ЖДЁТ — нужна Java 17+ (решение пользователя об установке JDK).
+
 ---
 
 ### 4.4. Описание flows-паттернов (Effort: S)
@@ -357,6 +366,8 @@ MCP-обёртки.allow our agents to call BSL Language Server через MCP-�
 **Приёмка:** team-lead проверяет: (1) паттерны описаны, (2) примеры рабочие, (3) нет противоречий с текущим протоколом.
 
 **Команда:** tech-writer + team-lead.
+
+**Статус:** ✅ ВНЕДРЕНО (частично) — базовые правила коммуникации и conditional routing описаны в AGENTS.md.
 
 ---
 

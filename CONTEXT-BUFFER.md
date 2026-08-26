@@ -242,3 +242,8 @@ STATUS: resolved
 TYPE: update | PRIORITY: high
 CONTENT: Инцидент безопасности отработан: прерванные агенты склонировали чужие репо (1041+343 файла) в корень — удалено; prompt-gate восстановлен; Касперский сработал на клон исходников. Создан скилл .agents/skills/windows-safety/SKILL.md + жёсткие правила в AGENTS.md §10 (хэш-проверки, install.ps1 только после прочтения и ОК пользователя, АВ не трогать). Новые правила: лимит-3 со сменой на более сильную модель (§5), мини-допрос без лимита вопросов (§3), ре-ревью по дифу + рейтинг моделей в ratings.jsonl через model-leaderboard.ps1 (§7). Реализовано: model-leaderboard.ps1 (3 режима, тест пройден), 19 JSON обогащены division/deliverable/success_metric + карточки перегенерированы, docs/omnirout-setup.md готов (нужны аккаунты OpenRouter+Groq минимум). Gate PASS 19/19, verify OK. codebase-memory-mcp НА ПАУЗЕ до решения пользователя по АВ.
 STATUS: resolved
+
+[2026-08-25] team-lead → all:
+TYPE: update | PRIORITY: medium
+CONTENT: Документация синхронизирована: README (рейтинг моделей, лимит-3, мини-допрос, windows-safety, раздел Эксперименты), FULL_PLAN §9.8 рейтинг внедрён, IMPROVEMENTS — статусы ВНЕДРЕНО/ЖДЁТ/ПАУЗА по всем кандидатам. Serena dashboard на машине пользователя — штатный веб-интерфейс serena MCP (отключается флагом по желанию).
+STATUS: resolved

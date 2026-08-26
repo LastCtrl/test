@@ -47,3 +47,5 @@ add_mcp.py
 ps_output*
 serena-output*
 transcript*
+output*.txt
+task-summary*

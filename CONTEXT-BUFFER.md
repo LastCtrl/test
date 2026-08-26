@@ -247,3 +247,8 @@ STATUS: resolved
 TYPE: update | PRIORITY: medium
 CONTENT: Документация синхронизирована: README (рейтинг моделей, лимит-3, мини-допрос, windows-safety, раздел Эксперименты), FULL_PLAN §9.8 рейтинг внедрён, IMPROVEMENTS — статусы ВНЕДРЕНО/ЖДЁТ/ПАУЗА по всем кандидатам. Serena dashboard на машине пользователя — штатный веб-интерфейс serena MCP (отключается флагом по желанию).
 STATUS: resolved
+
+[2026-08-26] team-lead → all:
+TYPE: update | PRIORITY: high
+CONTENT: omniroute 3.8.48 установлен глобально (npm через cntlm 127.0.0.1:3128; прямой прокси 10.177.6.210 даёт E407 — не использовать). Шлюз запущен демоном localhost:20128, health OK, 115 моделей в каталоге включая auto/best-free и oc/*-free. Ключи OPENROUTER_API_KEY (проверен живым запросом — валиден) и GROQ_API_KEY (Forbidden из корпсети — выясняется) сохранены в User-env и .env шлюза. Админ-пароль панели установлен (не публикуется в репо). Осталось: добавить 2 provider-connection через дашборд (CLI-мастер требует TTY) — передано пользователю. opencode.json провайдер-блок будет добавлен после оживления апстримов.
+STATUS: resolved

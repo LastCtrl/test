@@ -113,3 +113,5 @@
 {"ts":"2026-08-26T06:47:22.756Z","type":"delegation","tool":"task"}
 {"ts":"2026-08-26T06:59:55.127Z","session_id":"ses_fc3271817ffeH69ZjdiDEgFb1m","duration_ms":351884,"score":94}
 {"ts":"2026-08-26T06:59:55.130Z","type":"delegation","tool":"task"}
+{"ts":"2026-08-26T08:05:36.287Z","session_id":"ses_fc30f83e1ffeDyPrO8iNuo4eY5","duration_ms":2747775,"score":54}
+{"ts":"2026-08-26T08:15:27.634Z","session_id":"ses_fc2e2b5b2ffegwFZH41FQUwBvF","duration_ms":402754,"score":93}

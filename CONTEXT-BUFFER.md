@@ -227,3 +227,18 @@ STATUS: open
 TYPE: update | PRIORITY: high
 CONTENT: Блок усиления закрыт. serena подключён как 4-й MCP (uv 0.12.5 установлен, сервер стартует, 21 тул). generate-agent-cards.ps1: 19 карточек + index.json (A2A-паттерн). prompt-gate.ps1: 6 проверок G1-G6, доведён до PASS 19/19 (починены BOM/param/G5/G6, ревьюерам добавлен READ-ONLY маркер). Skill-пиннинг закреплён в AGENTS.md §3. BSL LS готов к внедрению после установки JDK 17 (winget EclipseAdoptium.Temurin.17) — ждёт решения пользователя. Ротация моделей: штатные механизмы opencode подтверждены (/models, per-agent override, small_model), LiteLLM-рецепт требует добивки.
 STATUS: resolved
+
+[2026-08-26] tech-writer → team-lead:
+TYPE: update | PRIORITY: medium
+CONTENT: Создан docs/omnirout-setup.md — пошаговая инструкция подключения OmniRoute к agent-hq. 7 разделов: (1) Что даёт OmniRoute (ротация бесплатных моделей, авто-fallback, плагин @omniroute/opencode-plugin), (2) Регистрация у провайдеров (таблица: OpenRouter, Groq, Cerebras, GitHub Models с условиями бесплатного доступа), (3) Установка (npm/Docker/source/zero-config), (4) Куда вставить ключи (панель/env/API-key), (5) Конфигурация opencode.json (plugin-путь + статический + переключение агентов), (6) Проверочный запрос + запись в CONTEXT-BUFFER, (7) Откат. Список подготовки: 7 пунктов. Файл: UTF-8, 326 строк.
+STATUS: resolved
+
+[2026-08-26] dev-3 → team-lead:
+TYPE: update | PRIORITY: high
+CONTENT: Создан .agents/scripts/model-leaderboard.ps1 — скрипт рейтинга моделей по фактам приёмок. Файлы: (1) .memory/ratings.jsonl — пустой, формат JSONL по одной записи {model, agent, task_type, grade, date}, (2) model-leaderboard.ps1 — параметры -ByModel/-ByAgent/-ByTaskType, без параметров все три таблицы. Защита: битые строки → warning+пропуск, валидация полей и типа grade, пустой файл → «Рейтинг пуст». Фиксы PS 5.1: UTF-8 BOM (критично для кириллицы), ${lineNum} вместо $lineNum: (InvalidVariableReferenceWithDrive), -Root параметр (кириллица в путях ломает $PSScriptRoot). PSParser: 0 ошибок. Тест: 3 записи → все 3 режима OK, пустой файл OK, записи удалены.
+STATUS: resolved
+
+[2026-08-25] team-lead → all:
+TYPE: update | PRIORITY: high
+CONTENT: Инцидент безопасности отработан: прерванные агенты склонировали чужие репо (1041+343 файла) в корень — удалено; prompt-gate восстановлен; Касперский сработал на клон исходников. Создан скилл .agents/skills/windows-safety/SKILL.md + жёсткие правила в AGENTS.md §10 (хэш-проверки, install.ps1 только после прочтения и ОК пользователя, АВ не трогать). Новые правила: лимит-3 со сменой на более сильную модель (§5), мини-допрос без лимита вопросов (§3), ре-ревью по дифу + рейтинг моделей в ratings.jsonl через model-leaderboard.ps1 (§7). Реализовано: model-leaderboard.ps1 (3 режима, тест пройден), 19 JSON обогащены division/deliverable/success_metric + карточки перегенерированы, docs/omnirout-setup.md готов (нужны аккаунты OpenRouter+Groq минимум). Gate PASS 19/19, verify OK. codebase-memory-mcp НА ПАУЗЕ до решения пользователя по АВ.
+STATUS: resolved

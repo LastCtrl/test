@@ -133,6 +133,9 @@ foreach ($File in $AgentFiles) {
         mode         = $Mode
         role_summary = $RoleSummary
         capabilities = $Capabilities
+        division     = $Agent.division
+        deliverable  = $Agent.deliverable
+        success_metric = $Agent.success_metric
         generated_at = (Get-Date -Format "yyyy-MM-ddTHH:mm:ssZ")
     }
 

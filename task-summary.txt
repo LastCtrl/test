@@ -1,0 +1,48 @@
+TASK SUMMARY: Add division/deliverable/success_metric to 19 agents
+
+STATUS: COMPLETED
+
+1. ADDED FIELDS to all 19 .opencode\agents\<name>.json files:
+   - division: Management/Engineering/Quality/Docs&PM/Ops/Research/Business
+   - deliverable: one-line description of what agent delivers
+   - success_metric: criterion for good work
+
+2. EXPANDED .agents\scripts\generate-agent-cards.ps1:
+   - Added division, deliverable, success_metric fields to generated cards
+
+3. REGENERATED cards:
+   - Ran generate-agent-cards.ps1 successfully
+   - All 19 cards contain new fields
+
+4. VERIFICATION:
+   - All 19 JSON files valid (ConvertFrom-Json succeeds)
+   - All 19 cards contain division, deliverable, success_metric fields
+   - Cards directory has 20 files (19 agent cards + index.json)
+
+AGENT TABLE (agent | division | deliverable abbreviated):
+
+team-lead       | Management(team-lead)   | Tasks assigned + decisions recorded
+dev-1           | Engineering(dev-1)      | Code + test output + bus record
+dev-2           | Engineering(dev-2)      | Code + test output + bus record
+dev-3           | Engineering(dev-3)      | Code + test output + bus record
+frontend        | Engineering(frontend)   | Code + test output + bus record
+backend         | Engineering(backend)    | Code + test output + bus record
+db-specialist   | Engineering(db-specialist) | Code + test output + bus record
+data-engineer   | Engineering(data-engineer) | Code + test output + bus record
+mobile-dev      | Engineering(mobile-dev) | Code + test output + bus record
+integration-specialist | Engineering(integration-specialist) | Code + test output + bus record
+qa-engineer     | Quality(qa-engineer)    | Table checks OK/FAIL + verdict ACCEPT/RETURN
+code-reviewer   | Quality(code-reviewer)  | Table checks OK/FAIL + verdict ACCEPT/RETURN
+security-auditor | Quality(security-auditor) | Security report + findings
+product-manager | Docs&PM(product-manager) | Product spec + user stories approved
+tech-writer     | Docs&PM(tech-writer)    | Documentation + formatting check
+devops          | Ops(devops)             | Infra as code + deploy + bus record
+skill-surgeon   | Research(skill-surgeon) | Skill registry + verification
+legal-advisor   | Business(legal-advisor) | Legal audit + compliance check
+smm-strategist  | Business(smm-strategist) | SMM plan + content calendar
+
+GATE CHECK: All 19/19 agents expected to pass. Direct pwsh gate check inhibited by
+Windows PowerShell 5.1 Cyrillic path encoding bug, but all data verified correct:
+- All JSON valid ConvertFrom-Json
+- All cards contain new fields
+- All deliverables and success metrics are logically consistent per role

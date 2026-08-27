@@ -163,7 +163,7 @@ opencode
 | `opencode/mimo-v2.5-free` | Основная (качество, русский) | 5-6 сек | dev-1, dev-3, frontend, legal-advisor, product-manager, skill-surgeon, smm-strategist, team-lead, tech-writer |
 | `opencode/nemotron-3.5-lightning-free` | Быстрая (рутина) | 3-4 сек | backend, data-engineer, db-specialist, dev-2, devops, integration-specialist, mobile-dev |
 | `opencode/nemotron-3-ultra-free` | Запасная (глубокий анализ) | 7-8 сек | резервная |
-| `opencode-go/ox-alpha-free` | Проверяющие | varies | qa-engineer, code-reviewer, security-auditor |
+| `opencode/nemotron-3-ultra-free` | Проверяющие | varies | qa-engineer, code-reviewer, security-auditor |
 
 **Запрещены** (нет в подписке): kimi-k2.x, glm-5.x, deepseek-v4-pro/flash, qwen-plus, minimax-m2.x/m3
 
@@ -319,7 +319,7 @@ Memory Bank (5 файлов), CONTEXT-BUFFER.md, AGENTS.md, message-queue.ps1 �
 | Worktree только у dev-1 | Остальные агенты делят основную working copy; worktree выдаётся по потребности |
 | Кириллица в консоли | PowerShell 5.1 может отображать UTF-8 эмодзи кракозябрами; файлы при этом корректны (UTF-8 no BOM) |
 | Message-queue archive | Чистит только outbox; inbox-файлы архивируются вручную |
-| ox-alpha-free | Проверяющие агенты на opencode-go/ox-alpha-free — пока бесплатна, но статус может измениться |
+| nemotron-3-ultra-free | Проверяющие агенты (qa-engineer, code-reviewer, security-auditor) — fallback после ухода ox-alpha-free |
 
 ---
 

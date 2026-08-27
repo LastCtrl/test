@@ -23,7 +23,7 @@
 | `opencode/mimo-v2.5-free` | Основная (качество, русский) | 5-6 сек |
 | `opencode/nemotron-3.5-lightning-free` | Быстрая (рутина) | 3-4 сек |
 | `opencode/nemotron-3-ultra-free` | Запасная (глубокий анализ) | 7-8 сек |
-| `opencode-go/ox-alpha-free` | Все проверяющие (qa/review/security) — пока бесплатна | — |
+| `opencode/nemotron-3-ultra-free` | Все проверяющие (qa/review/security) — пока бесплатна | — |
 
 Запрещены (нет в подписке): kimi-k2.x, glm-5.x, deepseek-v4-pro/flash, qwen-plus, minimax-m2.x/m3
 

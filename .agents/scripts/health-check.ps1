@@ -9,7 +9,8 @@ Write-Host "Root: $root" -ForegroundColor Gray
 Write-Host ""
 
 # --- 1. Traces: type:error за последние 60 минут ---
-$tracesPath = Join-Path $root ".memory\traces\traces.jsonl"
+$tracesDir = Join-Path $env:LOCALAPPDATA "opencode\agent-hq-traces"
+$tracesPath = Join-Path $tracesDir "traces.jsonl"
 if (Test-Path $tracesPath) {
     $cutoff = (Get-Date).ToUniversalTime().AddHours(-1)
     $errorCount = 0
@@ -80,7 +81,7 @@ try {
 }
 
 # --- 5. Performance: средняя duration_ms ---
-$perfPath = Join-Path $root ".memory\traces\performance.jsonl"
+$perfPath = Join-Path $tracesDir "performance.jsonl"
 if (Test-Path $perfPath) {
     $durations = @()
     $perfLines = Get-Content $perfPath -ErrorAction SilentlyContinue

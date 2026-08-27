@@ -1,0 +1,38 @@
+name: verify
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+  workflow_dispatch:
+
+jobs:
+  verify:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Run verify-phase.ps1
+        shell: pwsh
+        working-directory: ${{ github.workspace }}
+        run: |
+          Write-Host "=== Running agent-hq phase verification ==="
+          & .\.agents\scripts\verify-phase.ps1
+          $code = $LASTEXITCODE
+          if ($code -ne 0) {
+            Write-Host "::error::verify-phase.ps1 reported failures (exit $code)"
+            exit $code
+          }
+          Write-Host "=== Verification passed ==="
+
+      - name: Upload verify log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: verify-log
+          path: |
+            .memory/
+            CONTEXT-BUFFER.md
+          retention-days: 7

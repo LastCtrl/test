@@ -36,18 +36,27 @@
 - [x] 9 Плагин-система — plugin-system создан
 - [x] 15 Best practices — в документации агентов
 
-## Все фазы выполнены! 🎉
+## Все фазы выполнены 🎉
 
-## Сегодня (21.08.2026)
-- **Утро**: MVP — структура, opencode.json, registry.json, 3 скилла, message-queue
-- **День**: Фазы 0-15 — git, Memory Bank, 19 JSON-конфигов, create-project.ps1, все модули
-- **Верификация**: verify-phase.ps1 — 19/19 checks PASSED
-- **Git**: remote GitHub (LastCtrl/test), SSH настроен
-- **Итого**: 10 скиллов, 19 агентов, 5 команд, все модули включены
+## 21.08.2026 — MVP
+- MVP: структура, opencode.json, registry.json, 3 скилла, message-queue
+- Фазы 0-15: git, Memory Bank, 19 JSON-конфигов, create-project.ps1, все модули
+- Верификация: verify-phase.ps1 — 19/19 PASSED
+- Git: remote GitHub (LastCtrl/test), SSH настроен
+- Итого: 10 скиллов, 19 агентов, 5 команд, все модули включены
 
-## Прогон /sync + /team-report (24.08.2026)
-- **verify-phase.ps1**: 29/29 PASSED (18 старых + 11 новых от qa-engineer)
-- **health-check.ps1**: HEALTH: PASS
-- **/sync**: закрыт — activeContext.md, progress.md, decisionLog.md синхронизированы с фактическим состоянием
-- **/team-report**: закрыт — отчёт создан в .memory/reports/team-report-2026-08-24.md
-- **Остаток**: коммит + push (задача #7 из FULL_PLAN)
+## 24.08.2026 — /sync + /team-report
+- verify-phase.ps1: 29/29 PASSED (18 старых + 11 новых от qa-engineer)
+- health-check.ps1: HEALTH: PASS
+- /sync: закрыт — activeContext.md, progress.md, decisionLog.md синхронизированы
+- /team-report: закрыт — отчёт в .memory/reports/team-report-2026-08-24.md
+- Остаток: коммит + push (задача #7 из FULL_PLAN)
+
+## 27.08.2026 — Переключение моделей проверяющих + протокол §3.1-3.3
+- opencode-go/ox-alpha-free упал ("Model not found") — проверяющие (qa-engineer, code-reviewer, security-auditor) переведены на opencode/nemotron-3-ultra-free
+- 21 замена в 14 файлах (.opencode/agents/*.json source, opencode.json, .agents/cards/*.json + index.json, AGENTS.md §1, README.md, FULL_PLAN.md, IMPROVEMENTS.md)
+- AGENTS.md §3 расширен: §3.1 Оценка времени (5/10/15/20/30/45 мин для агента), §3.2 x2 timeout (передача другому агенту на более сильной модели без 2-й попытки), §3.3 Верификация НЕ тимлидом (qa-engineer/code-reviewer)
+- cleanup-garbage.ps1 создан (dev-3, оценка 10 мин): автоочистка temp_*/bak/stray root agent JSON, -DryRun (по умолчанию)/-Execute, идемпотентен
+- Рестарт opencode выполнен (конфиг не hot-reload — скилл customize-opencode)
+- /sync прогнан пост-рестарт: sync-agents.ps1 обновил секцию agent (19 агентов); activeContext.md, progress.md, decisionLog.md перегенерированы из CONTEXT-BUFFER.md + KNOWLEDGE-BASE.md
+- PENDING: 16 stray root agent JSON + prompts/ (byte-identical дубликаты). Баг cleanup-garbage.ps1:94 (хардкод 3 имён проверяющих). Задача — делегировать dev-3 на nemotron-ultra (оценка 15 мин): трассировка источника + правка детекта ВСЕХ stray root agent JSON + удаление 16 копий + прогон -DryRun

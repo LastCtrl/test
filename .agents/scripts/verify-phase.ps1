@@ -133,12 +133,14 @@ Write-Host "Phase E2: Real Code Features" -ForegroundColor Yellow
 Test-Check ".opencode/plugins/tracer.js exists" (Test-Path ".opencode\plugins\tracer.js")
 Test-Check ".opencode/plugins/scoring.js exists" (Test-Path ".opencode\plugins\scoring.js")
 Test-Check ".agents/scripts/health-check.ps1 exists" (Test-Path ".agents\scripts\health-check.ps1")
-$tracesExists = Test-Path ".memory\traces\traces.jsonl"
+$tracesDir = Join-Path $env:LOCALAPPDATA "opencode\agent-hq-traces"
+$tracesPath = Join-Path $tracesDir "traces.jsonl"
+$tracesExists = Test-Path $tracesPath
 if ($tracesExists) {
-    $tracesSize = (Get-Item ".memory\traces\traces.jsonl").Length
-    Test-Check ".memory/traces/traces.jsonl exists and not empty" ($tracesSize -gt 0)
+    $tracesSize = (Get-Item $tracesPath).Length
+    Test-Check "traces.jsonl exists and not empty (in LOCALAPPDATA)" ($tracesSize -gt 0)
 } else {
-    Test-Check ".memory/traces/traces.jsonl exists and not empty" $false
+    Test-Check "traces.jsonl exists and not empty (in LOCALAPPDATA)" $false
 }
 
 # Summary
@@ -156,3 +158,4 @@ if ($fail -eq 0) {
 } else {
     Write-Host "SOME CHECKS FAILED - review above" -ForegroundColor Yellow
 }
+if ($fail -gt 0) { exit 1 }

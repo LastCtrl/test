@@ -21,7 +21,7 @@
 - **Приоритет** = «Польза для нас» × «Размер Effort» (чем меньше Effort при высокой пользе — тем выше приоритет).
 - **Effort** обозначения: S (< 1 день), M (1–3 дня), L (> 3 дней).
 - **Статус**: `IDEAS` → `VALIDATING` → `APPROVED` → `IN PROGRESS` → `DONE`.
-- **Платные API запрещены.** Все решения проверяются на совместимость с бесплатными моделями (mimo-v2.5-free, nemotron-3.5-lightning-free, opencode-go/ox-alpha-free).
+- **Платные API запрещены.** Все решения проверяются на совместимость с бесплатными моделями (mimo-v2.5-free, nemotron-3.5-lightning-free, opencode/nemotron-3-ultra-free).
 - **Приёмка обязательна.** Ни одно изменение не считается завершённым без независимой проверки qa-engineer / code-reviewer.
 
 ---
@@ -196,7 +196,7 @@ MCP-обёртки.allow our agents to call BSL Language Server через MCP-�
 **Зависимости:**
 - LLM-провайдер (OpenAI API, Anthropic API, или self-hosted)
 - GitHub/GitLab токен
-- **ПРОВЕРИТЬ:** совместимость с бесплатными моделями (opencode-go/ox-alpha-free, mimo-v2.5-free)
+- **ПРОВЕРИТЬ:** совместимость с бесплатными моделями (opencode/nemotron-3-ultra-free, mimo-v2.5-free)
 
 **Риски:**
 - Требует LLM API → **потенциально платные API**. Если PR-Agent не поддерживает self-hosted модели — отклоняем.
@@ -376,7 +376,7 @@ MCP-обёртки.allow our agents to call BSL Language Server через MCP-�
 ### Обязательные
 
 1. **qa-приёмка** — каждое изменение проходит проверку qa-engineer (или code-reviewer). Без приёмки = не готово.
-2. **Платные API запрещены** — все решения проверяются на совместимость с бесплатными моделями (mimo-v2.5-free, nemotron-3.5-lightning-free, opencode-go/ox-alpha-free). Если требует платный API — отклоняется.
+2. **Платные API запрещены** — все решения проверяются на совместимость с бесплатными моделями (mimo-v2.5-free, nemotron-3.5-lightning-free, opencode/nemotron-3-ultra-free). Если требует платный API — отклоняется.
 3. **Коммит после приёмки** — файлы не коммитятся до Approve от qa-engineer. Откат: `git stash` или `git checkout`.
 4. **Документация** — каждое изменение сопровождается обновлением README.md / AGENTS.md / CHANGELOG.md.
 

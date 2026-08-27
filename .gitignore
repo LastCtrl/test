@@ -28,7 +28,6 @@ Desktop.ini
 .memory/outbox/*/
 .memory/dead-letter/*/
 .memory/archive/*/
-.memory/traces/*/
 
 # Secrets
 .env
@@ -39,6 +38,8 @@ Desktop.ini
 *.log
 logs/
 *.bak
+*.bak.*
+opencode.json.bak.*
 
 # Agent temp artifacts
 temp_*

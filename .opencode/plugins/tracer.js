@@ -1,9 +1,14 @@
 import fs from "node:fs";
 import path from "node:path";
+import os from "node:os";
 
 export const TracerPlugin = ({ directory }) => {
   const starts = new Map();
-  const tracesDir = path.join(directory, ".memory", "traces");
+  const tracesDir = path.join(
+    process.env.LOCALAPPDATA || process.env.APPDATA || os.tmpdir(),
+    "opencode",
+    "agent-hq-traces"
+  );
   const tracesFile = path.join(tracesDir, "traces.jsonl");
 
   const writeJsonl = (obj) => {

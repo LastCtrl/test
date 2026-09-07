@@ -118,6 +118,25 @@ if ($drive) {
     Write-Host "[WARN] Disk: cannot determine free space" -ForegroundColor Yellow
 }
 
+# --- 7. Skills+MCP Compliance Check (NEW) ---
+Write-Host "" -ForegroundColor Gray
+Write-Host "--- Skills+MCP Compliance ---" -ForegroundColor Cyan
+$complianceScript = Join-Path $PSScriptRoot "compliance-gate.ps1"
+if (Test-Path $complianceScript) {
+    try {
+        $compResult = & $complianceScript -ReportPath (Join-Path $root "CONTEXT-BUFFER.md") -LookbackHours 24 -Strict:$false
+        if ($LASTEXITCODE -eq 0) {
+            Write-Host "[OK] Compliance: PASS" -ForegroundColor Green
+        } else {
+            Write-Host "[WARN] Compliance: violations found (check .memory/tool-usage-violations.jsonl)" -ForegroundColor Yellow
+        }
+    } catch {
+        Write-Host "[WARN] Compliance: script error - $($_.Exception.Message)" -ForegroundColor Yellow
+    }
+} else {
+    Write-Host "[WARN] Compliance: compliance-gate.ps1 not found" -ForegroundColor Yellow
+}
+
 # --- Итог ---
 Write-Host "" -ForegroundColor Gray
 if ($hasFail) {

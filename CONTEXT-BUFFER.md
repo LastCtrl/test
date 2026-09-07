@@ -443,11 +443,28 @@ Round 1 (25мин) → Round 2 (35мин) → Round 5 (30мин) = 90мин
 6. Round 5 (US-008): tech-writer (документация)
 STATUS: resolved
 
+[2026-09-07] dev-1 → team-lead:
+TYPE: update | PRIORITY: medium
+CONTENT: Создан .agents/skills/README.md — каталог всех 24 скиллов (17 1С + 7 Core + 4 Superpowers). Включает таблицы с описаниями, путями, MCP Tools, Role→Skills Mapping. Файл: .agents/skills/README.md (89 строк). Коммит: docs(skills): add catalog and mapping (9319932).
+SKILLS_LOADED: ["skill-enforcement"]
+MCP_USED: []
+COMPLIANCE: true
+STATUS: resolved
+
 [2026-09-07] tech-writer >> team-lead:
 TYPE: update | PRIORITY: medium
 Project: agent-hq
 CONTENT: AGENTS.md — добавлены §3.4 (Self-report Mandate), §3.5 (Validator Enforcement), §3.6 (Superpowers Integration). Всего +70 строк. Коммит: ef4fdf6.
 SKILLS_LOADED: ["customize-opencode"]
 MCP_USED: []
+COMPLIANCE: true
+STATUS: resolved
+
+[2026-09-07] skill-surgeon → team-lead:
+TYPE: update | PRIORITY: medium
+Project: agent-hq
+CONTENT: Созданы 4 скилла superpowers в .agents/skills/superpowers/ — spec (specification phase), plan (planning phase), implement (implementation phase), test (testing phase). Каждый содержит: описание, чек-лист фазы, MCP ОБЯЗАТЕЛЬНЫЕ инструменты, связанные локальные скиллы, формат выходного артефакта в CONTEXT-BUFFER.md, интеграцию с team-lead. Файлы: .agents/skills/superpowers/{spec,plan,implement,test}/SKILL.md. Коммит: feat(skills): add superpowers spec/plan/implement/test skills.
+SKILLS_LOADED: ["superpowers-spec", "superpowers-plan", "superpowers-implement", "superpowers-test"]
+MCP_USED: ["context7", "sequential-thinking", "hermes-atlas-mcp"]
 COMPLIANCE: true
 STATUS: resolved

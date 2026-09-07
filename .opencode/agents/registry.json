@@ -9,6 +9,7 @@
         "secondary": ["code-review", "security"],
         "avoid": ["frontend", "mobile"]
       },
+      "required_skills": ["model-router", "performance-scoring", "self-healing", "summarization", "skill-enforcement"],
       "description": "Технический Лидер — декомпозирует задачи, назначает агентов, контролирует качество"
     },
     "dev-1": {
@@ -20,6 +21,7 @@
         "secondary": ["docker", "git"],
         "avoid": ["frontend", "mobile"]
       },
+      "required_skills": ["1c-dev", "1c-query", "1c-bsp-api", "windows-safety", "skill-enforcement"],
       "description": "Универсальный разработчик (основной)"
     },
     "dev-2": {
@@ -31,6 +33,7 @@
         "secondary": ["docker"],
         "avoid": ["mobile"]
       },
+      "required_skills": ["1c-dev", "1c-query", "1c-edt-configurator", "windows-safety", "skill-enforcement"],
       "description": "Универсальный разработчик (быстрый)"
     },
     "dev-3": {
@@ -42,6 +45,7 @@
         "secondary": ["python"],
         "avoid": ["frontend"]
       },
+      "required_skills": ["1c-dev", "1c-bsl-validate", "1c-query-validate", "windows-safety", "skill-enforcement"],
       "description": "Универсальный разработчик (надежность)"
     },
     "frontend": {
@@ -53,6 +57,7 @@
         "secondary": ["vite"],
         "avoid": ["backend", "database"]
       },
+      "required_skills": ["1c-form-patterns", "1c-meta-edit", "skill-enforcement"],
       "description": "Frontend специалист"
     },
     "backend": {
@@ -64,6 +69,7 @@
         "secondary": ["docker", "sql"],
         "avoid": ["frontend"]
       },
+      "required_skills": ["1c-query", "1c-bsp-api", "1c-query-optimization", "skill-enforcement"],
       "description": "Backend специалист"
     },
     "db-specialist": {
@@ -75,6 +81,7 @@
         "secondary": ["python"],
         "avoid": ["frontend", "mobile"]
       },
+      "required_skills": ["1c-storage-ops", "1c-config-index", "1c-support-state", "skill-enforcement"],
       "description": "SQL/NoSQL специалист"
     },
     "mobile-dev": {
@@ -86,6 +93,7 @@
         "secondary": ["python"],
         "avoid": ["database"]
       },
+      "required_skills": ["1c-epf-build", "skill-enforcement"],
       "description": "Mobile разработчик"
     },
     "devops": {
@@ -97,6 +105,7 @@
         "secondary": ["python"],
         "avoid": ["frontend"]
       },
+      "required_skills": ["windows-safety", "1c-platform-docs", "skill-enforcement"],
       "description": "DevOps инженер"
     },
     "integration-specialist": {
@@ -108,6 +117,7 @@
         "secondary": ["python", "sql"],
         "avoid": ["frontend"]
       },
+      "required_skills": ["1c-naparnik", "1c-config-router", "skill-enforcement"],
       "description": "Integration specialist"
     },
     "data-engineer": {
@@ -119,6 +129,7 @@
         "secondary": ["python", "sql"],
         "avoid": ["frontend"]
       },
+      "required_skills": ["1c-query", "1c-query-validate", "1c-query-optimization", "skill-enforcement"],
       "description": "Data engineer"
     },
     "qa-engineer": {
@@ -130,6 +141,7 @@
         "secondary": ["security"],
         "avoid": []
       },
+      "required_skills": ["1c-bsl-validate", "1c-query-validate", "1c-storage-ops", "skill-enforcement"],
       "description": "QA Engineer"
     },
     "security-auditor": {
@@ -141,6 +153,7 @@
         "secondary": ["code-review"],
         "avoid": ["frontend"]
       },
+      "required_skills": ["windows-safety", "1c-platform-docs", "skill-enforcement"],
       "description": "Security Auditor"
     },
     "code-reviewer": {
@@ -152,6 +165,7 @@
         "secondary": ["security"],
         "avoid": []
       },
+      "required_skills": ["1c-dev", "1c-bsl-validate", "clean-code", "skill-enforcement"],
       "description": "Code Reviewer"
     },
     "product-manager": {
@@ -163,6 +177,7 @@
         "secondary": ["api-design"],
         "avoid": ["code"]
       },
+      "required_skills": ["summarization", "memory-search", "skill-enforcement"],
       "description": "Product Manager"
     },
     "tech-writer": {
@@ -174,6 +189,7 @@
         "secondary": ["api"],
         "avoid": ["code"]
       },
+      "required_skills": ["summarization", "1c-platform-docs", "skill-enforcement"],
       "description": "Tech Writer"
     },
     "skill-surgeon": {
@@ -185,6 +201,7 @@
         "secondary": ["webfetch"],
         "avoid": ["code"]
       },
+      "required_skills": ["1c-dev", "1c-query", "1c-bsp-api", "1c-storage-ops", "1c-config-router", "windows-safety", "model-router", "performance-scoring", "self-healing", "summarization", "memory-search", "clean-code", "skill-enforcement", "plugin-system"],
       "description": "Ищет, скачивает, создаёт скиллы под любую технологию"
     },
     "legal-advisor": {
@@ -196,6 +213,7 @@
         "secondary": ["api"],
         "avoid": ["code"]
       },
+      "required_skills": ["1c-platform-docs", "summarization", "skill-enforcement"],
       "description": "Legal Advisor"
     },
     "smm-strategist": {
@@ -207,6 +225,7 @@
         "secondary": ["webfetch"],
         "avoid": ["code"]
       },
+      "required_skills": ["memory-search", "performance-scoring", "skill-enforcement"],
       "description": "SMM Strategist"
     }
   }

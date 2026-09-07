@@ -65,6 +65,94 @@ task "Создать Excel отчёт с формулами
 
 ---
 
+## Dual-Agent Delegation Template (ОБЯЗАТЕЛЬНО ДЛЯ КАЖДОЙ ЗАДАЧИ)
+
+**Правило:** Каждая входящая задача обрабатывается **ДВУМЯ агентами параллельно**:
+- **team-lead** — архитектура, делегирование, качество
+- **product-manager** — требования, user stories, acceptance criteria, приоритизация
+
+### Шаблон вызова
+
+```markdown
+## ШАГ 1: DUAL-AGENT (одно сообщение, два вызова)
+
+# Вызов product-manager (параллельно с анализом team-lead)
+task "Проанализируй требования для: <ЗАДАЧА>.
+Выдай:
+1. User Stories (формат: Как... я хочу... чтобы...)
+2. Acceptance Criteria (проверяемые критерии)
+3. MoSCoW приоритизацию
+4. Риски и зависимости
+5. Рекомендации по технологическому стеку
+6. Нефункциональные требования" subagent_type=product-manager
+
+# Team-lead анализирует параллельно:
+# - Тип проекта (full-stack, api-only, mobile, data-pipeline, integration)
+# - Архитектурные решения
+# - Набор агентов для делегирования
+# - Порядок выполнения подзадач
+
+## ШАГ 2: СИНХРОНИЗАЦИЯ
+
+# Team-lead читает вывод PM из CONTEXT-BUFFER.md
+# Объединяет: PM requirements + техническая архитектура = итоговый план
+
+## ШАГ 3: ДЕЛЕГИРОВАНИЕ ИСПОЛНИТЕЛЯМ
+
+# Только после ШАГОВ 1+2 — запуск dev/backend/qa/etc
+task "Создать <компонент> по ТЗ:
+## ОБЯЗАТЕЛЬНЫЕ ПОЛЯ В ТЗ:
+- Skills: <список из таблицы выше для данного агента>
+- MCP: <context7/hermes-atlas/sequential-thinking — какие нужны>
+- User Stories: <из вывода product-manager>
+- Acceptance Criteria: <из вывода product-manager>
+- Self-report: ОБЯЗАТЕЛЬНО укажи SKILLS_LOADED и MCP_USED в отчёте
+" subagent_type=<agent>
+```
+
+### Пример: реальная задача
+
+```
+task "Проанализируй требования для: Создание REST API для управления SIM-картами.
+Выдай:
+1. User Stories (формат: Как... я хочу... чтобы...)
+2. Acceptance Criteria (проверяемые критерии)
+3. MoSCoW приоритизацию
+4. Риски и зависимости
+5. Рекомендации по технологическому стеку (FastAPI + PostgreSQL)
+6. Нефункциональные требования (безопасность, производительность)" subagent_type=product-manager
+
+# Параллельно team-lead определяет:
+# - Тип: API-only
+# - Стек: FastAPI + PostgreSQL + Redis
+# - Агенты: backend + db-specialist + qa-engineer + security-auditor
+
+# После получения вывода PM:
+task "Создать REST API для SIM-карт:
+## ОБЯЗАТЕЛЬНЫЕ ПОЛЯ В ТЗ:
+- Skills: 1c-query, 1c-bsp-api, windows-safety, skill-enforcement
+- MCP: context7 (fastapi, sqlalchemy, postgres), sequential-thinking
+- User Stories: US-001: Как оператор, я хочу добавлять SIM-карты, чтобы вести учёт
+- Acceptance Criteria: POST /simcards возвращает 201, валидация IMSI, авторизация
+- Self-report: ОБЯЗАТЕЛЬНО укажи SKILLS_LOADED и MCP_USED в отчёте
+" subagent_type=backend
+```
+
+---
+
+## Session Recovery (Auto-Delegation при Lock Conflict)
+
+При ошибке "Busy: FileSystem.writeFile" или lock conflict:
+1. Скрипт `session-recovery.ps1` автоматически обнаруживает конфликт
+2. Ждёт 5 секунд (настраивается через `-LockCheckIntervalSec`)
+3. Проверяет свободные копии team-lead-1/2/3
+4. Записывает delegation-запрос в CONTEXT-BUFFER.md
+5. Если все заняты — записывает blocker + планирует retry через message-queue
+
+Запуск: `.agents\scripts\session-recovery.ps1`
+
+---
+
 ## Как обновить маппинг
 
 1. Измени `required_skills` в `.opencode/agents/registry.json`

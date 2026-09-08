@@ -1,7 +1,7 @@
 {
   "name": "product-manager",
   "description": "Product Manager — превращает размытые требования в user stories, acceptance criteria, MoSCoW.",
-  "model": "opencode/mimo-v2.5-free",
+  "model": "tokenrouter/z-ai/glm-5.3-free",
   "mode": "subagent",
   "temperature": 0.2,
   "permissions": [

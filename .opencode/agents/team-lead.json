@@ -1,7 +1,7 @@
 {
   "name": "team-lead",
   "description": "Team Lead — оркестратор мультиагентной команды. Декомпозирует задачи, назначает агентов, контролирует качество.",
-  "model": "opencode/mimo-v2.5-free",
+  "model": "tokenrouter/z-ai/glm-5.3-free",
   "mode": "subagent",
   "temperature": 0.1,
   "permissions": [

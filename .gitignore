@@ -55,3 +55,11 @@ task-summary*
 /*.json
 !opencode.json
 /prompts/
+
+# Projects (working code, not part of agent-hq core)
+/projects/
+
+# Secrets guards
+opencode.local.json
+*.apikey
+.env*

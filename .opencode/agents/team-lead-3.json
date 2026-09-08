@@ -1,7 +1,7 @@
 {
   "name": "team-lead-3",
   "description": "Team Lead (copy 3) — оркестратор для параллельной оркестрации.",
-  "model": "opencode/mimo-v2.5-free",
+  "model": "tokenrouter/z-ai/glm-5.3-free",
   "mode": "subagent",
   "temperature": 0.1,
   "permissions": [

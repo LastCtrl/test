@@ -35,9 +35,17 @@
         "--from",
         "git+https://github.com/oraios/serena",
         "serena",
-        "start-mcp-server"
+        "start-mcp-server",
+        "--project-from-cwd"
       ],
-      "enabled": true
+      "enabled": true,
+      "timeout": 30000,
+      "cwd": ".",
+      "environment": {
+        "HTTP_PROXY": "http://127.0.0.1:3128",
+        "HTTPS_PROXY": "http://127.0.0.1:3128",
+        "NO_PROXY": "localhost,127.0.0.1,10.*,192.168.*,*.minsk.energo.net"
+      }
     }
   },
   "command": {
@@ -62,74 +70,34 @@
       "description": "Статус системы agent-hq: агенты, Memory Bank, worktrees, здоровье."
     }
   },
-  "agents": {
+"agents": {
     "defaults": {
       "temperature": 0.2,
       "skills_first": true,
       "max_retries": 2
     },
     "models": {
-      "primary": "opencode/mimo-v2.5-free",
-      "fast": "opencode/nemotron-3.5-lightning-free",
+      "primary": "tokenrouter/z-ai/glm-5.3-free",
+      "fast": "tokenrouter/nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free",
       "fallback": "opencode/nemotron-3-ultra-free"
-    }
-  },
-  "memory": {
-    "bank_path": ".memory/",
-    "archive_ttl_days": 7,
-    "compression": {
-      "enabled": true,
-      "max_size_kb": 50,
-      "strategy": "summary+archive"
-    }
-  },
-  "compaction": {
-    "auto": true,
-    "prune": true,
-    "tail_turns": 15
-  },
-  "watcher": {
-    "ignore": [
-      ".memory/**",
-      ".agents/worktrees/**"
-    ]
-  },
-  "workspace": {
-    "root": "D:\\Тест\\agent-hq",
-    "sandbox_per_agent": true,
-    "merge_strategy": "git-branch"
-  },
-  "projects": {
-    "news-bot": {
-      "type": "telegram-bot",
-      "agents": [
-        "backend",
-        "devops",
-        "qa-engineer",
-        "tech-writer"
-      ]
     },
-    "pong-advanced": {
-      "type": "full-stack",
-      "agents": [
-        "frontend",
-        "backend",
-        "devops",
-        "qa-engineer"
-      ]
+    "backend-1": {
+        "description": "Backend Specialist (copy 1) — REST/GraphQL API, бизнес-логика, middleware, авторизация для параллельной работы.",
+        "mode": "subagent",
+        "model": "opencode/nemotron-3.5-lightning-free",
+        "temperature": 0.2,
+        "permission": {
+            "bash": "allow",
+            "edit": "allow",
+            "glob": "allow",
+            "grep": "allow",
+            "read": "allow",
+            "skill": "allow",
+            "task": "deny"
+        },
+        "prompt": "{file:.opencode/agents/prompts/backend-1.txt}"
     }
-  },
-  "modules": {
-    "memory_bank": true,
-    "agent_sandbox": true,
-    "model_router": true,
-    "context_compression": true,
-    "distributed_tracing": true,
-    "performance_scoring": true,
-    "plugins": true,
-    "health_monitoring": true
-  },
-  "agent": {
+,
     "backend": {
         "description": "Backend Specialist — REST/GraphQL API, бизнес-логика, middleware, авторизация.",
         "mode": "subagent",
@@ -147,10 +115,27 @@
         "prompt": "{file:.opencode/agents/prompts/backend.txt}"
     }
 ,
+    "code-reviewer-1": {
+        "description": "Code Reviewer (copy 1) — code review, best practices, clean code для параллельной работы.",
+        "mode": "subagent",
+        "model": "tokenrouter/z-ai/glm-5.3-free",
+        "temperature": 0.1,
+        "permission": {
+            "bash": "deny",
+            "edit": "deny",
+            "glob": "allow",
+            "grep": "allow",
+            "question": "allow",
+            "read": "allow",
+            "task": "deny"
+        },
+        "prompt": "{file:.opencode/agents/prompts/code-reviewer-1.txt}"
+    }
+,
     "code-reviewer": {
         "description": "Code Reviewer — code review, best practices, clean code, антипаттерны. Только чтение.",
         "mode": "subagent",
-        "model": "opencode/nemotron-3-ultra-free",
+        "model": "tokenrouter/z-ai/glm-5.3-free",
         "temperature": 0.1,
         "permission": {
             "bash": "deny",
@@ -198,6 +183,23 @@
         "prompt": "{file:.opencode/agents/prompts/db-specialist.txt}"
     }
 ,
+    "dev-1-1": {
+        "description": "Developer #1 (copy 1) — универсальный разработчик для параллельной работы.",
+        "mode": "subagent",
+        "model": "opencode/mimo-v2.5-free",
+        "temperature": 0.2,
+        "permission": {
+            "bash": "allow",
+            "edit": "allow",
+            "glob": "allow",
+            "grep": "allow",
+            "read": "allow",
+            "skill": "allow",
+            "task": "deny"
+        },
+        "prompt": "{file:.opencode/agents/prompts/dev-1-1.txt}"
+    }
+,
     "dev-1": {
         "description": "Developer #1 — универсальный разработчик. Пишет код на любых языках.",
         "mode": "subagent",
@@ -215,6 +217,23 @@
         "prompt": "{file:.opencode/agents/prompts/dev-1.txt}"
     }
 ,
+    "dev-2-1": {
+        "description": "Developer #2 (copy 1) — альтернативный разработчик для параллельной работы.",
+        "mode": "subagent",
+        "model": "opencode/nemotron-3.5-lightning-free",
+        "temperature": 0.3,
+        "permission": {
+            "bash": "allow",
+            "edit": "allow",
+            "glob": "allow",
+            "grep": "allow",
+            "read": "allow",
+            "skill": "allow",
+            "task": "deny"
+        },
+        "prompt": "{file:.opencode/agents/prompts/dev-2-1.txt}"
+    }
+,
     "dev-2": {
         "description": "Developer #2 — альтернативный разработчик. Предлагает другие подходы к решению.",
         "mode": "subagent",
@@ -230,6 +249,23 @@
             "task": "deny"
         },
         "prompt": "{file:.opencode/agents/prompts/dev-2.txt}"
+    }
+,
+    "dev-3-1": {
+        "description": "Developer #3 (copy 1) — надёжный разработчик для параллельной работы.",
+        "mode": "subagent",
+        "model": "opencode/mimo-v2.5-free",
+        "temperature": 0.2,
+        "permission": {
+            "bash": "allow",
+            "edit": "allow",
+            "glob": "allow",
+            "grep": "allow",
+            "read": "allow",
+            "skill": "allow",
+            "task": "deny"
+        },
+        "prompt": "{file:.opencode/agents/prompts/dev-3-1.txt}"
     }
 ,
     "dev-3": {
@@ -337,7 +373,7 @@
     "product-manager": {
         "description": "Product Manager — превращает размытые требования в user stories, acceptance criteria, MoSCoW.",
         "mode": "subagent",
-        "model": "opencode/mimo-v2.5-free",
+        "model": "tokenrouter/z-ai/glm-5.3-free",
         "temperature": 0.2,
         "permission": {
             "bash": "deny",
@@ -347,6 +383,23 @@
             "task": "deny"
         },
         "prompt": "{file:.opencode/agents/prompts/product-manager.txt}"
+    }
+,
+    "qa-engineer-1": {
+        "description": "QA Engineer (copy 1) — тесты, edge cases, баг-репорты, регрессия для параллельной работы.",
+        "mode": "subagent",
+        "model": "opencode/nemotron-3-ultra-free",
+        "temperature": 0.2,
+        "permission": {
+            "bash": "allow",
+            "edit": "allow",
+            "glob": "allow",
+            "grep": "allow",
+            "read": "allow",
+            "skill": "allow",
+            "task": "deny"
+        },
+        "prompt": "{file:.opencode/agents/prompts/qa-engineer-1.txt}"
     }
 ,
     "qa-engineer": {
@@ -364,6 +417,22 @@
             "task": "deny"
         },
         "prompt": "{file:.opencode/agents/prompts/qa-engineer.txt}"
+    }
+,
+    "security-auditor-1": {
+        "description": "Security Auditor (copy 1) — OWASP, уязвимости, поиск secrets для параллельной работы.",
+        "mode": "subagent",
+        "model": "opencode/nemotron-3-ultra-free",
+        "temperature": 0,
+        "permission": {
+            "bash": "deny",
+            "edit": "deny",
+            "glob": "allow",
+            "grep": "allow",
+            "read": "allow",
+            "task": "deny"
+        },
+        "prompt": "{file:.opencode/agents/prompts/security-auditor-1.txt}"
     }
 ,
     "security-auditor": {
@@ -417,10 +486,64 @@
         "prompt": "{file:.opencode/agents/prompts/smm-strategist.txt}"
     }
 ,
+    "team-lead-1": {
+        "description": "Team Lead (copy 1) — оркестратор для параллельной оркестрации.",
+        "mode": "subagent",
+        "model": "tokenrouter/z-ai/glm-5.3-free",
+        "temperature": 0.1,
+        "permission": {
+            "bash": "allow",
+            "edit": "allow",
+            "glob": "allow",
+            "grep": "allow",
+            "question": "allow",
+            "read": "allow",
+            "skill": "allow",
+            "task": "deny"
+        },
+        "prompt": "{file:.opencode/agents/prompts/team-lead-1.txt}"
+    }
+,
+    "team-lead-2": {
+        "description": "Team Lead (copy 2) — оркестратор для параллельной оркестрации.",
+        "mode": "subagent",
+        "model": "tokenrouter/z-ai/glm-5.3-free",
+        "temperature": 0.1,
+        "permission": {
+            "bash": "allow",
+            "edit": "allow",
+            "glob": "allow",
+            "grep": "allow",
+            "question": "allow",
+            "read": "allow",
+            "skill": "allow",
+            "task": "deny"
+        },
+        "prompt": "{file:.opencode/agents/prompts/team-lead-2.txt}"
+    }
+,
+    "team-lead-3": {
+        "description": "Team Lead (copy 3) — оркестратор для параллельной оркестрации.",
+        "mode": "subagent",
+        "model": "tokenrouter/z-ai/glm-5.3-free",
+        "temperature": 0.1,
+        "permission": {
+            "bash": "allow",
+            "edit": "allow",
+            "glob": "allow",
+            "grep": "allow",
+            "question": "allow",
+            "read": "allow",
+            "skill": "allow",
+            "task": "deny"
+        },
+        "prompt": "{file:.opencode/agents/prompts/team-lead-3.txt}"
+    }
+,
     "team-lead": {
         "description": "Team Lead — оркестратор мультиагентной команды. Декомпозирует задачи, назначает агентов, контролирует качество.",
         "mode": "subagent",
-        "model": "opencode/mimo-v2.5-free",
+        "model": "tokenrouter/z-ai/glm-5.3-free",
         "temperature": 0.1,
         "permission": {
             "bash": "allow",
@@ -433,6 +556,22 @@
             "task": "deny"
         },
         "prompt": "{file:.opencode/agents/prompts/team-lead.txt}"
+    }
+,
+    "tech-writer-1": {
+        "description": "Tech Writer (copy 1) — README, API docs, changelog, архитектурная документация для параллельной работы.",
+        "mode": "subagent",
+        "model": "opencode/mimo-v2.5-free",
+        "temperature": 0.2,
+        "permission": {
+            "bash": "deny",
+            "edit": "allow",
+            "glob": "allow",
+            "grep": "allow",
+            "read": "allow",
+            "task": "deny"
+        },
+        "prompt": "{file:.opencode/agents/prompts/tech-writer-1.txt}"
     }
 ,
     "tech-writer": {
@@ -452,7 +591,588 @@
     }
 
   },
-  "provider": {
+  "memory": {
+    "bank_path": ".memory/",
+    "archive_ttl_days": 7,
+    "compression": {
+      "enabled": true,
+      "max_size_kb": 50,
+      "strategy": "summary+archive"
+    }
+  },
+  "compaction": {
+    "auto": true,
+    "prune": true,
+    "tail_turns": 15
+  },
+  "watcher": {
+    "ignore": [
+      ".memory/**",
+      ".agents/worktrees/**"
+    ]
+  },
+  "workspace": {
+    "root": "D:\\Тест\\agent-hq",
+    "sandbox_per_agent": true,
+    "merge_strategy": "git-branch"
+  },
+  "projects": {
+    "news-bot": {
+      "type": "telegram-bot",
+      "agents": [
+        "backend",
+        "devops",
+        "qa-engineer",
+        "tech-writer"
+      ]
+    },
+    "pong-advanced": {
+      "type": "full-stack",
+      "agents": [
+        "frontend",
+        "backend",
+        "devops",
+        "qa-engineer"
+      ]
+    }
+  },
+  "modules": {
+    "memory_bank": true,
+    "agent_sandbox": true,
+    "model_router": true,
+    "context_compression": true,
+    "distributed_tracing": true,
+    "performance_scoring": true,
+    "plugins": true,
+    "health_monitoring": true
+  },
+  "agent": {
+    "backend-1": {
+        "description": "Backend Specialist (copy 1) — REST/GraphQL API, бизнес-логика, middleware, авторизация для параллельной работы.",
+        "mode": "subagent",
+        "model": "opencode/nemotron-3.5-lightning-free",
+        "temperature": 0.2,
+        "permission": {
+            "bash": "allow",
+            "edit": "allow",
+            "glob": "allow",
+            "grep": "allow",
+            "read": "allow",
+            "skill": "allow",
+            "task": "deny"
+        },
+        "prompt": "{file:.opencode/agents/prompts/backend-1.txt}"
+    }
+,
+    "backend": {
+        "description": "Backend Specialist — REST/GraphQL API, бизнес-логика, middleware, авторизация.",
+        "mode": "subagent",
+        "model": "opencode/nemotron-3.5-lightning-free",
+        "temperature": 0.2,
+        "permission": {
+            "bash": "allow",
+            "edit": "allow",
+            "glob": "allow",
+            "grep": "allow",
+            "read": "allow",
+            "skill": "allow",
+            "task": "deny"
+        },
+        "prompt": "{file:.opencode/agents/prompts/backend.txt}"
+    }
+,
+    "code-reviewer-1": {
+        "description": "Code Reviewer (copy 1) — code review, best practices, clean code для параллельной работы.",
+        "mode": "subagent",
+        "model": "tokenrouter/z-ai/glm-5.3-free",
+        "temperature": 0.1,
+        "permission": {
+            "bash": "deny",
+            "edit": "deny",
+            "glob": "allow",
+            "grep": "allow",
+            "question": "allow",
+            "read": "allow",
+            "task": "deny"
+        },
+        "prompt": "{file:.opencode/agents/prompts/code-reviewer-1.txt}"
+    }
+,
+    "code-reviewer": {
+        "description": "Code Reviewer — code review, best practices, clean code, антипаттерны. Только чтение.",
+        "mode": "subagent",
+        "model": "tokenrouter/z-ai/glm-5.3-free",
+        "temperature": 0.1,
+        "permission": {
+            "bash": "deny",
+            "edit": "deny",
+            "glob": "allow",
+            "grep": "allow",
+            "question": "allow",
+            "read": "allow",
+            "task": "deny"
+        },
+        "prompt": "{file:.opencode/agents/prompts/code-reviewer.txt}"
+    }
+,
+    "data-engineer": {
+        "description": "Data Engineer — ETL, data pipelines, аналитика, DWH, Big Data.",
+        "mode": "subagent",
+        "model": "opencode/nemotron-3.5-lightning-free",
+        "temperature": 0.2,
+        "permission": {
+            "bash": "allow",
+            "edit": "allow",
+            "glob": "allow",
+            "grep": "allow",
+            "read": "allow",
+            "skill": "allow",
+            "task": "deny"
+        },
+        "prompt": "{file:.opencode/agents/prompts/data-engineer.txt}"
+    }
+,
+    "db-specialist": {
+        "description": "DB Specialist — SQL/NoSQL, ORM, миграции, оптимизация запросов, проектирование схем.",
+        "mode": "subagent",
+        "model": "opencode/nemotron-3.5-lightning-free",
+        "temperature": 0.2,
+        "permission": {
+            "bash": "allow",
+            "edit": "allow",
+            "glob": "allow",
+            "grep": "allow",
+            "read": "allow",
+            "skill": "allow",
+            "task": "deny"
+        },
+        "prompt": "{file:.opencode/agents/prompts/db-specialist.txt}"
+    }
+,
+    "dev-1-1": {
+        "description": "Developer #1 (copy 1) — универсальный разработчик для параллельной работы.",
+        "mode": "subagent",
+        "model": "opencode/mimo-v2.5-free",
+        "temperature": 0.2,
+        "permission": {
+            "bash": "allow",
+            "edit": "allow",
+            "glob": "allow",
+            "grep": "allow",
+            "read": "allow",
+            "skill": "allow",
+            "task": "deny"
+        },
+        "prompt": "{file:.opencode/agents/prompts/dev-1-1.txt}"
+    }
+,
+    "dev-1": {
+        "description": "Developer #1 — универсальный разработчик. Пишет код на любых языках.",
+        "mode": "subagent",
+        "model": "opencode/mimo-v2.5-free",
+        "temperature": 0.2,
+        "permission": {
+            "bash": "allow",
+            "edit": "allow",
+            "glob": "allow",
+            "grep": "allow",
+            "read": "allow",
+            "skill": "allow",
+            "task": "deny"
+        },
+        "prompt": "{file:.opencode/agents/prompts/dev-1.txt}"
+    }
+,
+    "dev-2-1": {
+        "description": "Developer #2 (copy 1) — альтернативный разработчик для параллельной работы.",
+        "mode": "subagent",
+        "model": "opencode/nemotron-3.5-lightning-free",
+        "temperature": 0.3,
+        "permission": {
+            "bash": "allow",
+            "edit": "allow",
+            "glob": "allow",
+            "grep": "allow",
+            "read": "allow",
+            "skill": "allow",
+            "task": "deny"
+        },
+        "prompt": "{file:.opencode/agents/prompts/dev-2-1.txt}"
+    }
+,
+    "dev-2": {
+        "description": "Developer #2 — альтернативный разработчик. Предлагает другие подходы к решению.",
+        "mode": "subagent",
+        "model": "opencode/nemotron-3.5-lightning-free",
+        "temperature": 0.3,
+        "permission": {
+            "bash": "allow",
+            "edit": "allow",
+            "glob": "allow",
+            "grep": "allow",
+            "read": "allow",
+            "skill": "allow",
+            "task": "deny"
+        },
+        "prompt": "{file:.opencode/agents/prompts/dev-2.txt}"
+    }
+,
+    "dev-3-1": {
+        "description": "Developer #3 (copy 1) — надёжный разработчик для параллельной работы.",
+        "mode": "subagent",
+        "model": "opencode/mimo-v2.5-free",
+        "temperature": 0.2,
+        "permission": {
+            "bash": "allow",
+            "edit": "allow",
+            "glob": "allow",
+            "grep": "allow",
+            "read": "allow",
+            "skill": "allow",
+            "task": "deny"
+        },
+        "prompt": "{file:.opencode/agents/prompts/dev-3-1.txt}"
+    }
+,
+    "dev-3": {
+        "description": "Developer #3 — надёжный разработчик. Внимание к граничным случаям и обработке ошибок.",
+        "mode": "subagent",
+        "model": "opencode/mimo-v2.5-free",
+        "temperature": 0.2,
+        "permission": {
+            "bash": "allow",
+            "edit": "allow",
+            "glob": "allow",
+            "grep": "allow",
+            "read": "allow",
+            "skill": "allow",
+            "task": "deny"
+        },
+        "prompt": "{file:.opencode/agents/prompts/dev-3.txt}"
+    }
+,
+    "devops": {
+        "description": "DevOps — Docker, CI/CD, Kubernetes, облака, мониторинг инфраструктуры.",
+        "mode": "subagent",
+        "model": "opencode/nemotron-3.5-lightning-free",
+        "temperature": 0.2,
+        "permission": {
+            "bash": "allow",
+            "edit": "allow",
+            "glob": "allow",
+            "grep": "allow",
+            "read": "allow",
+            "skill": "allow",
+            "task": "deny"
+        },
+        "prompt": "{file:.opencode/agents/prompts/devops.txt}"
+    }
+,
+    "frontend": {
+        "description": "Frontend Specialist — React/Vue/Angular, HTML/CSS, UI/UX, accessibility.",
+        "mode": "subagent",
+        "model": "opencode/mimo-v2.5-free",
+        "temperature": 0.2,
+        "permission": {
+            "bash": "allow",
+            "edit": "allow",
+            "glob": "allow",
+            "grep": "allow",
+            "read": "allow",
+            "skill": "allow",
+            "task": "deny"
+        },
+        "prompt": "{file:.opencode/agents/prompts/frontend.txt}"
+    }
+,
+    "integration-specialist": {
+        "description": "Integration Specialist — REST/SOAP/gRPC, Kafka/RabbitMQ, webhooks, API Gateway.",
+        "mode": "subagent",
+        "model": "opencode/nemotron-3.5-lightning-free",
+        "temperature": 0.2,
+        "permission": {
+            "bash": "allow",
+            "edit": "allow",
+            "glob": "allow",
+            "grep": "allow",
+            "read": "allow",
+            "skill": "allow",
+            "task": "deny"
+        },
+        "prompt": "{file:.opencode/agents/prompts/integration-specialist.txt}"
+    }
+,
+    "legal-advisor": {
+        "description": "Юридический советник — законы РБ, ПД, авторское право, платёжное законодательство, налоги, юрлица.",
+        "mode": "subagent",
+        "model": "opencode/mimo-v2.5-free",
+        "temperature": 0.1,
+        "permission": {
+            "bash": "deny",
+            "edit": "deny",
+            "glob": "allow",
+            "grep": "allow",
+            "read": "allow",
+            "task": "deny",
+            "webfetch": "allow"
+        },
+        "prompt": "{file:.opencode/agents/prompts/legal-advisor.txt}"
+    }
+,
+    "mobile-dev": {
+        "description": "Mobile Dev — React Native/Flutter/Swift/Kotlin, mobile-first UI, offline-first.",
+        "mode": "subagent",
+        "model": "opencode/nemotron-3.5-lightning-free",
+        "temperature": 0.2,
+        "permission": {
+            "bash": "allow",
+            "edit": "allow",
+            "glob": "allow",
+            "grep": "allow",
+            "read": "allow",
+            "skill": "allow",
+            "task": "deny"
+        },
+        "prompt": "{file:.opencode/agents/prompts/mobile-dev.txt}"
+    }
+,
+    "product-manager": {
+        "description": "Product Manager — превращает размытые требования в user stories, acceptance criteria, MoSCoW.",
+        "mode": "subagent",
+        "model": "tokenrouter/z-ai/glm-5.3-free",
+        "temperature": 0.2,
+        "permission": {
+            "bash": "deny",
+            "edit": "allow",
+            "question": "allow",
+            "read": "allow",
+            "task": "deny"
+        },
+        "prompt": "{file:.opencode/agents/prompts/product-manager.txt}"
+    }
+,
+    "qa-engineer-1": {
+        "description": "QA Engineer (copy 1) — тесты, edge cases, баг-репорты, регрессия для параллельной работы.",
+        "mode": "subagent",
+        "model": "opencode/nemotron-3-ultra-free",
+        "temperature": 0.2,
+        "permission": {
+            "bash": "allow",
+            "edit": "allow",
+            "glob": "allow",
+            "grep": "allow",
+            "read": "allow",
+            "skill": "allow",
+            "task": "deny"
+        },
+        "prompt": "{file:.opencode/agents/prompts/qa-engineer-1.txt}"
+    }
+,
+    "qa-engineer": {
+        "description": "QA Engineer — тесты, edge cases, баг-репорты, регрессия.",
+        "mode": "subagent",
+        "model": "opencode/nemotron-3-ultra-free",
+        "temperature": 0.2,
+        "permission": {
+            "bash": "allow",
+            "edit": "allow",
+            "glob": "allow",
+            "grep": "allow",
+            "read": "allow",
+            "skill": "allow",
+            "task": "deny"
+        },
+        "prompt": "{file:.opencode/agents/prompts/qa-engineer.txt}"
+    }
+,
+    "security-auditor-1": {
+        "description": "Security Auditor (copy 1) — OWASP, уязвимости, поиск secrets для параллельной работы.",
+        "mode": "subagent",
+        "model": "opencode/nemotron-3-ultra-free",
+        "temperature": 0,
+        "permission": {
+            "bash": "deny",
+            "edit": "deny",
+            "glob": "allow",
+            "grep": "allow",
+            "read": "allow",
+            "task": "deny"
+        },
+        "prompt": "{file:.opencode/agents/prompts/security-auditor-1.txt}"
+    }
+,
+    "security-auditor": {
+        "description": "Security Auditor — OWASP, уязвимости, поиск secrets и утечек. Только чтение.",
+        "mode": "subagent",
+        "model": "opencode/nemotron-3-ultra-free",
+        "temperature": 0,
+        "permission": {
+            "bash": "deny",
+            "edit": "deny",
+            "glob": "allow",
+            "grep": "allow",
+            "read": "allow",
+            "task": "deny"
+        },
+        "prompt": "{file:.opencode/agents/prompts/security-auditor.txt}"
+    }
+,
+    "skill-surgeon": {
+        "description": "Skill Surgeon — ищет, скачивает и создаёт скиллы для любых технологий.",
+        "mode": "subagent",
+        "model": "opencode/mimo-v2.5-free",
+        "temperature": 0.2,
+        "permission": {
+            "bash": "allow",
+            "edit": "allow",
+            "glob": "allow",
+            "grep": "allow",
+            "read": "allow",
+            "skill": "allow",
+            "task": "deny"
+        },
+        "prompt": "{file:.opencode/agents/prompts/skill-surgeon.txt}"
+    }
+,
+    "smm-strategist": {
+        "description": "SMM/Маркетинг стратег — продвижение, ЦА, воронка, контент-стратегия, виральные механики.",
+        "mode": "subagent",
+        "model": "opencode/mimo-v2.5-free",
+        "temperature": 0.3,
+        "permission": {
+            "bash": "allow",
+            "edit": "allow",
+            "glob": "allow",
+            "grep": "allow",
+            "read": "allow",
+            "skill": "allow",
+            "task": "deny",
+            "webfetch": "allow"
+        },
+        "prompt": "{file:.opencode/agents/prompts/smm-strategist.txt}"
+    }
+,
+    "team-lead-1": {
+        "description": "Team Lead (copy 1) — оркестратор для параллельной оркестрации.",
+        "mode": "subagent",
+        "model": "tokenrouter/z-ai/glm-5.3-free",
+        "temperature": 0.1,
+        "permission": {
+            "bash": "allow",
+            "edit": "allow",
+            "glob": "allow",
+            "grep": "allow",
+            "question": "allow",
+            "read": "allow",
+            "skill": "allow",
+            "task": "deny"
+        },
+        "prompt": "{file:.opencode/agents/prompts/team-lead-1.txt}"
+    }
+,
+    "team-lead-2": {
+        "description": "Team Lead (copy 2) — оркестратор для параллельной оркестрации.",
+        "mode": "subagent",
+        "model": "tokenrouter/z-ai/glm-5.3-free",
+        "temperature": 0.1,
+        "permission": {
+            "bash": "allow",
+            "edit": "allow",
+            "glob": "allow",
+            "grep": "allow",
+            "question": "allow",
+            "read": "allow",
+            "skill": "allow",
+            "task": "deny"
+        },
+        "prompt": "{file:.opencode/agents/prompts/team-lead-2.txt}"
+    }
+,
+    "team-lead-3": {
+        "description": "Team Lead (copy 3) — оркестратор для параллельной оркестрации.",
+        "mode": "subagent",
+        "model": "tokenrouter/z-ai/glm-5.3-free",
+        "temperature": 0.1,
+        "permission": {
+            "bash": "allow",
+            "edit": "allow",
+            "glob": "allow",
+            "grep": "allow",
+            "question": "allow",
+            "read": "allow",
+            "skill": "allow",
+            "task": "deny"
+        },
+        "prompt": "{file:.opencode/agents/prompts/team-lead-3.txt}"
+    }
+,
+    "team-lead": {
+        "description": "Team Lead — оркестратор мультиагентной команды. Декомпозирует задачи, назначает агентов, контролирует качество.",
+        "mode": "subagent",
+        "model": "tokenrouter/z-ai/glm-5.3-free",
+        "temperature": 0.1,
+        "permission": {
+            "bash": "allow",
+            "edit": "allow",
+            "glob": "allow",
+            "grep": "allow",
+            "question": "allow",
+            "read": "allow",
+            "skill": "allow",
+            "task": "deny"
+        },
+        "prompt": "{file:.opencode/agents/prompts/team-lead.txt}"
+    }
+,
+    "tech-writer-1": {
+        "description": "Tech Writer (copy 1) — README, API docs, changelog, архитектурная документация для параллельной работы.",
+        "mode": "subagent",
+        "model": "opencode/mimo-v2.5-free",
+        "temperature": 0.2,
+        "permission": {
+            "bash": "deny",
+            "edit": "allow",
+            "glob": "allow",
+            "grep": "allow",
+            "read": "allow",
+            "task": "deny"
+        },
+        "prompt": "{file:.opencode/agents/prompts/tech-writer-1.txt}"
+    }
+,
+    "tech-writer": {
+        "description": "Tech Writer — генерирует README, API docs, changelog, архитектурную документацию.",
+        "mode": "subagent",
+        "model": "opencode/mimo-v2.5-free",
+        "temperature": 0.2,
+        "permission": {
+            "bash": "deny",
+            "edit": "allow",
+            "glob": "allow",
+            "grep": "allow",
+            "read": "allow",
+            "task": "deny"
+        },
+        "prompt": "{file:.opencode/agents/prompts/tech-writer.txt}"
+    }
+
+  },
+"provider": {
+    "tokenrouter": {
+      "sdk": "@ai-sdk/openai-compatible",
+      "options": {
+        "baseURL": "https://api.tokenrouter.com/v1",
+        "apiKey": "{env:TOKENROUTER_API_KEY}"
+      },
+      "models": {
+        "z-ai/glm-5.3-free": {
+          "name": "GLM 5.3 Free (TokenRouter)"
+        },
+        "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free": {
+          "name": "Nemotron 3 Nano Omni Reasoning Free (TokenRouter)"
+        }
+      }
+    },
     "openrouter": {
       "models": {
         "nvidia/nemotron-3.5-lightning:free": {

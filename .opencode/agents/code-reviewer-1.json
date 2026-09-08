@@ -1,7 +1,7 @@
 {
   "name": "code-reviewer-1",
   "description": "Code Reviewer (copy 1) — code review, best practices, clean code для параллельной работы.",
-  "model": "opencode/nemotron-3-ultra-free",
+  "model": "tokenrouter/z-ai/glm-5.3-free",
   "mode": "subagent",
   "temperature": 0.1,
   "permissions": ["read", "glob", "grep", "question"],

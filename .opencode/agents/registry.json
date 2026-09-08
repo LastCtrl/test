@@ -1,7 +1,7 @@
 {
   "agents": {
     "team-lead": {
-      "model": "opencode/nemotron-3-ultra-free",
+      "model": "tokenrouter/z-ai/glm-5.3-free",
       "role": "orchestrator",
       "permissions": ["edit", "bash", "read", "glob", "grep", "skill", "question"],
       "specialization": {
@@ -13,7 +13,7 @@
       "description": "Технический Лидер — декомпозирует задачи, назначает агентов, контролирует качество"
     },
     "team-lead-1": {
-      "model": "opencode/nemotron-3-ultra-free",
+      "model": "tokenrouter/z-ai/glm-5.3-free",
       "role": "orchestrator",
       "permissions": ["edit", "bash", "read", "glob", "grep", "skill", "question"],
       "specialization": {
@@ -25,7 +25,7 @@
       "description": "Технический Лидер (copy 1) — для параллельной оркестрации"
     },
     "team-lead-2": {
-      "model": "opencode/nemotron-3-ultra-free",
+      "model": "tokenrouter/z-ai/glm-5.3-free",
       "role": "orchestrator",
       "permissions": ["edit", "bash", "read", "glob", "grep", "skill", "question"],
       "specialization": {
@@ -37,7 +37,7 @@
       "description": "Технический Лидер (copy 2) — для параллельной оркестрации"
     },
     "team-lead-3": {
-      "model": "opencode/nemotron-3-ultra-free",
+      "model": "tokenrouter/z-ai/glm-5.3-free",
       "role": "orchestrator",
       "permissions": ["edit", "bash", "read", "glob", "grep", "skill", "question"],
       "specialization": {
@@ -265,7 +265,7 @@
       "description": "Security Auditor (copy 1)"
     },
     "code-reviewer": {
-      "model": "opencode/mimo-v2.5-free",
+      "model": "tokenrouter/z-ai/glm-5.3-free",
       "role": "code-reviewer",
       "permissions": ["read", "grep"],
       "specialization": {
@@ -277,7 +277,7 @@
       "description": "Code Reviewer"
     },
     "code-reviewer-1": {
-      "model": "opencode/mimo-v2.5-free",
+      "model": "tokenrouter/z-ai/glm-5.3-free",
       "role": "code-reviewer",
       "permissions": ["read", "grep"],
       "specialization": {
@@ -289,7 +289,7 @@
       "description": "Code Reviewer (copy 1)"
     },
     "product-manager": {
-      "model": "opencode/mimo-v2.5-free",
+      "model": "tokenrouter/z-ai/glm-5.3-free",
       "role": "product-manager",
       "permissions": ["read", "glob", "question"],
       "specialization": {

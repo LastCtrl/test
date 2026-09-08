@@ -243,7 +243,7 @@ $configText = [System.IO.File]::ReadAllText($configPath, [System.Text.Encoding]:
 
 # 2. Собрать JSON секции agent вручную (без ConvertTo-Json — PS 5.1 ломает кириллицу)
 $agentLines = [System.Collections.ArrayList]::new()
-[void]$agentLines.Add('  "agent": {')
+[void]$agentLines.Add('  "agents": {')
 for ($i = 0; $i -lt $agentEntries.Count; $i++) {
     $e = $agentEntries[$i]
     $jsonBlock = ConvertTo-AgentJson -name $e.name -description $e.description -mode $e.mode -model $e.model -temperature $e.temperature -permission $e.permission -prompt $e.prompt
@@ -253,12 +253,12 @@ for ($i = 0; $i -lt $agentEntries.Count; $i++) {
 [void]$agentLines.Add('  }')
 $agentJsonBlock = $agentLines -join "`n"
 
-# 3. Найти верхнеуровневый ключ "agent" (2 пробела отступ)
-$agentPattern = '(?m)^ {2}"agent"\s*:\s*\{'
+# 3. Найти верхнеуровневый ключ "agents" (2 пробела отступ)
+$agentPattern = '(?m)^ {2}"agents"\s*:\s*\{'
 $agentMatch = [regex]::Match($configText, $agentPattern)
 
 if (-not $agentMatch.Success) {
-    Write-Warning "Top-level 'agent' key not found — appending before final }"
+    Write-Warning "Top-level 'agents' key not found — appending before final }"
     $lastBrace = $configText.LastIndexOf("}")
     if ($lastBrace -lt 0) {
         throw "opencode.json has no closing brace — cannot inject agent section"

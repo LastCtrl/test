@@ -20,7 +20,7 @@
 
 | Модель | Роль | Скорость |
 |--------|------|----------|
-| `opencode/mimo-v2.5-free` | Основная (качество, русский) | 5-6 сек |
+| `tokenrouter/z-ai/glm-5.3-free` | Основная (качество, русский) | 5-6 сек |
 | `opencode/nemotron-3.5-lightning-free` | Быстрая (рутина) | 3-4 сек |
 | `opencode/nemotron-3-ultra-free` | Запасная (глубокий анализ) | 7-8 сек |
 | `opencode/nemotron-3-ultra-free` | Все проверяющие (qa/review/security) — пока бесплатна | — |

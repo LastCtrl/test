@@ -1,60 +1,48 @@
 # Model Router Skill
 
+## Текущее состояние (2026-09-09, АВАРИЙНАЯ МИГРАЦИЯ)
+
+** ВСЕ 30 агентов работают на `tokenrouter/z-ai/glm-5.3-free` **
+
+Причина: квота opencode free-tier исчерпана («Free usage exceeded, subscribe to Go») — модели opencode/mimo-v2.5-free, opencode/nemotron-3.5-lightning-free, opencode/nemotron-3-ultra-free НЕДОСТУПНЫ. Все запросы к ним виснут/падают.
+
+Провайдер TokenRouter (ключ {env:TOKENROUTER_API_KEY}, отдельная квота) — единственный рабочий.
+
 ## Правила выбора модели
 
 | Тип задачи | Модель | Критерий | Стоимость |
 |-----------|--------|----------|-----------|
-| Основная (качество+русский) | `tokenrouter/z-ai/glm-5.3-free` | Оркестрация, ревью, сложные задачи, задачи >3 шагов | $0 |
-| Код на русском (не-GLM пул) | `opencode/mimo-v2.5-free` | Агенты, оставшиеся на mimo (frontend, tech-writer, legal, smm, skill-surgeon) | $0 |
-| Простые быстрые задачи | `opencode/nemotron-3.5-lightning-free` | Длина промпта < 500 токенов, рутина, нет слов: спроектировать, оптимизировать, проанализировать, рефакторинг | $0 |
-| Глубокий анализ | `opencode/nemotron-3-ultra-free` | Промпт > 2000 токенов ИЛИ триггер-слова ИЛИ многошаговая задача (3+ подзадачи) | $0 |
-| Фоллбек | `opencode/nemotron-3-ultra-free` | Модель упала 2 раза подряд | $0 |
+| ВСЕ задачи (все агенты) | `tokenrouter/z-ai/glm-5.3-free` | Основная и единственная рабочая модель | $0 |
+| Фоллбек (если GLM упал 2 раза) | ждать/повтор позже | Квота opencode может восстановиться — проверить `opencode run "ping" ` | $0 |
 
-## Текущее распределение (2026-09-09)
+## Лестница эскалации (§5 AGENTS.md)
 
-- **GLM 5.3 (TokenRouter)**: team-lead ×4, product-manager, code-reviewer ×2, dev-1(+1), dev-3(+1) — оркестрация, ревью, ключевые разработчики
-- **mimo-v2.5-free**: frontend, legal-advisor, smm-strategist, skill-surgeon, tech-writer ×2
-- **lightning**: backend ×2, dev-2(+1), devops, data-engineer, db-specialist, integration-specialist, mobile-dev
-- **ultra**: qa-engineer ×2, security-auditor ×2
+Единственная модель — эскалация по МОДЕЛИ невозможна. Вместо неё:
+- Retry-3 (§5) → другой АГЕНТ (копия) на той же модели
+- x2-timeout (§3.2) → передача задачи другой копии агента
+- Слабый результат → более детальное ТЗ + skill-pinning (пути к SKILL.md в ТЗ)
 
-## Лестница эскалации (§5 AGENTS.md, обновлена)
+## Восстановление после квоты (когда opencode вернёт free-tier)
 
-`nemotron-3.5-lightning` → `mimo-v2.5` → `z-ai/glm-5.3-free` → `nemotron-3-ultra-free`
+Вернуть распределение:
+- `glm-5.3-free` (TokenRouter): team-lead ×4, product-manager, code-reviewer ×2, dev-1/3 (+копии)
+- `mimo-v2.5-free`: frontend, legal-advisor, smm-strategist, skill-surgeon, tech-writer ×2
+- `lightning`: backend ×2, dev-2(+1), devops, data-engineer, db-specialist, integration-specialist, mobile-dev
+- `ultra`: qa-engineer ×2, security-auditor ×2
 
-При x2-timeout (§3.2) или retry-3 (§5) — подъём на ступень. GLM 5.3 — рабочая лошадка оркестрации; ultra — последний рубеж для проверяющих.
+Проверка восстановления: `opencode run "ping"` — если отвечает (не «Free usage exceeded»), можно вернуть лестницу lightning → mimo → glm-5.3 → ultra.
 
-## Алгоритм выбора
+## Cost-Aware Routing
 
-1. Оценить длину входного промпта (токены) и роль агента
-2. Проверить триггер-слова: `спроектировать`, `оптимизировать`, `проанализировать`, `рефакторинг`
-3. Оркестрация/ревью/многошаговая → `glm-5.3-free`
-4. Триггер-слово ИЛИ промпт > 2000 токенов → `nemotron-3-ultra-free`
-5. Короткая рутина → `nemotron-3.5-lightning-free`
-6. Модель упала 2 раза → следующая ступень лестницы
-7. Логируй переключение в `.memory/traces/model-switch.log`
+Все модели $0. Приоритет по latency: GLM 5.3 единственная — просто используй её.
 
-## Cost-Aware Routing (все $0)
-
-### Приоритет (от дешёвой к «дорогой» по latency)
-1. `nemotron-3.5-lightning-free` — рутина
-2. `mimo-v2.5-free` — качество/русский
-3. `z-ai/glm-5.3-free` (TokenRouter) — оркестрация/ревью/сложное
-4. `nemotron-3-ultra-free` — глубокий анализ/проверяющие
-
-### Правила экономии
-- Всегда начинай с самой дешёвой модели для задачи
-- Масштабируй только если: модель упала 2 раза, задача требует мощнее, пользователь просит «максимальное качество»
-- Логируй переключения
-
-### Формат лога
+### Формат лога переключений
 ```
 [timestamp] agent={agent} task={task_id} from={old_model} to={new_model} reason={reason}
 ```
 
 ## Примеры
 
-- `анализ новостей "погода минск"` → lightning (коротко, рутина)
-- `проектирование REST API для системы авторизации` → glm-5.3 (оркестрация + триггер «проектирование»)
-- `рефакторинг parse_json для ускорения` → glm-5.3 или ultra (триггер)
-- `напиши функцию расчёта суммы` → lightning (простая)
-- `проведи ревью диффа US-012` → glm-5.3 (ревью-пул)
+- Любая задача → `glm-5.3-free` (нет альтернатив)
+- Ревью/оркестрация/разработка/тесты → `glm-5.3-free`
+- GLM упал 2 раза подряд → записать в .memory/traces/model-switch.log, подождать 5 мин, retry

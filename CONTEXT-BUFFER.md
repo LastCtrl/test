@@ -428,7 +428,16 @@ MCP_USED: ["serena: offline"]
 COMPLIANCE: true
 STATUS: resolved
 
-### 2026-09-09 11:23 | team-lead | Project: 1c-kis-teplo | ЗАДАЧА ЗАВЕРШЕНА: СТАТУС ГОТОВО
+[TIME] dev-2 → team-lead:
+TYPE: update | PRIORITY: medium
+Project: pong-advanced
+CONTENT: P1.1 (Effects.ts:2-3): Added MAX_PARTICLES = 500; emit() caps at MAX_PARTICLES via splice. P1.4 (physics.ts:29,300-303,313-316): Added TRAVEL_TIME_CAP = 2.0; Math.min(travelTime, TRAVEL_TIME_CAP) in calculateAITarget. P1.5 (App.ts:634-638): visibilitychange -> doPause() if hidden+localGame+playing. LAN games unaffected. Verification: tsc 0, build 0, test 43/43 green, playwright 4/4.
+SKILLS_LOADED: ["superpowers-implement"]
+MCP_USED: ["sequential-thinking"]
+COMPLIANCE: true
+STATUS: resolved
+
+[2026-09-09 11:23 | team-lead | Project: 1c-kis-teplo | ЗАДАЧА ЗАВЕРШЕНА: СТАТУС ГОТОВО
 Редактирование показателей с записью в 1С + выгрузкой в Oracle — реализовано, принято независимой приёмкой (code-reviewer-1: ПРИНЯТО по дифу; qa-engineer: критичный блокер очереди закрыт; security-auditor-1: МОЖНО НА БОЕВУЮ, находки minor/info).
 Итоговые артефакты (в D:\Тест\agent-hq\projects\1c-kis-teplo\1с-kis-Teplo):
 - CommonModules\ВыгрузкаВOracle\Ext\Module.bsl (738 строк, UUID a3f7b2c1-4d8e-4f5a-9b6c-2e1d0f8a7c3b) + CommonModules\ВыгрузкаВOracle.xml
@@ -464,5 +473,14 @@ Project: agent-hq
 CONTENT: Финальная сверка docx с исходным списком пользователя. Закрыто 2 пробела: (1) framer-motion — добавлен в ТЗ задачи 2 (ui-references): слои анимаций = framer-motion (React по умолчанию) + reactbits + lottiefiles, ставится в код проектов, не в систему. (2) Superpowers (obra) — УЖЕ встроены в AGENTS.md 3.6 (spec/plan/implement/test), доп. скиллы obra опциональны cherry-pick'ом, дублировать не надо. Плюс: сверка всех остальных пунктов исходного списка подтвердила полноту Частей 2-3. Предложения роутинга моделей (GLM 5.3 для team-lead/security из советов Qwen) — решение за сессией-разработчиком по ratings.jsonl. Отчёт финализирован (45.5+ КБ).
 SKILLS_LOADED: []
 MCP_USED: []
+COMPLIANCE: true
+STATUS: resolved
+ 
+ [TIME] dev-2 → team-lead:
+TYPE: update | PRIORITY: medium
+Project: pong-advanced
+CONTENT: P1.1 (Effects.ts:2-3): Added MAX_PARTICLES = 500; emit() caps at MAX_PARTICLES via splice. P1.4 (physics.ts:29,300-303,313-316): Added TRAVEL_TIME_CAP = 2.0; Math.min(travelTime, TRAVEL_TIME_CAP) in calculateAITarget. P1.5 (App.ts:634-638): visibilitychange → doPause() if hidden+localGame+playing. LAN games unaffected. Verification: tsc 0, build 0, test 43/43 green, playwright 4/4.
+SKILLS_LOADED: ["superpowers-implement"]
+MCP_USED: ["sequential-thinking"]
 COMPLIANCE: true
 STATUS: resolved

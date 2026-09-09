@@ -8,7 +8,7 @@
 - **Worktrees**: main + agent/dev-1
 - **Трейсы**: traces.jsonl живой; performance.jsonl — 3 сессии, avg 36.4s
 - **Команда**: 19 агентов в .opencode/agents/, sync-agents.ps1 синхронизирует секцию agent в opencode.json
-- **Модели**: mimo-v2.5-free (основная), nemotron-3.5-lightning-free (быстрая), nemotron-3-ultra-free (запасная + проверяющие)
+- **Модели**: glm-5.3-free (mimo недоступен: квота opencode исчерпана) (основная), nemotron-3.5-lightning-free (быстрая), nemotron-3-ultra-free (запасная + проверяющие)
 - **Проверяющие**: qa-engineer, code-reviewer, security-auditor → opencode/nemotron-3-ultra-free (после падения ox-alpha-free "Model not found")
 - **Протокол**: AGENTS.md §3.1 (оценка времени 5/10/15/20/30/45 мин), §3.2 (x2 timeout), §3.3 (верификация НЕ тимлидом) — добавлены 27.08
 - **Скрипты**: cleanup-garbage.ps1 (.agents/scripts/) — автоочистка temp_*/bak/stray root agent JSON, -DryRun/-Execute

@@ -71,7 +71,7 @@ function Save-Registry {
     # 1. Create backup before writing
     if (Test-Path $RegistryPath) {
         try {
-            Copy-Item -Path $RegistryPath -Path $BackupPath -Force -ErrorAction Stop
+            Copy-Item -Path $RegistryPath -Destination $BackupPath -Force -ErrorAction Stop
         } catch {
             # Backup creation failure is not fatal; proceed to write
         }
@@ -96,14 +96,16 @@ function Save-Registry {
         return $true
     } catch {
         # 5. Restore from backup if JSON is invalid
+        # NOTE: Write-Warning (НЕ Write-Error) — при $ErrorActionPreference="Stop"
+        # Write-Error terminating-ошибка, которая прервёт скрипт раньше return $false
         if (Test-Path $BackupPath) {
             try {
-                Copy-Item -Path $BackupPath -Path $RegistryPath -Force -ErrorAction Stop
+                Copy-Item -Path $BackupPath -Destination $RegistryPath -Force -ErrorAction Stop
             } catch {
-                Write-Error "Failed to restore registry from backup"
+                Write-Warning "Failed to restore registry from backup: $_"
             }
         }
-        Write-Error "Registry JSON invalid after write, restored from backup"
+        Write-Warning "Registry JSON invalid after write, restored from backup"
         return $false
     }
 }
@@ -224,12 +226,9 @@ function Reserve-Agent {
     $agent.daily_load++
 
     if (-not (Save-Registry $registry)) {
-        $agent.status = "free"
-        $agent.current_project = $null
-        $agent.current_task = $null
-        $agent.last_assignment = $null
-        $agent.daily_load--
-        Write-Error "Failed to save registry, rolled back"
+        # Rollback не нужен: Save-Registry уже восстановил файл из .bak.
+        # In-memory откат $agent бессмысленен — объект не сохраняется.
+        Write-Error "Failed to save registry, rolled back from backup"
         exit 1
     }
 
@@ -496,12 +495,9 @@ function Acquire-Agent {
     $agent.daily_load++
 
     if (-not (Save-Registry $registry)) {
-        $agent.status = "free"
-        $agent.current_project = $null
-        $agent.current_task = $null
-        $agent.last_assignment = $null
-        $agent.daily_load--
-        Write-Error "Failed to save registry after acquire, rolled back"
+        # Rollback не нужен: Save-Registry уже восстановил файл из .bak.
+        # In-memory откат $agent бессмысленен — объект не сохраняется.
+        Write-Error "Failed to save registry after acquire, rolled back from backup"
         exit 1
     }
 

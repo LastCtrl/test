@@ -269,7 +269,7 @@ if (Test-Path $queueScript) {
                     $finalList = & powershell -NoProfile -ExecutionPolicy Bypass -File $queueScript -List -Project $testProject 2>&1
                     $finalExit = $LASTEXITCODE
                     # Check that queue is effectively clean (no queued/assigned/in_progress)
-                    $queueContent = Get-Content (Join-Path "projects\$testProject\queue.json") -Raw -ErrorAction SilentlyContinue
+                    $queueContent = Get-Content (Join-Path "projects" "$testProject\queue.json") -Raw -ErrorAction SilentlyContinue
                     $queueObj = $queueContent | ConvertFrom-Json -ErrorAction SilentlyContinue
                     $activeTasks = 0
                     if ($queueObj -and $queueObj.tasks) {
@@ -282,6 +282,26 @@ if (Test-Path $queueScript) {
     }
 }
 Test-Check "F7: project-queue.ps1 full cycle (Add->Next->Complete->cleanup) on 1c-buh" $f7Pass
+
+# F7-cleanup: убрать тестовый мусор из queue.json (задачи с тестовым title),
+# чтобы прогоны F7 не накапливали done/dead задачи. Идемпотентно: повторные
+# прогоны дают стабильный tasks count.
+if ($f7Pass -or (Test-Path (Join-Path "projects" "$testProject\queue.json"))) {
+    $cleanupQueuePath = Join-Path "projects" "$testProject\queue.json"
+    $cleanupRaw = [System.IO.File]::ReadAllText($cleanupQueuePath, [System.Text.UTF8Encoding]::new($false))
+    $cleanupObj = $null
+    try { $cleanupObj = $cleanupRaw | ConvertFrom-Json -ErrorAction Stop } catch { $cleanupObj = $null }
+    if ($cleanupObj -and $cleanupObj.tasks) {
+        $keepTasks = @($cleanupObj.tasks | Where-Object { $_.title -ne "Test critical task" })
+        $removedCount = $cleanupObj.tasks.Count - $keepTasks.Count
+        if ($removedCount -gt 0) {
+            $cleanupObj.tasks = $keepTasks
+            $newJson = $cleanupObj | ConvertTo-Json -Depth 10 -Compress
+            [System.IO.File]::WriteAllText($cleanupQueuePath, $newJson, [System.Text.UTF8Encoding]::new($false))
+            Write-Host "  F7-cleanup: removed $removedCount test task(s) from $testProject/queue.json" -ForegroundColor Gray
+        }
+    }
+}
 
 # F8: agent-utilization.ps1 output contains "Utilization"; -Json outputs valid JSON
 $utilScript = ".agents\scripts\agent-utilization.ps1"

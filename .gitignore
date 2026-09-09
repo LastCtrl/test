@@ -40,6 +40,8 @@ logs/
 *.bak
 *.bak.*
 opencode.json.bak.*
+agent-registry.json.bak
+queue.json.bak
 
 # Agent temp artifacts
 temp_*

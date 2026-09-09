@@ -25,3 +25,9 @@
 {"model":"tokenrouter/z-ai/glm-5.3-free","agent":"dev-1","task_type":"1c-bsl-oracle-export","grade":9,"date":"2026-09-09"}
 {"model":"tokenrouter/z-ai/glm-5.3-free","agent":"code-reviewer-1","task_type":"code-review-diff","grade":9,"date":"2026-09-09"}
 {"model":"opencode/nemotron-3-ultra-free","agent":"qa-engineer","task_type":"qa-static","grade":8,"date":"2026-09-09"}
+{"model":"opencode/nemotron-3.5-lightning-free","agent":"backend","task_type":"pong-advanced P1.2+P1.3+B1","grade":6,"date":"2026-09-09","note":"Correct implementation of getLocalIP/CORS/goal-symmetry but hung before finish; left TS error (nets possibly undefined) and CORS prefix-matching bug found by reviewer; work completed by team-lead"}
+{"model":"opencode/nemotron-3.5-lightning-free","agent":"dev-2","task_type":"pong-advanced P1.1+P1.4+P1.5","grade":9,"date":"2026-09-09","note":"Clean particle cap, travel-time cap, visibilitychange; all checks green first pass after takeover from hung dev-3; missed push() cap (caught by reviewer)"}
+{"model":"tokenrouter/z-ai/glm-5.3-free","agent":"team-lead-2 (acting dev)","task_type":"pong-advanced P1 review fixes (4)","grade":10,"date":"2026-09-09","note":"All 4 fixes precise: strict IPv4 CORS validation, clamped gravity prediction, push() cap, virtual-adapter skip; verification thorough, self-report correct"}
+{"model":"tokenrouter/z-ai/glm-5.3-free","agent":"team-lead-1 (acting code-reviewer)","task_type":"pong-advanced P1 review + re-review","grade":10,"date":"2026-09-09","note":"Outstanding security catch: prefix-regex CORS bypass (192.168.evil.com); verified boundary cases (172.31.255.255, 08, 300); approved after fixes"}
+{"model":"opencode/nemotron-3-ultra-free","agent":"qa-engineer","task_type":"pong-advanced P1 acceptance","grade":9,"date":"2026-09-09","note":"Thorough: found push() cap gap independently, verified CORS matrix incl. 172.32.x deny, live handshake tests, getLocalIP returned real LAN IP"}
+

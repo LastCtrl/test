@@ -54,7 +54,16 @@ $PriorityOrder = @{
 # --------------------------------------------------
 function Get-QueuePath {
     param([string]$ProjectName)
-    return Join-Path $ProjectsRoot "$ProjectName\queue.json"
+    # Security: whitelist project name + path traversal guard
+    if ($ProjectName -notmatch '^[a-zA-Z0-9_\-]+$') {
+        throw "Invalid project name '$ProjectName': allowed chars are a-zA-Z0-9_-"
+    }
+    $full = [System.IO.Path]::GetFullPath((Join-Path $ProjectsRoot "$ProjectName\queue.json"))
+    $rootFull = [System.IO.Path]::GetFullPath($ProjectsRoot).TrimEnd('\') + '\'
+    if (-not $full.StartsWith($rootFull, [System.StringComparison]::OrdinalIgnoreCase)) {
+        throw "Path traversal detected: '$ProjectName' escapes projects root"
+    }
+    return $full
 }
 
 # --------------------------------------------------
@@ -121,7 +130,7 @@ function Save-Queue {
     if (Test-Path $queuePath) {
         $bakPath = $queuePath + ".bak"
         try {
-            Copy-Item -Path $queuePath -Path $bakPath -Force -ErrorAction Stop
+            Copy-Item -Path $queuePath -Destination $bakPath -Force -ErrorAction Stop
         } catch {
             # Backup creation failure is not fatal; proceed to write
         }
@@ -146,15 +155,17 @@ function Save-Queue {
         return $true
     } catch {
         # 5. Restore from backup if JSON is invalid
+        # NOTE: Write-Warning (НЕ Write-Error) — при $ErrorActionPreference="Stop"
+        # Write-Error terminating-ошибка, которая прервёт скрипт раньше return $false
         $bakPath = $queuePath + ".bak"
         if (Test-Path $bakPath) {
             try {
-                Copy-Item -Path $bakPath -Path $queuePath -Force -ErrorAction Stop
+                Copy-Item -Path $bakPath -Destination $queuePath -Force -ErrorAction Stop
             } catch {
-                Write-Error "Failed to restore queue from backup"
+                Write-Warning "Failed to restore queue from backup: $_"
             }
         }
-        Write-Error "Queue JSON invalid after write, restored from backup"
+        Write-Warning "Queue JSON invalid after write, restored from backup"
         return $false
     }
 }

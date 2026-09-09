@@ -93,7 +93,7 @@ function Delegate-To-Copy {
     } | ConvertTo-Json -Depth 4
 
     $taskPath = Join-Path $InboxDir "$taskId.json"
-    [System.IO.File]::WriteAllText($taskPath, $task, [System.Text.Encoding]::UTF8)
+    [System.IO.File]::WriteAllText($taskPath, $task, (New-Object System.Text.UTF8Encoding($false)))
 
     Write-Log "DELEGATE: Задача $taskId создана в $copyName inbox"
 

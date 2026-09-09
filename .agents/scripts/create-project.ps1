@@ -28,6 +28,18 @@ $baseDir = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
 $projectsDir = Join-Path $baseDir "projects"
 $projectDir = Join-Path $projectsDir $ProjectName
 
+# Security: whitelist project name + path traversal guard
+if ($ProjectName -notmatch '^[a-zA-Z0-9_\-]+$') {
+    Write-Host "ERROR: Invalid project name '$ProjectName': allowed chars are a-zA-Z0-9_-" -ForegroundColor Red
+    exit 1
+}
+$projFull = [System.IO.Path]::GetFullPath($projectDir)
+$rootFull = [System.IO.Path]::GetFullPath($projectsDir).TrimEnd('\') + '\'
+if (-not $projFull.StartsWith($rootFull, [System.StringComparison]::OrdinalIgnoreCase)) {
+    Write-Host "ERROR: Path traversal detected: '$ProjectName' escapes projects root" -ForegroundColor Red
+    exit 1
+}
+
 Write-Host "=== Creating project: $ProjectName ===" -ForegroundColor Cyan
 Write-Host "Template: $TemplateType" -ForegroundColor Yellow
 
@@ -200,6 +212,14 @@ if (-not (Test-Path $templateDir)) {
         $kbContent = [System.IO.File]::ReadAllText($kbSrc) -replace '\{name\}', $ProjectName
         [System.IO.File]::WriteAllText((Join-Path $projectDir "KNOWLEDGE-BASE.md"), $kbContent, [System.Text.UTF8Encoding]::new($false))
         Write-Host "  Copied KNOWLEDGE-BASE.md" -ForegroundColor Gray
+    }
+
+    # README.md
+    $rdSrc = Join-Path $templateDir "README.md"
+    if (Test-Path $rdSrc) {
+        $rdContent = [System.IO.File]::ReadAllText($rdSrc) -replace '\{name\}', $ProjectName
+        [System.IO.File]::WriteAllText((Join-Path $projectDir "README.md"), $rdContent, [System.Text.UTF8Encoding]::new($false))
+        Write-Host "  Copied README.md" -ForegroundColor Gray
     }
 
     # project.json

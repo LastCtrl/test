@@ -4,7 +4,7 @@
 **Проект:** agent-hq — штаб-квартира мультиагентной команды на бесплатных моделях opencode-go.
 
 ## Стек
-- **Модели:** mimo-v2.5-free (primary), nemotron-3.5-lightning-free (fast), nemotron-3-ultra-free (fallback)
+- **Модели:** glm-5.3-free (mimo недоступен: квота opencode исчерпана) (primary), nemotron-3.5-lightning-free (fast), nemotron-3-ultra-free (fallback)
 - **Язык:** Русский (подтверждено excelente quality в тестах mimo)
 - **Архитектура:** Git worktree изоляция, файловая очередь сообщений, Memory Bank
 - **Лицензия:** Отдельная от существующего agent-team

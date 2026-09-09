@@ -53,11 +53,21 @@ export const TracerPlugin = ({ directory }) => {
         if (event?.type === "session.created") {
           writeJsonl({ ts: new Date().toISOString(), type: "session_start", id });
         } else if (event?.type === "session.error") {
+          const props = event?.properties ?? event ?? {};
+          const msg =
+            props.message ??
+            props.error ??
+            props.data ??
+            props.reason ??
+            props.detail ??
+            "";
+          const raw = JSON.stringify(props, null, 0);
           writeJsonl({
             ts: new Date().toISOString(),
             type: "error",
             id,
-            message: String(event?.properties?.message ?? "").slice(0, 300),
+            message: String(msg).slice(0, 300),
+            props: String(raw).slice(0, 500),
           });
         } else if (event?.type === "session.idle") {
           writeJsonl({ ts: new Date().toISOString(), type: "session_end", id });

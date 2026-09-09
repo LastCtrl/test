@@ -2,7 +2,7 @@
 
 ## 1. Модели
 
-- mimo-v2.5-free — основная
+- glm-5.3-free (mimo недоступен: квота opencode исчерпана) — основная
 - nemotron-3.5-lightning-free — быстрая
 - nemotron-3-ultra-free — запасная
 - nemotron-3-ultra-free — все проверяющие (qa-engineer, code-reviewer, security-auditor), fallback после ухода ox-alpha-free
@@ -35,7 +35,7 @@
 
 ### 3.2 Правило x2 timeout (эскалация по времени)
 - Если результат от агента идёт дольше X×2 (двойная оценка) → это сигнал сбоя (зависание/зацикливание/слабая модель).
-- Действие тимлида: немедленная передача задачи ДРУГОМУ агенту на более сильной модели (по лестнице §5: lightning → mimo → nemotron-ultra). БЕЗ попытки 2 на том же агенте.
+- Действие тимлида: немедленная передача задачи ДРУГОЙ копии агента (единственная рабочая модель — glm-5.3-free; эскалация по моделям невозможна до восстановления квоты opencode). БЕЗ попытки 2 на том же агенте.
 - Откат негодных/неполных изменений перед передачей.
 - Это не отменяет retry-3 по качеству (§5) — это отдельный триггер по ВРЕМЕНИ.
 
@@ -44,6 +44,76 @@
 - После каждой задачи тимлид ЗАПУСКАЕТ проверяющих агентов (qa-engineer / code-reviewer) на результат — НЕ проверяет сам.
 - Тимлид читает критические файлы (opencode.json, скрипты) только для подтверждения что проверяющих есть что смотреть (не сломано в ноль). Глубокую проверку делают проверяющие.
 - Исключение: если проверяющие недоступны (модель упала) — тимлид делает базовую проверку сам + эскалация пользователю (блокер §3).
+
+### 3.4 Self-report Mandate — Обязательный самоотчёт
+
+**Каждый агент в конце задачи ДОЛЖЕН записать в CONTEXT-BUFFER.md:**
+
+```
+[TIME] <agent> → team-lead:
+TYPE: update | PRIORITY: medium
+CONTENT: <что сделано, какие файлы созданы/изменены>
+SKILLS_LOADED: [<список скиллов через запятую>]
+MCP_USED: [<список MCP инструментов через запятую>]
+COMPLIANCE: true
+STATUS: resolved
+```
+
+Поля `SKILLS_LOADED` и `MCP_USED` — **ОБЯЗАТЕЛЬНЫ**.
+- Пустой массив = violation → qa-engineer ставит REJECT
+- Формат строгий: парсер ищет именно `SKILLS_LOADED:` и `MCP_USED:`
+- Пример: `SKILLS_LOADED: ["1c-query", "1c-bsp-api"], MCP_USED: ["context7", "sequential-thinking"]`
+
+**Fallback правила:**
+- MCP недоступен → `MCP_USED: ["context7: offline", "hermes-atlas: offline"]` + blocker в CONTEXT-BUFFER.md
+- Скилл не найден → `SKILLS_LOADED: ["<skill-name>: missing"]` + вызов skill-surgeon
+- Дешёвая модель игнорирует → compliance-gate.ps1 REJECT + retry на glm-5.3-free (mimo недоступен: квота opencode исчерпана) → 2 REJECT → эскалация на nemotron-3-ultra-free
+
+---
+
+### 3.5 Validator Enforcement — Автоматическая валидация
+
+**Слой 3 — qa-engineer проверяет КАЖДУЮ задачу через compliance-gate.ps1:**
+
+```powershell
+# Проверка трейса за последнюю задачу агента:
+# 1. Есть ли запись с SKILLS_LOADED и MCP_USED?
+# 2. SKILLS_LOADED не пустой?
+# 3. Если задача с библиотекой — есть ли context7 в MCP_USED?
+# 4. Если задача >3 шагов — есть ли sequential-thinking в MCP_USED?
+# 5. COMPLIANCE: true?
+```
+
+**Результат:** PASS / REJECT + причина
+
+**При REJECT:**
+- Агент получает задачу на доработку: "Self-report violation: <причина>"
+- Обязательный retry с правильным предварительным этапом
+- Максимум 2 попытки → эскалация на более сильную модель
+
+**Интеграция:** compliance-gate.ps1 добавляется в health-check.ps1 и запускается перед merge.
+
+---
+
+### 3.6 Superpowers Integration — Интеграция superpowers (obra)
+
+**MCP инструменты — ОБЯЗАТЕЛЬНЫ при соответствующих условиях:**
+
+| Инструмент | Когда ОБЯЗАТЕЛЬНО |
+|------------|-------------------|
+| `context7_resolve-library-id` + `context7_query-docs` | Любая внешняя библиотека/фреймворк (exceljs, fastapi, react, 1c-bsl, postgres, docker и т.д.) |
+| `hermes-atlas-mcp_search_projects` + `hermes-atlas-mcp_get_project` | Нужен новый скилл/тул, которого нет в `.agents/skills/` |
+| `sequential-thinking_sequentialthinking` | Задача > 3 шагов, архитектура, дебаг непонятного, планирование |
+
+**Superpowers (obra) — 4 скилла SDLC фаз:**
+- `superpowers-spec` — фаза specification (requirements, user stories, acceptance criteria)
+- `superpowers-plan` — фаза planning (архитектура, decomposition, dependencies)
+- `superpowers-implement` — фаза implementation (TDD, clean code, YAGNI)
+- `superpowers-test` — фаза testing (test strategy, edge cases, regression)
+
+**Правило:** Для задач SDLC подгружай соответствующий superpowers-скилл из `.agents/skills/superpowers/`.
+
+---
 
 ## 4. Параллельность
 
@@ -55,7 +125,7 @@
 
 - Попытка 1: агент делает работу → ревью находит косяки → ревьюер готовит ТЗ на фикс (полный лог ошибок + пути файлов + подкинуть нужный скилл).
 - Попытка 2: тот же агент чинит по ТЗ → ре-ревью ТОЛЬКО по изменениям.
-- Попытка 3: ОБЯЗАТЕЛЬНО другой агент и ДРУГАЯ, более сильная модель. Лестница силы: nemotron-3.5-lightning → mimo-v2.5 → nemotron-3-ultra.
+- Попытка 3: ОБЯЗАТЕЛЬНО другой агент (копия). Лестница силы недоступна (единая модель glm-5.3-free до восстановления квоты opencode) — компенсируй более детальным ТЗ + skill-pinning.
 - После третьей неудачи — эскалация пользователю с историей всех попыток.
 - Откат негодных изменений перед передачей другому агенту.
 - Внешние зависимости (новые MCP/шлюзы/провайдеры) не блокируют работу агентов: если пул недоступен — работаем на штатной лестнице oc/* моделей.

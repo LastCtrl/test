@@ -1,213 +1,944 @@
 {
-  "agents": {
-    "team-lead": {
-      "model": "opencode/nemotron-3-ultra-free",
-      "role": "orchestrator",
-      "permissions": ["edit", "bash", "read", "glob", "grep", "skill", "question"],
-      "specialization": {
-        "primary": ["orchestration", "architecture", "delegation"],
-        "secondary": ["code-review", "security"],
-        "avoid": ["frontend", "mobile"]
-      },
-      "description": "Технический Лидер — декомпозирует задачи, назначает агентов, контролирует качество"
-    },
-    "dev-1": {
-      "model": "opencode/mimo-v2.5-free",
-      "role": "developer",
-      "permissions": ["edit", "bash", "read", "glob", "grep", "skill"],
-      "specialization": {
-        "primary": ["python", "fastapi", "postgres"],
-        "secondary": ["docker", "git"],
-        "avoid": ["frontend", "mobile"]
-      },
-      "description": "Универсальный разработчик (основной)"
-    },
-    "dev-2": {
-      "model": "opencode/nemotron-3.5-lightning-free",
-      "role": "developer",
-      "permissions": ["edit", "bash", "read", "glob", "grep", "skill"],
-      "specialization": {
-        "primary": ["python", "javascript"],
-        "secondary": ["docker"],
-        "avoid": ["mobile"]
-      },
-      "description": "Универсальный разработчик (быстрый)"
-    },
-    "dev-3": {
-      "model": "opencode/mimo-v2.5-free",
-      "role": "developer",
-      "permissions": ["edit", "bash", "read", "glob", "grep", "skill"],
-      "specialization": {
-        "primary": ["sql", "data"],
-        "secondary": ["python"],
-        "avoid": ["frontend"]
-      },
-      "description": "Универсальный разработчик (надежность)"
-    },
-    "frontend": {
-      "model": "opencode/mimo-v2.5-free",
-      "role": "frontend-dev",
-      "permissions": ["edit", "bash", "read", "glob", "grep", "skill"],
-      "specialization": {
-        "primary": ["react", "typescript", "css"],
-        "secondary": ["vite"],
-        "avoid": ["backend", "database"]
-      },
-      "description": "Frontend специалист"
-    },
-    "backend": {
-      "model": "opencode/nemotron-3.5-lightning-free",
-      "role": "backend-dev",
-      "permissions": ["edit", "bash", "read", "glob", "grep", "skill"],
-      "specialization": {
-        "primary": ["python", "fastapi", "redis"],
-        "secondary": ["docker", "sql"],
-        "avoid": ["frontend"]
-      },
-      "description": "Backend специалист"
-    },
-    "db-specialist": {
-      "model": "opencode/mimo-v2.5-free",
-      "role": "db-specialist",
-      "permissions": ["edit", "bash", "read", "glob", "grep", "skill"],
-      "specialization": {
-        "primary": ["sql", "nosql", "orm"],
-        "secondary": ["python"],
-        "avoid": ["frontend", "mobile"]
-      },
-      "description": "SQL/NoSQL специалист"
-    },
-    "mobile-dev": {
-      "model": "opencode/nemotron-3.5-lightning-free",
-      "role": "mobile-dev",
-      "permissions": ["edit", "bash", "read", "glob", "grep", "skill"],
-      "specialization": {
-        "primary": ["react-native", "flutter"],
-        "secondary": ["python"],
-        "avoid": ["database"]
-      },
-      "description": "Mobile разработчик"
-    },
-    "devops": {
-      "model": "opencode/nemotron-3.5-lightning-free",
-      "role": "devops",
-      "permissions": ["edit", "bash", "read", "glob", "grep", "skill"],
-      "specialization": {
-        "primary": ["docker", "ci-cd", "k8s"],
-        "secondary": ["python"],
-        "avoid": ["frontend"]
-      },
-      "description": "DevOps инженер"
-    },
-    "integration-specialist": {
-      "model": "opencode/mimo-v2.5-free",
-      "role": "integration-specialist",
-      "permissions": ["edit", "bash", "read", "glob", "grep", "skill"],
-      "specialization": {
-        "primary": ["api", "grpc", "kafka"],
-        "secondary": ["python", "sql"],
-        "avoid": ["frontend"]
-      },
-      "description": "Integration specialist"
-    },
-    "data-engineer": {
-      "model": "opencode/mimo-v2.5-free",
-      "role": "data-engineer",
-      "permissions": ["edit", "bash", "read", "glob", "grep", "skill"],
-      "specialization": {
-        "primary": ["etl", "airflow", "clickhouse"],
-        "secondary": ["python", "sql"],
-        "avoid": ["frontend"]
-      },
-      "description": "Data engineer"
-    },
-    "qa-engineer": {
-      "model": "opencode/mimo-v2.5-free",
-      "role": "qa-engineer",
-      "permissions": ["read", "grep", "skill"],
-      "specialization": {
-        "primary": ["testing", "pytest", "code-review"],
-        "secondary": ["security"],
-        "avoid": []
-      },
-      "description": "QA Engineer"
-    },
-    "security-auditor": {
-      "model": "opencode/mimo-v2.5-free",
-      "role": "security-auditor",
-      "permissions": ["read", "grep"],
-      "specialization": {
-        "primary": ["security", "owasp"],
-        "secondary": ["code-review"],
-        "avoid": ["frontend"]
-      },
-      "description": "Security Auditor"
-    },
-    "code-reviewer": {
-      "model": "opencode/mimo-v2.5-free",
-      "role": "code-reviewer",
-      "permissions": ["read", "grep"],
-      "specialization": {
-        "primary": ["code-review", "clean-code"],
-        "secondary": ["security"],
-        "avoid": []
-      },
-      "description": "Code Reviewer"
-    },
-    "product-manager": {
-      "model": "opencode/mimo-v2.5-free",
-      "role": "product-manager",
-      "permissions": ["read", "glob", "question"],
-      "specialization": {
-        "primary": ["requirements", "user-stories"],
-        "secondary": ["api-design"],
-        "avoid": ["code"]
-      },
-      "description": "Product Manager"
-    },
-    "tech-writer": {
-      "model": "opencode/mimo-v2.5-free",
-      "role": "tech-writer",
-      "permissions": ["read", "glob"],
-      "specialization": {
-        "primary": ["docs", "markdown"],
-        "secondary": ["api"],
-        "avoid": ["code"]
-      },
-      "description": "Tech Writer"
-    },
-    "skill-surgeon": {
-      "model": "opencode/mimo-v2.5-free",
-      "role": "skill-surgeon",
-      "permissions": ["edit", "bash", "read", "glob", "grep", "skill"],
-      "specialization": {
-        "primary": ["skills", "tools"],
-        "secondary": ["webfetch"],
-        "avoid": ["code"]
-      },
-      "description": "Ищет, скачивает, создаёт скиллы под любую технологию"
-    },
-    "legal-advisor": {
-      "model": "opencode/mimo-v2.5-free",
-      "role": "legal-advisor",
-      "permissions": ["read", "glob", "grep", "webfetch"],
-      "specialization": {
-        "primary": ["laws", "contracts", "taxes"],
-        "secondary": ["api"],
-        "avoid": ["code"]
-      },
-      "description": "Legal Advisor"
-    },
-    "smm-strategist": {
-      "model": "opencode/mimo-v2.5-free",
-      "role": "smm-strategist",
-      "permissions": ["read", "glob", "grep", "webfetch"],
-      "specialization": {
-        "primary": ["promotion", "ЦА", "воронка"],
-        "secondary": ["webfetch"],
-        "avoid": ["code"]
-      },
-      "description": "SMM Strategist"
-    }
-  }
+    "agents":  {
+                   "team-lead":  {
+                                     "model":  "tokenrouter/z-ai/glm-5.3-free",
+                                     "role":  "orchestrator",
+                                     "permissions":  [
+                                                         "edit",
+                                                         "bash",
+                                                         "read",
+                                                         "glob",
+                                                         "grep",
+                                                         "skill",
+                                                         "question"
+                                                     ],
+                                     "specialization":  {
+                                                            "primary":  [
+                                                                            "orchestration",
+                                                                            "architecture",
+                                                                            "delegation"
+                                                                        ],
+                                                            "secondary":  [
+                                                                              "code-review",
+                                                                              "security"
+                                                                          ],
+                                                            "avoid":  [
+                                                                          "frontend",
+                                                                          "mobile"
+                                                                      ]
+                                                        },
+                                     "required_skills":  [
+                                                             "model-router",
+                                                             "performance-scoring",
+                                                             "self-healing",
+                                                             "summarization",
+                                                             "skill-enforcement"
+                                                         ],
+                                     "description":  "РўРµС…РЅРёС‡РµСЃРєРёР№ Р›РёРґРµСЂ вЂ” РґРµРєРѕРјРїРѕР·РёСЂСѓРµС‚ Р·Р°РґР°С‡Рё, РЅР°Р·РЅР°С‡Р°РµС‚ Р°РіРµРЅС‚РѕРІ, РєРѕРЅС‚СЂРѕР»РёСЂСѓРµС‚ РєР°С‡РµСЃС‚РІРѕ"
+                                 },
+                   "team-lead-1":  {
+                                       "model":  "tokenrouter/z-ai/glm-5.3-free",
+                                       "role":  "orchestrator",
+                                       "permissions":  [
+                                                           "edit",
+                                                           "bash",
+                                                           "read",
+                                                           "glob",
+                                                           "grep",
+                                                           "skill",
+                                                           "question"
+                                                       ],
+                                       "specialization":  {
+                                                              "primary":  [
+                                                                              "orchestration",
+                                                                              "architecture",
+                                                                              "delegation"
+                                                                          ],
+                                                              "secondary":  [
+                                                                                "code-review",
+                                                                                "security"
+                                                                            ],
+                                                              "avoid":  [
+                                                                            "frontend",
+                                                                            "mobile"
+                                                                        ]
+                                                          },
+                                       "required_skills":  [
+                                                               "model-router",
+                                                               "performance-scoring",
+                                                               "self-healing",
+                                                               "summarization",
+                                                               "skill-enforcement"
+                                                           ],
+                                       "description":  "РўРµС…РЅРёС‡РµСЃРєРёР№ Р›РёРґРµСЂ (copy 1) вЂ” РґР»СЏ РїР°СЂР°Р»Р»РµР»СЊРЅРѕР№ РѕСЂРєРµСЃС‚СЂР°С†РёРё"
+                                   },
+                   "team-lead-2":  {
+                                       "model":  "tokenrouter/z-ai/glm-5.3-free",
+                                       "role":  "orchestrator",
+                                       "permissions":  [
+                                                           "edit",
+                                                           "bash",
+                                                           "read",
+                                                           "glob",
+                                                           "grep",
+                                                           "skill",
+                                                           "question"
+                                                       ],
+                                       "specialization":  {
+                                                              "primary":  [
+                                                                              "orchestration",
+                                                                              "architecture",
+                                                                              "delegation"
+                                                                          ],
+                                                              "secondary":  [
+                                                                                "code-review",
+                                                                                "security"
+                                                                            ],
+                                                              "avoid":  [
+                                                                            "frontend",
+                                                                            "mobile"
+                                                                        ]
+                                                          },
+                                       "required_skills":  [
+                                                               "model-router",
+                                                               "performance-scoring",
+                                                               "self-healing",
+                                                               "summarization",
+                                                               "skill-enforcement"
+                                                           ],
+                                       "description":  "РўРµС…РЅРёС‡РµСЃРєРёР№ Р›РёРґРµСЂ (copy 2) вЂ” РґР»СЏ РїР°СЂР°Р»Р»РµР»СЊРЅРѕР№ РѕСЂРєРµСЃС‚СЂР°С†РёРё"
+                                   },
+                   "team-lead-3":  {
+                                       "model":  "tokenrouter/z-ai/glm-5.3-free",
+                                       "role":  "orchestrator",
+                                       "permissions":  [
+                                                           "edit",
+                                                           "bash",
+                                                           "read",
+                                                           "glob",
+                                                           "grep",
+                                                           "skill",
+                                                           "question"
+                                                       ],
+                                       "specialization":  {
+                                                              "primary":  [
+                                                                              "orchestration",
+                                                                              "architecture",
+                                                                              "delegation"
+                                                                          ],
+                                                              "secondary":  [
+                                                                                "code-review",
+                                                                                "security"
+                                                                            ],
+                                                              "avoid":  [
+                                                                            "frontend",
+                                                                            "mobile"
+                                                                        ]
+                                                          },
+                                       "required_skills":  [
+                                                               "model-router",
+                                                               "performance-scoring",
+                                                               "self-healing",
+                                                               "summarization",
+                                                               "skill-enforcement"
+                                                           ],
+                                       "description":  "РўРµС…РЅРёС‡РµСЃРєРёР№ Р›РёРґРµСЂ (copy 3) вЂ” РґР»СЏ РїР°СЂР°Р»Р»РµР»СЊРЅРѕР№ РѕСЂРєРµСЃС‚СЂР°С†РёРё"
+                                   },
+                   "dev-1":  {
+                                 "model":  "tokenrouter/z-ai/glm-5.3-free",
+                                 "role":  "developer",
+                                 "permissions":  [
+                                                     "edit",
+                                                     "bash",
+                                                     "read",
+                                                     "glob",
+                                                     "grep",
+                                                     "skill"
+                                                 ],
+                                 "specialization":  {
+                                                        "primary":  [
+                                                                        "python",
+                                                                        "fastapi",
+                                                                        "postgres"
+                                                                    ],
+                                                        "secondary":  [
+                                                                          "docker",
+                                                                          "git"
+                                                                      ],
+                                                        "avoid":  [
+                                                                      "frontend",
+                                                                      "mobile"
+                                                                  ]
+                                                    },
+                                 "required_skills":  [
+                                                         "1c-dev",
+                                                         "1c-query",
+                                                         "1c-bsp-api",
+                                                         "windows-safety",
+                                                         "skill-enforcement"
+                                                     ],
+                                 "description":  "РЈРЅРёРІРµСЂСЃР°Р»СЊРЅС‹Р№ СЂР°Р·СЂР°Р±РѕС‚С‡РёРє (РѕСЃРЅРѕРІРЅРѕР№)"
+                             },
+                   "dev-1-1":  {
+                                   "model":  "tokenrouter/z-ai/glm-5.3-free",
+                                   "role":  "developer",
+                                   "permissions":  [
+                                                       "edit",
+                                                       "bash",
+                                                       "read",
+                                                       "glob",
+                                                       "grep",
+                                                       "skill"
+                                                   ],
+                                   "specialization":  {
+                                                          "primary":  [
+                                                                          "python",
+                                                                          "fastapi",
+                                                                          "postgres"
+                                                                      ],
+                                                          "secondary":  [
+                                                                            "docker",
+                                                                            "git"
+                                                                        ],
+                                                          "avoid":  [
+                                                                        "frontend",
+                                                                        "mobile"
+                                                                    ]
+                                                      },
+                                   "required_skills":  [
+                                                           "1c-dev",
+                                                           "1c-query",
+                                                           "1c-bsp-api",
+                                                           "windows-safety",
+                                                           "skill-enforcement"
+                                                       ],
+                                   "description":  "РЈРЅРёРІРµСЂСЃР°Р»СЊРЅС‹Р№ СЂР°Р·СЂР°Р±РѕС‚С‡РёРє (РѕСЃРЅРѕРІРЅРѕР№, copy 1)"
+                               },
+                   "dev-2":  {
+                                 "model":  "tokenrouter/z-ai/glm-5.3-free",
+                                 "role":  "developer",
+                                 "permissions":  [
+                                                     "edit",
+                                                     "bash",
+                                                     "read",
+                                                     "glob",
+                                                     "grep",
+                                                     "skill"
+                                                 ],
+                                 "specialization":  {
+                                                        "primary":  [
+                                                                        "python",
+                                                                        "javascript"
+                                                                    ],
+                                                        "secondary":  [
+                                                                          "docker"
+                                                                      ],
+                                                        "avoid":  [
+                                                                      "mobile"
+                                                                  ]
+                                                    },
+                                 "required_skills":  [
+                                                         "1c-dev",
+                                                         "1c-query",
+                                                         "1c-edt-configurator",
+                                                         "windows-safety",
+                                                         "skill-enforcement"
+                                                     ],
+                                 "description":  "РЈРЅРёРІРµСЂСЃР°Р»СЊРЅС‹Р№ СЂР°Р·СЂР°Р±РѕС‚С‡РёРє (Р±С‹СЃС‚СЂС‹Р№)"
+                             },
+                   "dev-2-1":  {
+                                   "model":  "tokenrouter/z-ai/glm-5.3-free",
+                                   "role":  "developer",
+                                   "permissions":  [
+                                                       "edit",
+                                                       "bash",
+                                                       "read",
+                                                       "glob",
+                                                       "grep",
+                                                       "skill"
+                                                   ],
+                                   "specialization":  {
+                                                          "primary":  [
+                                                                          "python",
+                                                                          "javascript"
+                                                                      ],
+                                                          "secondary":  [
+                                                                            "docker"
+                                                                        ],
+                                                          "avoid":  [
+                                                                        "mobile"
+                                                                    ]
+                                                      },
+                                   "required_skills":  [
+                                                           "1c-dev",
+                                                           "1c-query",
+                                                           "1c-edt-configurator",
+                                                           "windows-safety",
+                                                           "skill-enforcement"
+                                                       ],
+                                   "description":  "РЈРЅРёРІРµСЂСЃР°Р»СЊРЅС‹Р№ СЂР°Р·СЂР°Р±РѕС‚С‡РёРє (Р±С‹СЃС‚СЂС‹Р№, copy 1)"
+                               },
+                   "dev-3":  {
+                                 "model":  "tokenrouter/z-ai/glm-5.3-free",
+                                 "role":  "developer",
+                                 "permissions":  [
+                                                     "edit",
+                                                     "bash",
+                                                     "read",
+                                                     "glob",
+                                                     "grep",
+                                                     "skill"
+                                                 ],
+                                 "specialization":  {
+                                                        "primary":  [
+                                                                        "sql",
+                                                                        "data"
+                                                                    ],
+                                                        "secondary":  [
+                                                                          "python"
+                                                                      ],
+                                                        "avoid":  [
+                                                                      "frontend"
+                                                                  ]
+                                                    },
+                                 "required_skills":  [
+                                                         "1c-dev",
+                                                         "1c-bsl-validate",
+                                                         "1c-query-validate",
+                                                         "windows-safety",
+                                                         "skill-enforcement"
+                                                     ],
+                                 "description":  "РЈРЅРёРІРµСЂСЃР°Р»СЊРЅС‹Р№ СЂР°Р·СЂР°Р±РѕС‚С‡РёРє (РЅР°РґРµР¶РЅРѕСЃС‚СЊ)"
+                             },
+                   "dev-3-1":  {
+                                   "model":  "tokenrouter/z-ai/glm-5.3-free",
+                                   "role":  "developer",
+                                   "permissions":  [
+                                                       "edit",
+                                                       "bash",
+                                                       "read",
+                                                       "glob",
+                                                       "grep",
+                                                       "skill"
+                                                   ],
+                                   "specialization":  {
+                                                          "primary":  [
+                                                                          "sql",
+                                                                          "data"
+                                                                      ],
+                                                          "secondary":  [
+                                                                            "python"
+                                                                        ],
+                                                          "avoid":  [
+                                                                        "frontend"
+                                                                    ]
+                                                      },
+                                   "required_skills":  [
+                                                           "1c-dev",
+                                                           "1c-bsl-validate",
+                                                           "1c-query-validate",
+                                                           "windows-safety",
+                                                           "skill-enforcement"
+                                                       ],
+                                   "description":  "РЈРЅРёРІРµСЂСЃР°Р»СЊРЅС‹Р№ СЂР°Р·СЂР°Р±РѕС‚С‡РёРє (РЅР°РґРµР¶РЅРѕСЃС‚СЊ, copy 1)"
+                               },
+                   "frontend":  {
+                                    "model":  "tokenrouter/z-ai/glm-5.3-free",
+                                    "role":  "frontend-dev",
+                                    "permissions":  [
+                                                        "edit",
+                                                        "bash",
+                                                        "read",
+                                                        "glob",
+                                                        "grep",
+                                                        "skill"
+                                                    ],
+                                    "specialization":  {
+                                                           "primary":  [
+                                                                           "react",
+                                                                           "typescript",
+                                                                           "css"
+                                                                       ],
+                                                           "secondary":  [
+                                                                             "vite"
+                                                                         ],
+                                                           "avoid":  [
+                                                                         "backend",
+                                                                         "database"
+                                                                     ]
+                                                       },
+                                    "required_skills":  [
+                                                            "1c-form-patterns",
+                                                            "1c-meta-edit",
+                                                            "skill-enforcement"
+                                                        ],
+                                    "description":  "Frontend СЃРїРµС†РёР°Р»РёСЃС‚"
+                                },
+                   "backend":  {
+                                   "model":  "tokenrouter/z-ai/glm-5.3-free",
+                                   "role":  "backend-dev",
+                                   "permissions":  [
+                                                       "edit",
+                                                       "bash",
+                                                       "read",
+                                                       "glob",
+                                                       "grep",
+                                                       "skill"
+                                                   ],
+                                   "specialization":  {
+                                                          "primary":  [
+                                                                          "python",
+                                                                          "fastapi",
+                                                                          "redis"
+                                                                      ],
+                                                          "secondary":  [
+                                                                            "docker",
+                                                                            "sql"
+                                                                        ],
+                                                          "avoid":  [
+                                                                        "frontend"
+                                                                    ]
+                                                      },
+                                   "required_skills":  [
+                                                           "1c-query",
+                                                           "1c-bsp-api",
+                                                           "1c-query-optimization",
+                                                           "skill-enforcement"
+                                                       ],
+                                   "description":  "Backend СЃРїРµС†РёР°Р»РёСЃС‚"
+                               },
+                   "backend-1":  {
+                                     "model":  "tokenrouter/z-ai/glm-5.3-free",
+                                     "role":  "backend-dev",
+                                     "permissions":  [
+                                                         "edit",
+                                                         "bash",
+                                                         "read",
+                                                         "glob",
+                                                         "grep",
+                                                         "skill"
+                                                     ],
+                                     "specialization":  {
+                                                            "primary":  [
+                                                                            "python",
+                                                                            "fastapi",
+                                                                            "redis"
+                                                                        ],
+                                                            "secondary":  [
+                                                                              "docker",
+                                                                              "sql"
+                                                                          ],
+                                                            "avoid":  [
+                                                                          "frontend"
+                                                                      ]
+                                                        },
+                                     "required_skills":  [
+                                                             "1c-query",
+                                                             "1c-bsp-api",
+                                                             "1c-query-optimization",
+                                                             "skill-enforcement"
+                                                         ],
+                                     "description":  "Backend СЃРїРµС†РёР°Р»РёСЃС‚ (copy 1)"
+                                 },
+                   "db-specialist":  {
+                                         "model":  "tokenrouter/z-ai/glm-5.3-free",
+                                         "role":  "db-specialist",
+                                         "permissions":  [
+                                                             "edit",
+                                                             "bash",
+                                                             "read",
+                                                             "glob",
+                                                             "grep",
+                                                             "skill"
+                                                         ],
+                                         "specialization":  {
+                                                                "primary":  [
+                                                                                "sql",
+                                                                                "nosql",
+                                                                                "orm"
+                                                                            ],
+                                                                "secondary":  [
+                                                                                  "python"
+                                                                              ],
+                                                                "avoid":  [
+                                                                              "frontend",
+                                                                              "mobile"
+                                                                          ]
+                                                            },
+                                         "required_skills":  [
+                                                                 "1c-storage-ops",
+                                                                 "1c-config-index",
+                                                                 "1c-support-state",
+                                                                 "skill-enforcement"
+                                                             ],
+                                         "description":  "SQL/NoSQL СЃРїРµС†РёР°Р»РёСЃС‚"
+                                     },
+                   "mobile-dev":  {
+                                      "model":  "tokenrouter/z-ai/glm-5.3-free",
+                                      "role":  "mobile-dev",
+                                      "permissions":  [
+                                                          "edit",
+                                                          "bash",
+                                                          "read",
+                                                          "glob",
+                                                          "grep",
+                                                          "skill"
+                                                      ],
+                                      "specialization":  {
+                                                             "primary":  [
+                                                                             "react-native",
+                                                                             "flutter"
+                                                                         ],
+                                                             "secondary":  [
+                                                                               "python"
+                                                                           ],
+                                                             "avoid":  [
+                                                                           "database"
+                                                                       ]
+                                                         },
+                                      "required_skills":  [
+                                                              "1c-epf-build",
+                                                              "skill-enforcement"
+                                                          ],
+                                      "description":  "Mobile СЂР°Р·СЂР°Р±РѕС‚С‡РёРє"
+                                  },
+                   "devops":  {
+                                  "model":  "tokenrouter/z-ai/glm-5.3-free",
+                                  "role":  "devops",
+                                  "permissions":  [
+                                                      "edit",
+                                                      "bash",
+                                                      "read",
+                                                      "glob",
+                                                      "grep",
+                                                      "skill"
+                                                  ],
+                                  "specialization":  {
+                                                         "primary":  [
+                                                                         "docker",
+                                                                         "ci-cd",
+                                                                         "k8s"
+                                                                     ],
+                                                         "secondary":  [
+                                                                           "python"
+                                                                       ],
+                                                         "avoid":  [
+                                                                       "frontend"
+                                                                   ]
+                                                     },
+                                  "required_skills":  [
+                                                          "windows-safety",
+                                                          "1c-platform-docs",
+                                                          "skill-enforcement"
+                                                      ],
+                                  "description":  "DevOps РёРЅР¶РµРЅРµСЂ"
+                              },
+                   "integration-specialist":  {
+                                                  "model":  "tokenrouter/z-ai/glm-5.3-free",
+                                                  "role":  "integration-specialist",
+                                                  "permissions":  [
+                                                                      "edit",
+                                                                      "bash",
+                                                                      "read",
+                                                                      "glob",
+                                                                      "grep",
+                                                                      "skill"
+                                                                  ],
+                                                  "specialization":  {
+                                                                         "primary":  [
+                                                                                         "api",
+                                                                                         "grpc",
+                                                                                         "kafka"
+                                                                                     ],
+                                                                         "secondary":  [
+                                                                                           "python",
+                                                                                           "sql"
+                                                                                       ],
+                                                                         "avoid":  [
+                                                                                       "frontend"
+                                                                                   ]
+                                                                     },
+                                                  "required_skills":  [
+                                                                          "1c-naparnik",
+                                                                          "1c-config-router",
+                                                                          "skill-enforcement"
+                                                                      ],
+                                                  "description":  "Integration specialist"
+                                              },
+                   "data-engineer":  {
+                                         "model":  "tokenrouter/z-ai/glm-5.3-free",
+                                         "role":  "data-engineer",
+                                         "permissions":  [
+                                                             "edit",
+                                                             "bash",
+                                                             "read",
+                                                             "glob",
+                                                             "grep",
+                                                             "skill"
+                                                         ],
+                                         "specialization":  {
+                                                                "primary":  [
+                                                                                "etl",
+                                                                                "airflow",
+                                                                                "clickhouse"
+                                                                            ],
+                                                                "secondary":  [
+                                                                                  "python",
+                                                                                  "sql"
+                                                                              ],
+                                                                "avoid":  [
+                                                                              "frontend"
+                                                                          ]
+                                                            },
+                                         "required_skills":  [
+                                                                 "1c-query",
+                                                                 "1c-query-validate",
+                                                                 "1c-query-optimization",
+                                                                 "skill-enforcement"
+                                                             ],
+                                         "description":  "Data engineer"
+                                     },
+                   "qa-engineer":  {
+                                       "model":  "tokenrouter/z-ai/glm-5.3-free",
+                                       "role":  "qa-engineer",
+                                       "permissions":  [
+                                                           "read",
+                                                           "grep",
+                                                           "skill"
+                                                       ],
+                                       "specialization":  {
+                                                              "primary":  [
+                                                                              "testing",
+                                                                              "pytest",
+                                                                              "code-review"
+                                                                          ],
+                                                              "secondary":  [
+                                                                                "security"
+                                                                            ],
+                                                              "avoid":  [
+
+                                                                        ]
+                                                          },
+                                       "required_skills":  [
+                                                               "1c-bsl-validate",
+                                                               "1c-query-validate",
+                                                               "1c-storage-ops",
+                                                               "skill-enforcement"
+                                                           ],
+                                       "description":  "QA Engineer"
+                                   },
+                   "qa-engineer-1":  {
+                                         "model":  "tokenrouter/z-ai/glm-5.3-free",
+                                         "role":  "qa-engineer",
+                                         "permissions":  [
+                                                             "read",
+                                                             "grep",
+                                                             "skill"
+                                                         ],
+                                         "specialization":  {
+                                                                "primary":  [
+                                                                                "testing",
+                                                                                "pytest",
+                                                                                "code-review"
+                                                                            ],
+                                                                "secondary":  [
+                                                                                  "security"
+                                                                              ],
+                                                                "avoid":  [
+
+                                                                          ]
+                                                            },
+                                         "required_skills":  [
+                                                                 "1c-bsl-validate",
+                                                                 "1c-query-validate",
+                                                                 "1c-storage-ops",
+                                                                 "skill-enforcement"
+                                                             ],
+                                         "description":  "QA Engineer (copy 1)"
+                                     },
+                   "security-auditor":  {
+                                            "model":  "tokenrouter/z-ai/glm-5.3-free",
+                                            "role":  "security-auditor",
+                                            "permissions":  [
+                                                                "read",
+                                                                "grep"
+                                                            ],
+                                            "specialization":  {
+                                                                   "primary":  [
+                                                                                   "security",
+                                                                                   "owasp"
+                                                                               ],
+                                                                   "secondary":  [
+                                                                                     "code-review"
+                                                                                 ],
+                                                                   "avoid":  [
+                                                                                 "frontend"
+                                                                             ]
+                                                               },
+                                            "required_skills":  [
+                                                                    "windows-safety",
+                                                                    "1c-platform-docs",
+                                                                    "skill-enforcement"
+                                                                ],
+                                            "description":  "Security Auditor"
+                                        },
+                   "security-auditor-1":  {
+                                              "model":  "tokenrouter/z-ai/glm-5.3-free",
+                                              "role":  "security-auditor",
+                                              "permissions":  [
+                                                                  "read",
+                                                                  "grep"
+                                                              ],
+                                              "specialization":  {
+                                                                     "primary":  [
+                                                                                     "security",
+                                                                                     "owasp"
+                                                                                 ],
+                                                                     "secondary":  [
+                                                                                       "code-review"
+                                                                                   ],
+                                                                     "avoid":  [
+                                                                                   "frontend"
+                                                                               ]
+                                                                 },
+                                              "required_skills":  [
+                                                                      "windows-safety",
+                                                                      "1c-platform-docs",
+                                                                      "skill-enforcement"
+                                                                  ],
+                                              "description":  "Security Auditor (copy 1)"
+                                          },
+                   "code-reviewer":  {
+                                         "model":  "tokenrouter/z-ai/glm-5.3-free",
+                                         "role":  "code-reviewer",
+                                         "permissions":  [
+                                                             "read",
+                                                             "grep"
+                                                         ],
+                                         "specialization":  {
+                                                                "primary":  [
+                                                                                "code-review",
+                                                                                "clean-code"
+                                                                            ],
+                                                                "secondary":  [
+                                                                                  "security"
+                                                                              ],
+                                                                "avoid":  [
+
+                                                                          ]
+                                                            },
+                                         "required_skills":  [
+                                                                 "1c-dev",
+                                                                 "1c-bsl-validate",
+                                                                 "clean-code",
+                                                                 "skill-enforcement"
+                                                             ],
+                                         "description":  "Code Reviewer"
+                                     },
+                   "code-reviewer-1":  {
+                                           "model":  "tokenrouter/z-ai/glm-5.3-free",
+                                           "role":  "code-reviewer",
+                                           "permissions":  [
+                                                               "read",
+                                                               "grep"
+                                                           ],
+                                           "specialization":  {
+                                                                  "primary":  [
+                                                                                  "code-review",
+                                                                                  "clean-code"
+                                                                              ],
+                                                                  "secondary":  [
+                                                                                    "security"
+                                                                                ],
+                                                                  "avoid":  [
+
+                                                                            ]
+                                                              },
+                                           "required_skills":  [
+                                                                   "1c-dev",
+                                                                   "1c-bsl-validate",
+                                                                   "clean-code",
+                                                                   "skill-enforcement"
+                                                               ],
+                                           "description":  "Code Reviewer (copy 1)"
+                                       },
+                   "product-manager":  {
+                                           "model":  "tokenrouter/z-ai/glm-5.3-free",
+                                           "role":  "product-manager",
+                                           "permissions":  [
+                                                               "read",
+                                                               "glob",
+                                                               "question"
+                                                           ],
+                                           "specialization":  {
+                                                                  "primary":  [
+                                                                                  "requirements",
+                                                                                  "user-stories"
+                                                                              ],
+                                                                  "secondary":  [
+                                                                                    "api-design"
+                                                                                ],
+                                                                  "avoid":  [
+                                                                                "code"
+                                                                            ]
+                                                              },
+                                           "required_skills":  [
+                                                                   "summarization",
+                                                                   "memory-search",
+                                                                   "skill-enforcement"
+                                                               ],
+                                           "description":  "Product Manager"
+                                       },
+                   "tech-writer":  {
+                                       "model":  "tokenrouter/z-ai/glm-5.3-free",
+                                       "role":  "tech-writer",
+                                       "permissions":  [
+                                                           "read",
+                                                           "glob"
+                                                       ],
+                                       "specialization":  {
+                                                              "primary":  [
+                                                                              "docs",
+                                                                              "markdown"
+                                                                          ],
+                                                              "secondary":  [
+                                                                                "api"
+                                                                            ],
+                                                              "avoid":  [
+                                                                            "code"
+                                                                        ]
+                                                          },
+                                       "required_skills":  [
+                                                               "summarization",
+                                                               "1c-platform-docs",
+                                                               "skill-enforcement"
+                                                           ],
+                                       "description":  "Tech Writer"
+                                   },
+                   "tech-writer-1":  {
+                                         "model":  "tokenrouter/z-ai/glm-5.3-free",
+                                         "role":  "tech-writer",
+                                         "permissions":  [
+                                                             "read",
+                                                             "glob"
+                                                         ],
+                                         "specialization":  {
+                                                                "primary":  [
+                                                                                "docs",
+                                                                                "markdown"
+                                                                            ],
+                                                                "secondary":  [
+                                                                                  "api"
+                                                                              ],
+                                                                "avoid":  [
+                                                                              "code"
+                                                                          ]
+                                                            },
+                                         "required_skills":  [
+                                                                 "summarization",
+                                                                 "1c-platform-docs",
+                                                                 "skill-enforcement"
+                                                             ],
+                                         "description":  "Tech Writer (copy 1)"
+                                     },
+                   "skill-surgeon":  {
+                                         "model":  "tokenrouter/z-ai/glm-5.3-free",
+                                         "role":  "skill-surgeon",
+                                         "permissions":  [
+                                                             "edit",
+                                                             "bash",
+                                                             "read",
+                                                             "glob",
+                                                             "grep",
+                                                             "skill"
+                                                         ],
+                                         "specialization":  {
+                                                                "primary":  [
+                                                                                "skills",
+                                                                                "tools"
+                                                                            ],
+                                                                "secondary":  [
+                                                                                  "webfetch"
+                                                                              ],
+                                                                "avoid":  [
+                                                                              "code"
+                                                                          ]
+                                                            },
+                                         "required_skills":  [
+                                                                 "1c-dev",
+                                                                 "1c-query",
+                                                                 "1c-bsp-api",
+                                                                 "1c-storage-ops",
+                                                                 "1c-config-router",
+                                                                 "windows-safety",
+                                                                 "model-router",
+                                                                 "performance-scoring",
+                                                                 "self-healing",
+                                                                 "summarization",
+                                                                 "memory-search",
+                                                                 "clean-code",
+                                                                 "skill-enforcement",
+                                                                 "plugin-system"
+                                                             ],
+                                         "description":  "РС‰РµС‚, СЃРєР°С‡РёРІР°РµС‚, СЃРѕР·РґР°С‘С‚ СЃРєРёР»Р»С‹ РїРѕРґ Р»СЋР±СѓСЋ С‚РµС…РЅРѕР»РѕРіРёСЋ"
+                                     },
+                   "legal-advisor":  {
+                                         "model":  "tokenrouter/z-ai/glm-5.3-free",
+                                         "role":  "legal-advisor",
+                                         "permissions":  [
+                                                             "read",
+                                                             "glob",
+                                                             "grep",
+                                                             "webfetch"
+                                                         ],
+                                         "specialization":  {
+                                                                "primary":  [
+                                                                                "laws",
+                                                                                "contracts",
+                                                                                "taxes"
+                                                                            ],
+                                                                "secondary":  [
+                                                                                  "api"
+                                                                              ],
+                                                                "avoid":  [
+                                                                              "code"
+                                                                          ]
+                                                            },
+                                         "required_skills":  [
+                                                                 "1c-platform-docs",
+                                                                 "summarization",
+                                                                 "skill-enforcement"
+                                                             ],
+                                         "description":  "Legal Advisor"
+                                     },
+                   "smm-strategist":  {
+                                          "model":  "tokenrouter/z-ai/glm-5.3-free",
+                                          "role":  "smm-strategist",
+                                          "permissions":  [
+                                                              "read",
+                                                              "glob",
+                                                              "grep",
+                                                              "webfetch"
+                                                          ],
+                                          "specialization":  {
+                                                                 "primary":  [
+                                                                                 "promotion",
+                                                                                 "target-audience",
+                                                                                 "funnel"
+                                                                             ],
+                                                                 "secondary":  [
+                                                                                   "webfetch"
+                                                                               ],
+                                                                 "avoid":  [
+                                                                               "code"
+                                                                           ]
+                                                             },
+                                          "required_skills":  [
+                                                                  "memory-search",
+                                                                  "performance-scoring",
+                                                                  "skill-enforcement"
+                                                              ],
+                                          "description":  "SMM Strategist"
+                                      }
+               }
 }

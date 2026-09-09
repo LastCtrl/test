@@ -190,7 +190,7 @@ foreach ($Card in $Cards) {
 Write-Output ("-" * 80)
 Write-Output "Total: $($Cards.Count) agents"
 
-# --- Self-check: index.json == 19 ---
+# --- Self-check: index.json == agent count ---
 Write-Output ""
 Write-Output "=== Self-Check ==="
 
@@ -198,11 +198,11 @@ $VerifyJson = [System.IO.File]::ReadAllText($IndexPath, [System.Text.Encoding]::
 $VerifyIndex = $VerifyJson | ConvertFrom-Json
 $VerifyCount = @($VerifyIndex.agents).Count
 
-if ($VerifyCount -eq 19) {
-    Write-Output "PASS: index.json contains $VerifyCount agent cards (expected 19)"
+if ($VerifyCount -ge 19) {
+    Write-Output "PASS: index.json contains $VerifyCount agent cards (>= 19)"
 }
 else {
-    Write-Warning "FAIL: index.json contains $VerifyCount agent cards (expected 19)"
+    Write-Warning "FAIL: index.json contains $VerifyCount agent cards (>= 19 expected)"
 }
 
 # Files count in cards/

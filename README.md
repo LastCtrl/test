@@ -1,6 +1,6 @@
 # agent-hq
 
-Система оркестрации команды из 19 ИИ-агентов поверх opencode: team-lead декомпозирует задачи и делегирует субагентам, всё на бесплатных моделях, с полной наблюдаемостью и самовосстановлением.
+Система оркестрации команды из **30 ИИ-агентов** поверх opencode: team-lead + product-manager (dual-agent) декомпозируют задачи и делегируют 28 субагентам, всё на бесплатных моделях, с полной наблюдаемостью, самовосстановлением и параллельными worktree.
 
 ---
 
@@ -25,7 +25,7 @@
 
 ## Что это
 
-**agent-hq** — это мультиагентная система, построенная на [opencode](https://opencode.ai). Один team-lead получает задачу от пользователя, декомпозирует её и параллельно делегирует 19 специализированным субагентам. Каждый агент работает в своём контексте, пишет результаты в общую шину (CONTEXT-BUFFER.md), а проверяющие агенты (QA, code-reviewer, security-auditor) гарантируют качество перед финальным коммитом.
+**agent-hq** — это мультиагентная система, построенная на [opencode](https://opencode.ai). **Dual-agent delegation**: team-lead + product-manager работают вместе на каждом запросе, декомпозируют задачу и параллельно делегируют 28 специализированным субагентам. Каждый агент работает в своём контексте (git worktree), пишет результаты в общую шину (CONTEXT-BUFFER.md), а проверяющие агенты (QA, code-reviewer, security-auditor) гарантируют качество перед финальным коммитом.
 
 Все модели бесплатные. Стоимость: $0.
 
@@ -41,15 +41,15 @@
 | `AGENTS.md` | Правила работы агентов: модели, роли, протокол, retry, команды |
 | `CONTEXT-BUFFER.md` | Шина контекста — обмен сообщениями между агентами (последние 30 строк читаются перед задачей) |
 | `opencode.json` | Главный конфиг: агенты, MCP context7, команды, модули, память, workspace |
-| `.opencode/agents/*.json` | 19 конфигов агентов (name, model, permissions, prompt) |
-| `.opencode/agents/prompts/*.txt` | 19 промптов агентов (подгружаются через `{file:...}`) |
-| `.opencode/agents/registry.json` | Реестр агентов со specialization matrix |
+| `.opencode/agents/*.json` | 30 конфигов агентов (name, model, permissions, prompt) |
+| `.opencode/agents/prompts/*.txt` | 30 промптов агентов (подгружаются через `{file:...}`) |
+| `.opencode/agents/registry.json` | Реестр агентов со specialization matrix + required_skills |
 | `.opencode/plugins/tracer.js` | Плагин distributed tracing → traces.jsonl |
 | `.opencode/plugins/scoring.js` | Плагин performance scoring → performance.jsonl |
-| `.agents/scripts/` | 6 скриптов: sync-agents.ps1, verify-phase.ps1, health-check.ps1, message-queue.ps1, create-project.ps1, inbox-poller.ps1 |
-| `.agents/skills/` | 6 скиллов: memory-search, model-router, performance-scoring, plugin-system, self-healing, summarization |
+| `.agents/scripts/` | 7 скриптов: sync-agents.ps1, verify-phase.ps1, health-check.ps1, message-queue.ps1, create-project.ps1, inbox-poller.ps1, session-recovery.ps1 |
+| `.agents/skills/` | 24 скилла: 17 для 1С + 7 core + 4 superpowers (spec/plan/implement/test) |
 | `.agents/tasks/` | Задачи для агентов (текстовые файлы) |
-| `.agents/worktrees/dev-1/` | Git worktree песочница для dev-1 (выдаётся по потребности) |
+| `.agents/worktrees/` | **30 git worktrees** — изолированные песочницы для каждого агента |
 | `.memory/` | Memory Bank: activeContext.md, progress.md, decisionLog.md, productContext.md, systemPatterns.md |
 | `.memory/inbox/{agent}/` | Входящие задачи агенту (JSON) |
 | `.memory/outbox/` | Результаты задач (JSON, status: done) |
@@ -57,7 +57,7 @@
 | `.memory/archive/` | Архив сообщений старше 7 дней |
 | `.memory/traces/` | Логи трейсинга |
 | `.memory/reports/` | Отчёты (/team-report, /cost-report) |
-| `projects/` | Директория проектов (test-project, news-bot, pong-advanced) |
+| `projects/` | Директория проектов (test-project, news-bot, pong-advanced, 1СBuh) |
 
 ### Структура команды
 
@@ -65,55 +65,76 @@
 Пользователь
     │
     ▼
-Team Lead (оркестратор)
+Dual-Agent: Team Lead + Product Manager (параллельно через task tool)
     │
-    ├── task tool → 19 субагентов (параллельно)
+    ├── task tool → 28 субагентов (параллельно)
     │       │
-    │       ├── Разработка: dev-1, dev-2, dev-3, frontend, backend, db-specialist, mobile-dev, devops, integration-specialist, data-engineer
-    │       ├── Качество: qa-engineer, code-reviewer, security-auditor
-    │       ├── Управление: product-manager, tech-writer, skill-surgeon
-    │       └── Спец: legal-advisor, smm-strategist, team-lead
+    │       ├── Разработка: dev-1×2, dev-2×2, dev-3×2, frontend, backend×2, db-specialist, mobile-dev, devops, integration-specialist, data-engineer
+    │       ├── Качество: qa-engineer×2, code-reviewer×2, security-auditor×2
+    │       ├── Управление: product-manager, tech-writer×2, skill-surgeon
+    │       └── Спец: legal-advisor, smm-strategist, team-lead×4
     │
-    ├── CONTEXT-BUFFER.md (шина)
+    ├── CONTEXT-BUFFER.md (шина сообщений, self-report с SKILLS_LOADED/MCP_USED)
     ├── .memory/ (Memory Bank — контекст между сессиями)
-    ├── .memory/inbox/{agent}/ (задачи агентам)
+    ├── .memory/inbox/{agent}/ (задачи агентам через файловые очереди)
     ├── .memory/outbox/ (результаты)
-    └── .agents/skills/ (скиллы, подгружать перед работой)
+    ├── .agents/skills/ (24 скилла, подгружать перед работой — обязательно)
+    ├── .agents/locks/ (файловые блокировки для scheduler'а)
+    └── .agents/scripts/session-recovery.ps1 (автовосстановление при lock conflict)
 ```
 
 ---
 
 ## Как это работает
 
-### Основной цикл
+### Основной цикл (Dual-Agent Delegation)
 
 ```
-1. Пользователь пишет задачу team-lead'у
-2. Team-lead декомпозирует задачу на подзадачи
-3. Параллельно делегирует независимые подзадачи через task tool
-4. Каждый агент:
+1. Пользователь пишет задачу в TUI opencode (build/plan режим)
+2. Primary agent запускает ПАРАЛЛЕЛЬНО:
+   task "Analyze requirements: <task>" subagent_type=product-manager
+   task "Create orchestration plan: <task>" subagent_type=team-lead
+3. product-manager выдаёт: User Stories, Acceptance Criteria, MoSCoW, NFR, Stack
+4. team-lead выдаёт: Architecture, Tech Stack, Delegation Plan, Risks
+5. Оба читают вывод друг друга в CONTEXT-BUFFER.md → синхронизация
+6. team-lead параллельно делегирует исполнителей через task tool:
+   task "Create UI: ..." subagent_type=frontend
+   task "Create API: ..." subagent_type=backend
+   task "Design DB: ..." subagent_type=db-specialist
+   ...
+7. Каждый агент в своём worktree:
    a. Читает последние 30 строк CONTEXT-BUFFER.md
-   b. Подгружает нужный скилл (skills-first)
+   b. ОБЯЗАТЕЛЬНО: skill <нужные-скиллы> → context7 (библиотеки) → sequential-thinking (>3 шага)
    c. Выполняет задачу
-   d. Пишет результат в CONTEXT-BUFFER.md
-5. Проверяющие агенты:
-   - qa-engineer: тесты, edge cases
-   - code-reviewer: ревью кода (read-only)
-   - security-auditor: безопасность (read-only)
-6. Финальный коммит
+   d. Пишет self-report в CONTEXT-BUFFER.md (SKILLS_LOADED, MCP_USED, COMPLIANCE: true)
+8. Проверяющие агенты (параллельно):
+    - qa-engineer: тесты, edge cases
+    - code-reviewer: ревью кода (read-only)
+    - security-auditor: безопасность (read-only)
+9. Финальный коммит + PR
+```
+
+### Auto-Recovery (Session Recovery)
+
+При конфликте файловых блокировок (`Busy: FileSystem.writeFile ... info/exclude`):
+
+```
+1. session-recovery.ps1 (фоновый демон) обнаруживает lock conflict в трейсах
+2. Находит свободную копию team-lead (team-lead-1/2/3)
+3. Создаёт задачу в inbox свободной копии с флагом recovery=true
+4. Записывает в CONTEXT-BUFFER.md: auto-recovery delegation
+5. Новая сессия поднимается на копии → продолжает работу
 ```
 
 ### Inbox Poller (автозапуск воркеров)
 
-`inbox-poller.ps1` — мониторит `.memory/inbox/{agent}/*.json` и автоматически запускает агентов через `opencode run --agent`:
+`inbox-poller.ps1` — мониторит `.memory/inbox/{agent}/*.json` и автоматически запускает агентов:
 
 | Флаг | Описание |
 |---|---|
 | `-Once` | Однократный прогон (проверить и выйти) |
 | `-IntervalSeconds N` | Интервал проверки в секундах (по умолчанию 30) |
 | `-DryRun` | Без реального запуска агентов (только проверка логики) |
-
-**Поток**: inbox → opencode run --agent → outbox (status: done) → archive | dead-letter (при ошибке)
 
 ---
 
@@ -126,7 +147,7 @@ opencode
 
 ### Примеры использования
 
-**Обычная задача текстом:**
+**Обычная задача (dual-agent запустится автоматически):**
 ```
 Создай функцию slugify в src/utils/string-utils.js, которая превращает строку в URL-friendly вид.
 ```
@@ -138,16 +159,14 @@ opencode
 
 **Команды:**
 ```
-/status          — статус системы
-/sync            — синхронизация контекста из Memory Bank
-/new-project     — создать новый проект из шаблона
+/status          — статус системы (health-check + verify-phase)
+/sync            — синхронизация контекста из Memory Bank + registry
+/new-project     — создать новый проект из шаблона (create-project.ps1)
 /cost-report     — отчёт по стоимости (все модели бесплатные)
 /team-report     — отчёт по работе команды
 ```
 
 ### После правки конфигов
-
-Если изменились `.opencode/agents/*.json`:
 
 ```powershell
 .\.agents\scripts\sync-agents.ps1
@@ -160,10 +179,9 @@ opencode
 
 | Модель | Роль | Скорость | Используется |
 |---|---|---|---|
-| `opencode/mimo-v2.5-free` | Основная (качество, русский) | 5-6 сек | dev-1, dev-3, frontend, legal-advisor, product-manager, skill-surgeon, smm-strategist, team-lead, tech-writer |
-| `opencode/nemotron-3.5-lightning-free` | Быстрая (рутина) | 3-4 сек | backend, data-engineer, db-specialist, dev-2, devops, integration-specialist, mobile-dev |
-| `opencode/nemotron-3-ultra-free` | Запасная (глубокий анализ) | 7-8 сек | резервная |
-| `opencode/nemotron-3-ultra-free` | Проверяющие | varies | qa-engineer, code-reviewer, security-auditor |
+| `tokenrouter/z-ai/glm-5.3-free` | Основная (качество, русский) | 5-6 сек | dev-1, dev-3, frontend, legal-advisor, product-manager, skill-surgeon, smm-strategist, team-lead, tech-writer, team-lead-1/2/3, dev-1-1, dev-2-1, dev-3-1, backend-1, qa-engineer-1, security-auditor-1, code-reviewer-1, tech-writer-1 |
+| `opencode/nemotron-3.5-lightning-free` | Быстрая (рутина) | 3-4 сек | backend, data-engineer, db-specialist, dev-2, devops, integration-specialist, mobile-dev, dev-2-1 |
+| `opencode/nemotron-3-ultra-free` | Запасная (глубокий анализ) | 7-8 сек | резервная / escalation |
 
 **Запрещены** (нет в подписке): kimi-k2.x, glm-5.x, deepseek-v4-pro/flash, qwen-plus, minimax-m2.x/m3
 
@@ -177,33 +195,26 @@ opencode
 
 | Сервер | Назначение |
 |--------|-----------|
-| **context7** | Актуальная документация библиотек в реальном времени: свежие API, примеры, миграции — вместо устаревших знаний модели |
-| **hermes-atlas-mcp** | Каталог 100+ скиллов/тулов экосистемы Hermes Atlas (Nous Research) — поиск и установка готовых скиллов |
-| **sequential-thinking** | Структурированное пошаговое планирование сложных задач |
-
-Конфигурация:
-
-```json
-"mcp": {
-    "context7":            { "type": "local", "command": ["npx", "-y", "@upstash/context7-mcp"], "enabled": true },
-    "hermes-atlas-mcp":    { "type": "local", "command": ["npx", "-y", "hermes-atlas-mcp"], "enabled": true },
-    "sequential-thinking": { "type": "local", "command": ["npx", "-y", "@modelcontextprotocol/server-sequential-thinking"], "enabled": true }
-}
-```
+| **context7** | Актуальная документация библиотек в реальном времени: свежие API, примеры, миграции |
+| **hermes-atlas-mcp** | Каталог 100+ скиллов/тулов экосистемы Hermes Atlas — поиск и установка готовых скиллов |
+| **sequential-thinking** | Структурированное пошаговое планирование сложных задач (>3 шага) |
 
 ---
 
 ## Правила эффективности
 
-1. **Team Lead не пишет код** — только конфиги, документация, правки 1-2 строк
-2. **Независимые задачи — строго параллельно** — один вызов task = несколько агентов одновременно
-3. **Правило лимит-3**: попытки 1-2 тем же агентом (полный лог ошибок + путь к скиллу в ТЗ); попытка 3 — другой агент + более сильная модель (lightning → mimo → ultra); после третьей неудачи — эскалация пользователю со всей историей попыток
-4. **Skills-first** — подгрузить скилл из `.agents/skills/` ДО работы; нет нужного → skill-surgeon
-5. **Никаких секретов** — пароли, токены, ключи никогда в код или логи
-6. **Перед сдачей** — обязательный прогон qa-engineer + code-reviewer + security-auditor
-7. **PowerShell** — не использовать `&&` (сломано в Windows), использовать `;` для разделения команд
-8. **CONTEXT-BUFFER.md** — перед задачей читать последние 30 строк, после — писать результат
-9. **Мини-допрос** — при приёме задачи от пользователя: задать вопросы одним батчем (с вариантами ответов где возможно), зафиксировать в ТЗ, дальше работать молча до результата или blocker'а
+1. **Dual-Agent: Team Lead + Product Manager** — на КАЖДОМ запросе запускаются вместе параллельно
+2. **Team Lead не пишет код** — только конфиги, документация, правки 1-2 строк
+3. **Независимые задачи — строго параллельно** — один вызов task = несколько агентов одновременно
+4. **Правило лимит-3**: попытки 1-2 тем же агентом (полный лог ошибок + путь к скиллу в ТЗ); попытка 3 — другой агент + более сильная модель (lightning → mimo → ultra); после третьей неудачи — эскалация пользователю со всей историей
+5. **Skills-first** — подгрузить скилл из `.agents/skills/` ДО работы (skill tool); нет нужного → skill-surgeon
+6. **MCP обязательно**: context7 для библиотек, sequential-thinking для >3 шагов, hermes-atlas для новых скиллов
+7. **Self-report mandatory**: каждый агент пишет SKILLS_LOADED, MCP_USED, COMPLIANCE: true в CONTEXT-BUFFER.md
+7. **Никаких секретов** — пароли, токены, ключи никогда в код или логи
+8. **Перед сдачей** — обязательный прогон qa-engineer + code-reviewer + security-auditor
+9. **PowerShell** — не использовать `&&` (сломано в Windows), использовать `;` для разделения команд
+10. **CONTEXT-BUFFER.md** — перед задачей читать последние 30 строк, после — писать результат
+11. **Мини-допрос** — при приёме задачи от пользователя: задать вопросы одним батчем (с вариантами ответов), зафиксировать в ТЗ, дальше работать молча до результата или blocker'а
 
 ---
 
@@ -212,10 +223,10 @@ opencode
 После каждой приёмки задачи тимлид записывает оценку в `.memory/ratings.jsonl`:
 
 ```json
-{"model":"mimo-v2.5-free","agent":"dev-1","task_type":"feature","grade":8,"date":"2026-08-26"}
+{"model":"glm-5.3-free (mimo недоступен: квота opencode исчерпана)","agent":"dev-1","task_type":"feature","grade":8,"date":"2026-08-26"}
 ```
 
-**Поля:** `model` (модель), `agent` (кто выполнял), `task_type` (feature/bugfix/refactor/doc), `grade` (1-10), `date` (YYYY-MM-DD).
+**Поля:** `model`, `agent`, `task_type` (feature/bugfix/refactor/doc), `grade` (1-10), `date`.
 
 **Таблица лидеров:**
 
@@ -245,53 +256,42 @@ opencode
 ## Статус реализации
 
 ### A. Инфраструктура ✅
-
-Git-репо, .gitignore, структура папок, git worktree dev-1 — всё на месте.
+Git-репо, .gitignore, структура папок, **30 git worktrees** — всё на месте.
 
 ### B. Конфигурация ✅
-
-19 агентов зарегистрированы в opencode.json. Делегирование работает end-to-end (build → task → subagent → ответ).
+**30 агентов** зарегистрированы в opencode.json. Dual-agent делегирование работает end-to-end.
 
 ### C. Команды ✅
-
-/status, /sync, /new-project, /cost-report, /team-report — все протестированы.
+`/status`, `/sync`, `/new-project`, `/cost-report`, `/team-report` — все протестированы.
 
 ### D. Шина контекста и память ✅
-
 Memory Bank (5 файлов), CONTEXT-BUFFER.md, AGENTS.md, message-queue.ps1 — созданы и работают.
 
 ### E. Кодовые фичи ✅
-
-- Distributed Tracing: tracer.js → traces.jsonl (живые данные)
+- Distributed Tracing: tracer.js → traces.jsonl
 - Performance Scoring: scoring.js → performance.jsonl
 - Health Monitoring: health-check.ps1 — HEALTH: PASS
-- Self-Healing протокол: правила в AGENTS.md + fallback-маппинг
-- Context Compression: встроенная compaction opencode + summarization skill
+- Session Recovery: session-recovery.ps1 — автовосстановление при lock conflict
+- Skills+MCP Enforcement: compliance-gate.ps1 в health-check
+- Context Compression: compaction opencode + summarization skill
 
 ### F. Проверки и ревью ✅
-
 - verify-phase.ps1: 29/29 PASSED
-- Code review infra: APPROVED, 3 замечания исправлены
-- Параллельный прогон 3 агентов через Start-Job — работает
+- Code review infra: APPROVED
+- Параллельный прогон агентов — работает
 
 ### G. Inbox Poller ✅
-
-- inbox-poller.ps1: E2E тест 9/9 PASS
-- Code review: APPROVED 8/10, 0 критических
-- Полный цикл: inbox → агент → outbox → archive
-
-### Живой пример: string-utils
-
-Цикл разработки подтверждён: dev-1 написал → qa-engineer нашёл баг slugify (кириллица) → dev-2 исправил (Unicode regex) → qa-engineer принял 6/6 PASS → APPROVED.
+- inbox-poller.ps1: E2E тест PASS
+- Code review: APPROVED
 
 ---
 
 ## Эксперименты
 
 | Эксперимент | Описание | Статус |
-|-------------|----------|--------|
-| **OmniRoute** | Шлюз-ротатор бесплатных моделей (350+ провайдеров, авто-fallback). Инструкция: `docs/omnirout-setup.md` | Ожидает ключей провайдеров (OpenRouter, Groq) |
-| **codebase-memory-mcp** | MCP-сервер для семантического поиска по кодовой базе | Пауза: корпоративный Kaspersky блокирует установку (тикет в ИБ не решён) |
+|---|---|---|
+| **OmniRoute** | Шлюз-ротатор бесплатных моделей (350+ провайдеров, авто-fallback) | Ожидает ключей провайдеров |
+| **codebase-memory-mcp** | MCP-сервер для семантического поиска по кодовой базе | Пауза: Kaspersky блокирует |
 
 ---
 
@@ -299,14 +299,14 @@ Memory Bank (5 файлов), CONTEXT-BUFFER.md, AGENTS.md, message-queue.ps1 �
 
 | Преимущество | Описание |
 |---|---|
-| **$0 стоимость** | Все модели бесплатные, cost-report всегда показывает $0 |
-| **Полная наблюдаемость** | Traces (traces.jsonl) + performance (performance.jsonl) + health-check |
-| **Самовосстановление** | Протокол retry → откат → другой агент → эскалация |
-| **Работа в одном окне** | Один TUI opencode, все агенты доступны через task tool |
-| **Память между сессиями** | Memory Bank: activeContext, progress, decisionLog, productContext, systemPatterns |
-| **Параллелизм** | Независимые задачи выполняются одновременно |
-| **Безопасность** | security-auditor (read-only), секреты запрещены,dead-letter для ошибок |
-| **Автоматизация** | inbox-poller.ps1 для автозапуска воркеров |
+| **$0 стоимость** | Все модели бесплатные |
+| **Полная наблюдаемость** | Traces + performance + health-check + compliance |
+| **Самовосстановление** | Session recovery + retry protocol + escalation |
+| **Dual-Agent качество** | TL + PM вместе = лучшие requirements + architecture |
+| **Параллелизм** | 30 worktrees + task tool параллелизм |
+| **Память между сессиями** | Memory Bank (5 файлов) |
+| **Безопасность** | Read-only проверяющие, секреты запрещены |
+| **Автоматизация** | inbox-poller + session-recovery + scheduler |
 
 ---
 
@@ -314,12 +314,10 @@ Memory Bank (5 файлов), CONTEXT-BUFFER.md, AGENTS.md, message-queue.ps1 �
 
 | Ограничение | Описание |
 |---|---|
-| Кэш конфига | После правки `.opencode/agents/*.json` нужно перезапускать opencode (кэш при старте сессии) |
-| Нет демонов | inbox-poller.ps1 работает вручную или через `-IntervalSeconds`; нет фонового сервиса |
-| Worktree только у dev-1 | Остальные агенты делят основную working copy; worktree выдаётся по потребности |
-| Кириллица в консоли | PowerShell 5.1 может отображать UTF-8 эмодзи кракозябрами; файлы при этом корректны (UTF-8 no BOM) |
-| Message-queue archive | Чистит только outbox; inbox-файлы архивируются вручную |
-| nemotron-3-ultra-free | Проверяющие агенты (qa-engineer, code-reviewer, security-auditor) — fallback после ухода ox-alpha-free |
+| Кэш конфига | После правки `.opencode/agents/*.json` нужно перезапускать opencode |
+| Нет фоновых демонов | inbox-poller / session-recovery работают вручную или по интервалу |
+| Кириллица в консоли | PowerShell 5.1 может отображать UTF-8 эмодзи кракозябрами |
+| nemotron-3-ultra-free | Проверяющие — fallback после ухода ox-alpha-free |
 
 ---
 
@@ -327,12 +325,11 @@ Memory Bank (5 файлов), CONTEXT-BUFFER.md, AGENTS.md, message-queue.ps1 �
 
 | Задача | Описание |
 |---|---|
-| Worktree для всех агентов | Расширить `git worktree add` на dev-2, dev-3, frontend, backend и др. |
-| Веб-дашборд | Визуализация performance.jsonl: score/duration по сессиям, топ агентов |
-| Автозапуск poller | Регистрация inbox-poller.ps1 в Windows Task Scheduler как фоновый сервис |
-| Расширение MCP | Добавить fetch/search серверы для веб-поиска и скрапинга |
-| CI/CD | GitHub Actions с прогоном verify-phase.ps1 на каждый push |
-| Cost dashboard | Расширенный отчёт с распределением по моделям (когда появятся платные) |
+| Task Scheduler | Автоматическое назначение задач свободным агентам (registry-state.json + locks) |
+| Веб-дашборд | Визуализация performance.jsonl |
+| CI/CD | GitHub Actions с verify-phase.ps1 |
+| Buffer Archive | Архивация CONTEXT-BUFFER.md каждые 100 строк |
+| Project Isolation | create-project.ps1 создаёт worktree + назначает agents |
 
 ---
 
@@ -340,4 +337,8 @@ Memory Bank (5 файлов), CONTEXT-BUFFER.md, AGENTS.md, message-queue.ps1 �
 
 Сгенерировано мультиагентной командой agent-hq.
 
-19 агентов | opencode | бесплатные модели | $0
+**30 агентов** | **opencode** | **бесплатные модели** | **$0**
+
+---
+
+**GitHub PR:** https://github.com/LastCtrl/test/pull/new/feature/skills-mcp-enforcement

@@ -1,0 +1,9 @@
+﻿{
+    "id":  "test-001",
+    "created":  "2026-09-04T09:09:40",
+    "payload":  "Create a simple test file test_agent_output.txt with content \u0027Hello from inbox poller test\u0027",
+    "to":  "dev-1",
+    "from":  "team-lead",
+    "type":  "task",
+    "priority":  "normal"
+}

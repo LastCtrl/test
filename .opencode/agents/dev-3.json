@@ -1,7 +1,7 @@
 {
   "name": "dev-3",
   "description": "Developer #3 — надёжный разработчик. Внимание к граничным случаям и обработке ошибок.",
-  "model": "opencode/mimo-v2.5-free",
+        "model": "tokenrouter/z-ai/glm-5.3-free",
   "mode": "subagent",
   "temperature": 0.2,
   "permissions": [

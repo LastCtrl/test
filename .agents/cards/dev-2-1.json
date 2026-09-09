@@ -1,0 +1,1 @@
+{"name":"dev-2-1","model":"tokenrouter/z-ai/glm-5.3-free","mode":"subagent","role_summary":"Ты — разработчик #2 мультиагентной команды. Альтернативный подход к решению задач.","capabilities":["skills-first"],"division":"Engineering(dev-2-1)","deliverable":"Код + вывод тестов + запись в шину","success_metric":"Тесты проходят, код закоммичен","generated_at":"2026-09-09T13:26:36Z"}

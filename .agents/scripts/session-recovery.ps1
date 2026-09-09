@@ -13,6 +13,11 @@ $SnapshotsDir = Join-Path $env:LOCALAPPDATA "opencode\snapshot"
 $LockFile = Join-Path $SnapshotsDir "recovery.lock"
 $LogFile = Join-Path $SnapshotsDir "recovery.log"
 
+# Ensure directories exist
+if (-not (Test-Path $SnapshotsDir)) {
+    New-Item -ItemType Directory -Path $SnapshotsDir -Force | Out-Null
+}
+
 function Write-Log {
     param($msg)
     $timestamp = Get-Date -Format "yyyy-MM-ddTHH:mm:ss"
@@ -94,16 +99,8 @@ function Delegate-To-Copy {
 
     # Записываем в CONTEXT-BUFFER.md
     $bufferPath = "D:\Тест\agent-hq\CONTEXT-BUFFER.md"
-    $entry = @"
-[2026-09-07T$(Get-Date -Format "HH:mm:ss")] session-recovery -> $copyName:
-TYPE: update | PRIORITY: high
-CONTENT: Auto-recovery delegation from crashed session. Original task: $originalTask. Delegated to $copyName.
-SKILLS_LOADED: ["skill-enforcement", "model-router", "self-healing"]
-MCP_USED: ["context7: offline", "sequential-thinking: offline"]
-COMPLIANCE: true
-STATUS: resolved
-
-"@
+    $tsNow = Get-Date -Format "yyyy-MM-ddTHH:mm:ss"
+    $entry = "[$tsNow] session-recovery -> ${copyName}:`nTYPE: update | PRIORITY: high`nCONTENT: Auto-recovery delegation from crashed session. Original task: $originalTask. Delegated to ${copyName}.`nSKILLS_LOADED: [""skill-enforcement"", ""model-router"", ""self-healing""]`nMCP_USED: [""context7: offline"", ""sequential-thinking: offline""]`nCOMPLIANCE: true`nSTATUS: resolved`n"
     Add-Content -Path $bufferPath -Value $entry -Encoding UTF8
 }
 
@@ -140,16 +137,8 @@ function Main-Loop {
                     Write-Log "NO FREE COPY: All team-lead copies busy"
                     # Записываем blocker
                     $bufferPath = "D:\Тест\agent-hq\CONTEXT-BUFFER.md"
-                    $entry = @"
-[2026-09-07T$(Get-Date -Format "HH:mm:ss")] session-recovery -> team-lead:
-TYPE: blocker | PRIORITY: critical
-CONTENT: Lock conflict detected but ALL team-lead copies busy. Manual intervention needed.
-SKILLS_LOADED: ["skill-enforcement", "model-router", "self-healing"]
-MCP_USED: []
-COMPLIANCE: false
-STATUS: open
-
-"@
+                    $tsNow2 = Get-Date -Format "yyyy-MM-ddTHH:mm:ss"
+                    $entry = "[$tsNow2] session-recovery -> team-lead:`nTYPE: blocker | PRIORITY: critical`nCONTENT: Lock conflict detected but ALL team-lead copies busy. Manual intervention needed.`nSKILLS_LOADED: [""skill-enforcement"", ""model-router"", ""self-healing""]`nMCP_USED: []`nCOMPLIANCE: false`nSTATUS: open`n"
                     Add-Content -Path $bufferPath -Value $entry -Encoding UTF8
                 }
             }
@@ -169,8 +158,8 @@ if (Test-Path $LockFile) {
         exit 0
     }
 }
-$PID = $PID
-$PID | Out-File -FilePath $LockFile -Encoding UTF8
+$currentPid = $PID
+$currentPid | Out-File -FilePath $LockFile -Encoding UTF8
 
 try {
     if ($Daemon) {

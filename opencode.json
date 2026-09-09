@@ -4,27 +4,21 @@
     "context7": {
       "type": "local",
       "command": [
-        "npx",
-        "-y",
-        "@upstash/context7-mcp"
+        "context7-mcp.cmd"
       ],
       "enabled": true
     },
     "hermes-atlas-mcp": {
       "type": "local",
       "command": [
-        "npx",
-        "-y",
-        "hermes-atlas-mcp"
+        "hermes-atlas-mcp.cmd"
       ],
       "enabled": true
     },
     "sequential-thinking": {
       "type": "local",
       "command": [
-        "npx",
-        "-y",
-        "@modelcontextprotocol/server-sequential-thinking"
+        "mcp-server-sequential-thinking.cmd"
       ],
       "enabled": true
     },
@@ -38,7 +32,7 @@
         "start-mcp-server",
         "--project-from-cwd"
       ],
-      "enabled": true,
+      "enabled": false,
       "timeout": 30000,
       "cwd": ".",
       "environment": {

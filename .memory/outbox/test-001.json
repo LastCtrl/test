@@ -1,0 +1,12 @@
+﻿{
+    "id":  "test-001",
+    "type":  "result",
+    "startedAt":  "2026-09-09T10:04:02",
+    "response":  "\u001b[93m\u001b[1m! \u001b[0m agent \"dev-1\" not found. Falling back to default agent \u001b[0m \u003e build ┬╖ z-ai/glm-5.3-free \u001b[0m \u001b[93m\u001b[1m! \u001b[0mpermission requested: external_directory (D:\\╨в╨╡╤Б╤В\\agent-hq\\*); auto-rejecting \u001b[0mтЬЧ \u001b[0mGet-Content -LiteralPath \"D:\\╨в╨╡╤Б╤В\\agent-hq\\CONTEXT-BUFFER.md\" -Tail 30 failed \u001b[91m\u001b[1mError: \u001b[0mThe user rejected permission to use this specific tool call.",
+    "finishedAt":  "2026-09-09T10:05:02",
+    "payload":  "Create a simple test file test_agent_output.txt with content \u0027Hello from inbox poller test\u0027",
+    "from":  "team-lead",
+    "status":  "done",
+    "priority":  "normal",
+    "to":  "dev-1"
+}

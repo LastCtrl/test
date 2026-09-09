@@ -1,0 +1,9 @@
+{
+  "name": "{name}",
+  "type": "{type}",
+  "priority": "normal",
+  "agents": [],
+  "created_at": "{created_at}",
+  "status": "active",
+  "description": ""
+}

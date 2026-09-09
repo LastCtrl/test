@@ -253,9 +253,38 @@ for ($i = 0; $i -lt $agentEntries.Count; $i++) {
 [void]$agentLines.Add('  }')
 $agentJsonBlock = $agentLines -join "`n"
 
-# 3. Найти верхнеуровневый ключ "agents" (2 пробела отступ)
-$agentPattern = '(?m)^ {2}"agents"\s*:\s*\{'
+# 3. Найти верхнеуровневый ключ "agents" (любой отступ, но ТОЛЬКО top-level)
+#    Устойчиво к отступам; дубль-защита: секция "agent" (ед.ч., легаси-баг) удаляется
+$agentPattern = '(?m)^[ \t]*"agents"\s*:\s*\{'
 $agentMatch = [regex]::Match($configText, $agentPattern)
+
+# Легаси-дубль: удалить top-level "agent" (единственное число) если существует
+$legacyPattern = '(?m)^[ \t]*"agent"\s*:\s*\{'
+$legacyMatch = [regex]::Match($configText, $legacyPattern)
+if ($legacyMatch.Success) {
+    $legacyBraceStart = $legacyMatch.Index + $legacyMatch.Length - 1
+    $legacyBraceEnd = Find-JsonBlockEnd -text $configText -startBraceIndex $legacyBraceStart
+    if ($legacyBraceEnd -ge 0) {
+        # Удаляем секцию + возможный запятый хвост перед ней
+        $delFrom = $legacyMatch.Index
+        $delTo = $legacyBraceEnd + 1
+        $segment = $configText.Substring($delFrom, $delTo - $delFrom)
+        $before = $configText.Substring(0, $delFrom).TrimEnd()
+        $needsCommaAfter = -not $before.EndsWith(",")
+        $replacement = if ($needsCommaAfter -and $before.Length -gt 0) { "," } else { "" }
+        # если после удаляемой секции идёт } (конец файла) — убрать ведущую запятую replacement
+        $after = $configText.Substring($delTo)
+        if ($after.TrimStart().StartsWith("}") -and $replacement -eq ",") { $replacement = "" }
+        # если перед секцией нет запятой и после есть другой ключ — вставить запятую
+        if ($before.Length -gt 0 -and -not $before.EndsWith(",") -and -not $after.TrimStart().StartsWith("}")) {
+            $replacement = ","
+        } else { $replacement = "" }
+        $configText = $configText.Substring(0, $delFrom) + $replacement + "`n" + $after.TrimStart("`n","`r")
+        Write-Warning "Legacy duplicate 'agent' section removed"
+        # Повторно ищем agents (позиции сместились)
+        $agentMatch = [regex]::Match($configText, $agentPattern)
+    }
+}
 
 if (-not $agentMatch.Success) {
     Write-Warning "Top-level 'agents' key not found — appending before final }"

@@ -353,7 +353,7 @@
       "role": "smm-strategist",
       "permissions": ["read", "glob", "grep", "webfetch"],
       "specialization": {
-        "primary": ["promotion", "ЦА", "воронка"],
+        "primary": ["promotion", "target-audience", "funnel"],
         "secondary": ["webfetch"],
         "avoid": ["code"]
       },

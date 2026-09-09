@@ -1,7 +1,7 @@
 {
   "name": "dev-1-1",
   "description": "Developer #1 (copy 1) — универсальный разработчик для параллельной работы.",
-  "model": "opencode/mimo-v2.5-free",
+        "model": "tokenrouter/z-ai/glm-5.3-free",
   "mode": "subagent",
   "temperature": 0.2,
   "permissions": ["edit", "bash", "read", "glob", "grep", "skill"],

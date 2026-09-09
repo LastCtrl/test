@@ -36,3 +36,8 @@
 - ADR-011: nemotron-3-ultra-free как модель всех проверяющих (27.08)
 - ADR-012: Протокол §3.1-3.3 — оценка времени + x2 timeout + верификация не тимлидом (27.08)
 - ADR-013: cleanup-garbage.ps1 автоочистка мусора репо (27.08)
+
+## US-015 Cross-Project Knowledge
+- **Статус**: knowledge-index.md создан (8 записей: PAT-001..008)
+- **Промпты**: team-lead.txt + team-lead-1/2/3.txt обновлены — добавлена секция Cross-Project Knowledge (US-015)
+- **Записи**: ADR-001 Memory Bank, ADR-002 Agent Communication, ADR-003 Sandbox worktree, ADR-004 Skills-first, ADR-005 Model Router, PAT-006 PowerShell encoding, PAT-007 Busy lock recovery, PAT-008 TokenRouter openai-compatible

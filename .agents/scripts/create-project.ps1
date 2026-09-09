@@ -40,7 +40,7 @@ New-Item -ItemType Directory -Path $projectDir -Force | Out-Null
 Write-Host "Created project: $projectDir" -ForegroundColor Green
 
 # ============================================================
-# NEW: Create agent worktrees if requested
+# Create agent worktrees if requested
 # ============================================================
 function New-AgentWorktree {
     param(
@@ -48,13 +48,11 @@ function New-AgentWorktree {
         [string]$ProjectName
     )
 
-    # .agents directory is the parent of the script's parent directory
-$baseAgentsDir = (Split-Path $PSScriptRoot -Parent)
+    $baseAgentsDir = (Split-Path $PSScriptRoot -Parent)
     $worktreesDir = Join-Path $baseAgentsDir "worktrees"
     $gitExe = Get-Command git -ErrorAction SilentlyContinue
     $gitAvailable = $null -ne $gitExe
 
-    # Determine which agents to process
     if ($AgentNames.Count -eq 0) {
         Write-Host "No agents specified for worktree creation." -ForegroundColor Yellow
         return
@@ -65,19 +63,16 @@ $baseAgentsDir = (Split-Path $PSScriptRoot -Parent)
     foreach ($agent in $AgentNames) {
         $agentWorktreeDir = Join-Path $worktreesDir $agent
 
-        # Check if worktree already exists (idempotency)
         if (Test-Path $agentWorktreeDir) {
             Write-Host "WARNING: Worktree already exists for agent '$agent', skipping (idempotent): $agentWorktreeDir" -ForegroundColor Yellow
             continue
         }
 
-        # Ensure worktrees directory exists
         if (-not (Test-Path $worktreesDir)) {
             New-Item -ItemType Directory -Path $worktreesDir -Force | Out-Null
         }
 
         if ($gitAvailable -and (Test-Path (Join-Path $baseAgentsDir ".git"))) {
-            # Git variant: create git worktree
             $branchName = "worktree\$agent\$ProjectName"
             Write-Host "Creating git worktree for agent '$agent' on branch '$branchName'" -ForegroundColor Cyan
             $gitWorktreeOk = $false
@@ -92,7 +87,6 @@ $baseAgentsDir = (Split-Path $PSScriptRoot -Parent)
                 $gitAvailable = $false
             }
             if ($gitWorktreeOk) {
-                # Copy .agents/skills and .opencode/agents into the worktree
                 $skillsSrc = Join-Path $baseAgentsDir "skills"
                 $opencodeAgentsSrc = Join-Path (Join-Path $baseDir ".opencode") "agents"
 
@@ -125,10 +119,8 @@ $baseAgentsDir = (Split-Path $PSScriptRoot -Parent)
             }
         }
 
-        # Fallback: create folder stub and copy base structure
         Write-Host "Creating folder stub for agent '$agent'" -ForegroundColor Cyan
 
-        # Copy .agents/skills if it exists
         $skillsSrc = Join-Path $baseAgentsDir "skills"
         if (Test-Path $skillsSrc) {
             $skillsDst = Join-Path $agentWorktreeDir "skills"
@@ -143,7 +135,6 @@ $baseAgentsDir = (Split-Path $PSScriptRoot -Parent)
             Write-Host "  Copied .agents/skills to worktree" -ForegroundColor Gray
         }
 
-        # Copy .opencode/agents if it exists
         $opencodeAgentsSrc = Join-Path (Join-Path $baseDir ".opencode") "agents"
         if (Test-Path $opencodeAgentsSrc) {
             $opencodeAgentsDst = Join-Path $agentWorktreeDir "agents"
@@ -164,7 +155,6 @@ $baseAgentsDir = (Split-Path $PSScriptRoot -Parent)
 $agentList = @()
 
 if ($CreateWorktrees -and -not $Agents) {
-    # -CreateWorktrees without -Agents: create for all from .opencode/agents/*.json (except registry.json)
     $configDir = Join-Path (Join-Path $baseDir ".opencode") "agents"
     if (Test-Path $configDir) {
         $allConfigs = Get-ChildItem -Path $configDir -Filter "*.json" -ErrorAction SilentlyContinue
@@ -184,13 +174,68 @@ if ($agentList.Count -gt 0) {
 }
 
 # ============================================================
-# Existing: Create project from template
+# Copy shared template files
 # ============================================================
 
-Write-Host "Template: $TemplateType" -ForegroundColor Yellow
+$templateDir = Join-Path $PSScriptRoot "..\templates\project"
+$timestamp = Get-Date -Format "yyyy-MM-ddTHH:mm:ssZ"
 
-# Project dir already created earlier in the script
-Write-Host "Created: $projectDir" -ForegroundColor Green
+Write-Host "Template: $TemplateType" -ForegroundColor Yellow
+Write-Host "Template source: $templateDir" -ForegroundColor Gray
+
+if (-not (Test-Path $templateDir)) {
+    Write-Host "WARNING: Template directory not found: $templateDir - skipping template files" -ForegroundColor Yellow
+} else {
+    # CONTEXT-BUFFER.md
+    $cbSrc = Join-Path $templateDir "CONTEXT-BUFFER.md"
+    if (Test-Path $cbSrc) {
+        $cbContent = [System.IO.File]::ReadAllText($cbSrc) -replace '\{name\}', $ProjectName
+        [System.IO.File]::WriteAllText((Join-Path $projectDir "CONTEXT-BUFFER.md"), $cbContent, [System.Text.UTF8Encoding]::new($false))
+        Write-Host "  Copied CONTEXT-BUFFER.md" -ForegroundColor Gray
+    }
+
+    # KNOWLEDGE-BASE.md
+    $kbSrc = Join-Path $templateDir "KNOWLEDGE-BASE.md"
+    if (Test-Path $kbSrc) {
+        $kbContent = [System.IO.File]::ReadAllText($kbSrc) -replace '\{name\}', $ProjectName
+        [System.IO.File]::WriteAllText((Join-Path $projectDir "KNOWLEDGE-BASE.md"), $kbContent, [System.Text.UTF8Encoding]::new($false))
+        Write-Host "  Copied KNOWLEDGE-BASE.md" -ForegroundColor Gray
+    }
+
+    # project.json
+    $pjSrc = Join-Path $templateDir "project.json"
+    if (Test-Path $pjSrc) {
+        $pjContent = [System.IO.File]::ReadAllText($pjSrc)
+        $pjContent = $pjContent -replace '\{name\}', $ProjectName
+        $pjContent = $pjContent -replace '\{type\}', $TemplateType
+        $pjContent = $pjContent -replace '\{created_at\}', $timestamp
+        [System.IO.File]::WriteAllText((Join-Path $projectDir "project.json"), $pjContent, [System.Text.UTF8Encoding]::new($false))
+        Write-Host "  Copied project.json" -ForegroundColor Gray
+    }
+
+    # queue.json
+    $qSrc = Join-Path $templateDir "queue.json"
+    if (Test-Path $qSrc) {
+        Copy-Item -Path $qSrc -Destination (Join-Path $projectDir "queue.json") -Force
+        Write-Host "  Copied queue.json" -ForegroundColor Gray
+    }
+
+    # memory/ directory with .gitkeep
+    $memDir = Join-Path $projectDir "memory"
+    if (-not (Test-Path $memDir)) {
+        New-Item -ItemType Directory -Path $memDir -Force | Out-Null
+    }
+    $gkSrc = Join-Path $templateDir "memory\.gitkeep"
+    $gkDst = Join-Path $memDir ".gitkeep"
+    if ((Test-Path $gkSrc) -and -not (Test-Path $gkDst)) {
+        Copy-Item -Path $gkSrc -Destination $gkDst -Force
+    }
+    Write-Host "  Created memory/" -ForegroundColor Gray
+}
+
+# ============================================================
+# Type-specific directory structure
+# ============================================================
 
 switch ($TemplateType) {
     "full-stack" {
@@ -198,121 +243,24 @@ switch ($TemplateType) {
         foreach ($d in $dirs) {
             New-Item -ItemType Directory -Path (Join-Path $projectDir $d) -Force | Out-Null
         }
-        $readme = @"
-# $ProjectName
-
-## Stack
-- Frontend: TBD
-- Backend: TBD
-- Database: TBD
-
-## Quick Start
-``````bash
-# Frontend
-cd src/frontend
-npm install
-npm run dev
-
-# Backend
-cd src/backend
-pip install -r requirements.txt
-python main.py
-``````
-
-## Structure
-``````
-src/
-├── frontend/
-├── backend/
-├── shared/
-tests/
-docs/
-scripts/
-``````
-
-## Commands
-- `/status` - Check project status
-- `/sync` - Sync context from Memory Bank
-
----
-Generated by agent-hq
-"@
-        Set-Content -Path (Join-Path $projectDir "README.md") -Value $readme
     }
     "api-only" {
         $dirs = @("src\api", "src\models", "tests", "docs")
         foreach ($d in $dirs) {
             New-Item -ItemType Directory -Path (Join-Path $projectDir $d) -Force | Out-Null
         }
-        $readme = @"
-# $ProjectName
-
-## Stack
-- API: TBD
-- Database: TBD
-
-## Quick Start
-``````bash
-cd src/api
-pip install -r requirements.txt
-python main.py
-``````
-
-## API Endpoints
-- `GET /health` - Health check
-- `POST /api/v1/` - TBD
-
----
-Generated by agent-hq
-"@
-        Set-Content -Path (Join-Path $projectDir "README.md") -Value $readme
     }
     "mobile" {
         $dirs = @("src\app", "src\components", "src\screens", "tests")
         foreach ($d in $dirs) {
             New-Item -ItemType Directory -Path (Join-Path $projectDir $d) -Force | Out-Null
         }
-        $readme = @"
-# $ProjectName
-
-## Stack
-- Framework: React Native / Flutter
-- State: TBD
-
-## Quick Start
-``````bash
-npm install
-npx expo start
-``````
-
----
-Generated by agent-hq
-"@
-        Set-Content -Path (Join-Path $projectDir "README.md") -Value $readme
     }
     "data-pipeline" {
         $dirs = @("src\etl", "src\transforms", "src\models", "tests", "configs")
         foreach ($d in $dirs) {
             New-Item -ItemType Directory -Path (Join-Path $projectDir $d) -Force | Out-Null
         }
-        $readme = @"
-# $ProjectName
-
-## Stack
-- Orchestration: Airflow / Prefect
-- Processing: Spark / Pandas
-- Storage: TBD
-
-## Quick Start
-``````bash
-cd src/etl
-python pipeline.py
-``````
-
----
-Generated by agent-hq
-"@
-        Set-Content -Path (Join-Path $projectDir "README.md") -Value $readme
     }
     default {
         Write-Host "Unknown template: $TemplateType. Using full-stack." -ForegroundColor Yellow

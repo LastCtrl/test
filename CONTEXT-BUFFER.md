@@ -168,3 +168,12 @@ SKILLS_LOADED: ["windows-safety"]
 MCP_USED: ["sequential-thinking"]
 COMPLIANCE: true
 STATUS: resolved
+
+[2026-09-09T14:00:00] team-lead -> all:
+TYPE: update | PRIORITY: medium
+Project: agent-hq
+CONTENT: СЕССИЯ v2.0.0 ЗАВЕРШЕНА. US-011..015 сданы + приняты (code-review: ПРИНЯТО после фикса 3 major; security: 0 critical/high). Аварийная миграция: все 30 агентов на tokenrouter/z-ai/glm-5.3-free (квота opencode исчерпана). verify-phase 41/41. Task Scheduler зарегистрирован. CHANGELOG v2.0.0. Осталось: PR feature->main, потом обсуждение новых тем (права доступа D:\Тест, утечка TUI-сессий, Telegram-мост, честные оценки в ratings).
+SKILLS_LOADED: []
+MCP_USED: []
+COMPLIANCE: true
+STATUS: resolved

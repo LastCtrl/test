@@ -68,7 +68,7 @@
     "backend-1": {
         "description": "Backend Specialist (copy 1) — REST/GraphQL API, бизнес-логика, middleware, авторизация для параллельной работы.",
         "mode": "subagent",
-        "model": "opencode/nemotron-3.5-lightning-free",
+        "model": "tokenrouter/z-ai/glm-5.3-free",
         "temperature": 0.2,
         "permission": {
             "bash": "allow",
@@ -85,7 +85,7 @@
     "backend": {
         "description": "Backend Specialist — REST/GraphQL API, бизнес-логика, middleware, авторизация.",
         "mode": "subagent",
-        "model": "opencode/nemotron-3.5-lightning-free",
+        "model": "tokenrouter/z-ai/glm-5.3-free",
         "temperature": 0.2,
         "permission": {
             "bash": "allow",
@@ -136,7 +136,7 @@
     "data-engineer": {
         "description": "Data Engineer — ETL, data pipelines, аналитика, DWH, Big Data.",
         "mode": "subagent",
-        "model": "opencode/nemotron-3.5-lightning-free",
+        "model": "tokenrouter/z-ai/glm-5.3-free",
         "temperature": 0.2,
         "permission": {
             "bash": "allow",
@@ -153,7 +153,7 @@
     "db-specialist": {
         "description": "DB Specialist — SQL/NoSQL, ORM, миграции, оптимизация запросов, проектирование схем.",
         "mode": "subagent",
-        "model": "opencode/nemotron-3.5-lightning-free",
+        "model": "tokenrouter/z-ai/glm-5.3-free",
         "temperature": 0.2,
         "permission": {
             "bash": "allow",
@@ -204,7 +204,7 @@
     "dev-2-1": {
         "description": "Developer #2 (copy 1) — альтернативный разработчик для параллельной работы.",
         "mode": "subagent",
-        "model": "opencode/nemotron-3.5-lightning-free",
+        "model": "tokenrouter/z-ai/glm-5.3-free",
         "temperature": 0.3,
         "permission": {
             "bash": "allow",
@@ -221,7 +221,7 @@
     "dev-2": {
         "description": "Developer #2 — альтернативный разработчик. Предлагает другие подходы к решению.",
         "mode": "subagent",
-        "model": "opencode/nemotron-3.5-lightning-free",
+        "model": "tokenrouter/z-ai/glm-5.3-free",
         "temperature": 0.3,
         "permission": {
             "bash": "allow",
@@ -272,7 +272,7 @@
     "devops": {
         "description": "DevOps — Docker, CI/CD, Kubernetes, облака, мониторинг инфраструктуры.",
         "mode": "subagent",
-        "model": "opencode/nemotron-3.5-lightning-free",
+        "model": "tokenrouter/z-ai/glm-5.3-free",
         "temperature": 0.2,
         "permission": {
             "bash": "allow",
@@ -289,7 +289,7 @@
     "frontend": {
         "description": "Frontend Specialist — React/Vue/Angular, HTML/CSS, UI/UX, accessibility.",
         "mode": "subagent",
-        "model": "opencode/mimo-v2.5-free",
+        "model": "tokenrouter/z-ai/glm-5.3-free",
         "temperature": 0.2,
         "permission": {
             "bash": "allow",
@@ -306,7 +306,7 @@
     "integration-specialist": {
         "description": "Integration Specialist — REST/SOAP/gRPC, Kafka/RabbitMQ, webhooks, API Gateway.",
         "mode": "subagent",
-        "model": "opencode/nemotron-3.5-lightning-free",
+        "model": "tokenrouter/z-ai/glm-5.3-free",
         "temperature": 0.2,
         "permission": {
             "bash": "allow",
@@ -323,7 +323,7 @@
     "legal-advisor": {
         "description": "Юридический советник — законы РБ, ПД, авторское право, платёжное законодательство, налоги, юрлица.",
         "mode": "subagent",
-        "model": "opencode/mimo-v2.5-free",
+        "model": "tokenrouter/z-ai/glm-5.3-free",
         "temperature": 0.1,
         "permission": {
             "bash": "deny",
@@ -340,7 +340,7 @@
     "mobile-dev": {
         "description": "Mobile Dev — React Native/Flutter/Swift/Kotlin, mobile-first UI, offline-first.",
         "mode": "subagent",
-        "model": "opencode/nemotron-3.5-lightning-free",
+        "model": "tokenrouter/z-ai/glm-5.3-free",
         "temperature": 0.2,
         "permission": {
             "bash": "allow",
@@ -372,7 +372,7 @@
     "qa-engineer-1": {
         "description": "QA Engineer (copy 1) — тесты, edge cases, баг-репорты, регрессия для параллельной работы.",
         "mode": "subagent",
-        "model": "opencode/nemotron-3-ultra-free",
+        "model": "tokenrouter/z-ai/glm-5.3-free",
         "temperature": 0.2,
         "permission": {
             "bash": "allow",
@@ -389,7 +389,7 @@
     "qa-engineer": {
         "description": "QA Engineer — тесты, edge cases, баг-репорты, регрессия.",
         "mode": "subagent",
-        "model": "opencode/nemotron-3-ultra-free",
+        "model": "tokenrouter/z-ai/glm-5.3-free",
         "temperature": 0.2,
         "permission": {
             "bash": "allow",
@@ -406,7 +406,7 @@
     "security-auditor-1": {
         "description": "Security Auditor (copy 1) — OWASP, уязвимости, поиск secrets для параллельной работы.",
         "mode": "subagent",
-        "model": "opencode/nemotron-3-ultra-free",
+        "model": "tokenrouter/z-ai/glm-5.3-free",
         "temperature": 0,
         "permission": {
             "bash": "deny",
@@ -422,7 +422,7 @@
     "security-auditor": {
         "description": "Security Auditor — OWASP, уязвимости, поиск secrets и утечек. Только чтение.",
         "mode": "subagent",
-        "model": "opencode/nemotron-3-ultra-free",
+        "model": "tokenrouter/z-ai/glm-5.3-free",
         "temperature": 0,
         "permission": {
             "bash": "deny",
@@ -438,7 +438,7 @@
     "skill-surgeon": {
         "description": "Skill Surgeon — ищет, скачивает и создаёт скиллы для любых технологий.",
         "mode": "subagent",
-        "model": "opencode/mimo-v2.5-free",
+        "model": "tokenrouter/z-ai/glm-5.3-free",
         "temperature": 0.2,
         "permission": {
             "bash": "allow",
@@ -455,7 +455,7 @@
     "smm-strategist": {
         "description": "SMM/Маркетинг стратег — продвижение, ЦА, воронка, контент-стратегия, виральные механики.",
         "mode": "subagent",
-        "model": "opencode/mimo-v2.5-free",
+        "model": "tokenrouter/z-ai/glm-5.3-free",
         "temperature": 0.3,
         "permission": {
             "bash": "allow",
@@ -545,7 +545,7 @@
     "tech-writer-1": {
         "description": "Tech Writer (copy 1) — README, API docs, changelog, архитектурная документация для параллельной работы.",
         "mode": "subagent",
-        "model": "opencode/mimo-v2.5-free",
+        "model": "tokenrouter/z-ai/glm-5.3-free",
         "temperature": 0.2,
         "permission": {
             "bash": "deny",
@@ -561,7 +561,7 @@
     "tech-writer": {
         "description": "Tech Writer — генерирует README, API docs, changelog, архитектурную документацию.",
         "mode": "subagent",
-        "model": "opencode/mimo-v2.5-free",
+        "model": "tokenrouter/z-ai/glm-5.3-free",
         "temperature": 0.2,
         "permission": {
             "bash": "deny",

@@ -334,3 +334,135 @@ SKILLS_LOADED: ["superpowers-test"]
 MCP_USED: ["sequential-thinking: offline"]
 COMPLIANCE: true
 STATUS: resolved
+
+[TIME] team-lead-1 (acting code-reviewer) → team-lead:
+TYPE: update | PRIORITY: medium
+Project: pong-advanced
+CONTENT: Ревью фазы P0 (первая проверка). ВЕРДИКТ: REQUEST_CHANGES (1 блокирующий пункт, 5 minor-наблюдений). (1) ОБЯЗАТЕЛЬНО: Input.ts:20-47 setupListeners() вызывается из initInput/initLocalInput при КАЖДОМ старте игры/LAN без guard — накопление дубликатов keydown/keyup/blur листенеров на document/window (каждый rematch локальной игры или цикл LAN→quit→LAN добавляет +3 листенера; sendToServer вызывается N раз на каждый keydown в LAN). Минимальный фикс: let listenersInstalled=false в модульном скоупе; в setupListeners() if (listenersInstalled) return; listenersInstalled=true. (2) option-btn App.ts:563-571 — навешивание один раз в DOMContentLoaded, кнопки статичны в HTML, конфликтов с collectSettings нет (active читается при старте, дефолты HTML совпадают с фолбэками) — ОК. (3) roundResetTimer LocalGame.ts:287-291 — гол при winScore → state=ended → tick-guard; мяч при respawn стоит (dx=dy=0), resetBall по таймеру; пауза/resume без скачка dt (lastTime обновляется в doResume App.ts:487) — ОК. НАБЛЮДЕНИЕ (pre-existing, вне диффа): server/index.ts goal():278 вызывает resetBall(room) СРАЗУ при голе (мяч летает во время roundResetTimer) + повторный resetBall по таймеру:375 — двойной reset, поведение расходится с LocalGame (там правильно). (4) Input p1/p2: W+ArrowUp теперь разные ракетки — ОК; ultimate у p2-клиента в LAN ДОСТУПЕН (Input.ts:24-33 emit ultimate:true → server index.ts:1048 применяет к paddle клиента) — регресса НЕТ. (5) setInput при vsAI не трогает p2 (guard LocalGame.ts:132) — ОК; touch пишет в Set напрямую, в LAN sendToServer не вызывается (тач в LAN не работает) — pre-existing ограничение, не регресс, кандидат на будущую фазу. (6) server: grep по всему index.ts — rooms.get(socket.id) нигде не остался, все 5 хендлеров (start-game:1015, input:1039, pause-game:1056, resume-game:1067, disconnect:1092) используют findRoomBySocket — бага в pause/resume НЕТ; O(n) на input-пакет приемлемо при малом числе комнат, рекомендация: Map socketId→roomId для горячего пути. (7) initInput/quitToMenu: мёртвый socketRef после quit не опасен (isActive=false глушит хендлеры; initInput/initLocalInput перезаписывают ref при следующем старте) — ОК, кроме пункта (1). Minor pre-existing: App.ts:499 handleRematch client шлёт joinRoom(roomId), где roomId=UUID/socket.id, а не roomCode → рематч LAN-клиента сломан (было сломано и до диффа). Требуется фикс-ТЗ на dev-3 по пункту (1), ре-ревью только по диффу фикса.
+SKILLS_LOADED: []
+MCP_USED: ["sequential-thinking"]
+COMPLIANCE: true
+STATUS: resolved
+[TIME] 2026-09-09 qa-engineer -> team-lead:
+TYPE: update | PRIORITY: medium
+Project: pong-advanced
+CONTENT: |
+  ## QA Приёмка фазы P0 (восстановление регрессий миграции) — ВЕРДИКТ: PASS
+
+  ### A. COMPLIANCE
+  - dev-3 (P0.1-P0.6): SKILLS_LOADED=["superpowers-implement"], MCP_USED=["sequential-thinking"], COMPLIANCE=true ✅
+  - dev-1 (P0.5 LAN): SKILLS_LOADED=["superpowers-implement"], MCP_USED=["sequential-thinking"], COMPLIANCE=true ✅
+
+  ### B. КОД (проверка файлов)
+  1) App.ts: option-btn handler (563-571) переключает active в группе data-option ✅; collectSettings (173-186) читает активные ✅; initInput при LAN-старте (game-started:435, btn-start-game:604) ✅; initLocalInput в startLocalGame (264) ✅; quitToMenu (131-154) НЕ вызывает initLocalInput, НО startLocalGame вызывает initLocalInput() в начале — переход LAN→quit→local работает корректно ✅
+  2) Input.ts: getLocalInput (65-83) возвращает {p1,p2,ultimate} с разделением WASD/стрелки ✅; sendToServer (49-63) в LAN — W/S и стрелки на одну ракетку клиента — НОРМАЛЬНО (у клиента одна ракетка) ✅
+  3) LocalGame.ts: roundResetTimer декрементируется в tick (287-290) ✅; setInput двигает p2 только при !vsAI (132-142) ✅; this.ball читается только после start() (инициализирован в start:106) ✅
+  4) server/index.ts:1015 — findRoomBySocket ✅; ВСЕ 5 хендлеров используют findRoomBySocket: start-game(1015), input(1039), pause-game(1056), resume-game(1067), disconnect(1092) — rooms.get(socket.id) НИГДЕ не остался ✅
+  5) Renderer.ts:86 — document.documentElement ✅
+
+  ### C. HTTP
+  GET / → 200, /App.js → 200, /game/Input.js → 200, /game/LocalGame.js → 200 ✅ (server/index.js не отдаётся — корректно)
+
+  ### D. РЕГРЕССИЯ
+  npm test → 43/43 ✅ (EADDRINUSE на 3333 — ожидаемо, сервер уже запущен)
+  npx playwright test → 4/4 ✅ (включая lan.spec.ts)
+  npx tsc --noEmit → 0 ошибок ✅
+  npm run build → 0 ошибок ✅
+
+  ### E. КРИТЕРИИ
+  Меню-настройки переключаются ✅; после гола мяч возрождается (roundResetTimer) ✅; PvP-стрелки работают (по коду) ✅; LAN обе стороны видят игру (lan.spec.ts покрывает) ✅
+
+  ### ОСОБОЕ ВНИМАНИЕ B.4
+  Проверено ВСЕ вхождения rooms.get в server/index.ts — НЕТ ни одного. Все 5 socket-хендлеров (start-game, input, pause-game, resume-game, disconnect) используют findRoomBySocket(socket.id). Бага в pause/resume ИСПРАВЛЕНА (не было, так как dev-1 поправил только start-game, но findRoomBySocket уже использовался везде).
+
+  ### ЗАМЕЧАНИЕ (pre-existing, вне P0)
+  Input.ts: setupListeners() вызывается при КАЖДОМ initInput/initLocalInput без guard — накопление дубликатов keydown/keyup/blur листенеров на rematch/цикле LAN→quit→LAN. Требует фикса в следующей фазе (let listenersInstalled=false guard).
+
+SKILLS_LOADED: []
+MCP_USED: ["sequential-thinking"]
+COMPLIANCE: true
+STATUS: resolved
+
+[TIME] code-reviewer-1 → team-lead:
+TYPE: update | PRIORITY: medium
+Project: 1c-kis-teplo
+CONTENT: ре-ревью дифа (попытка 2, Module.bsl 738 строк): ПРИНЯТО. ДИФ 1 spr04 datez: UPDATE (стр.553) и INSERT (571-572) корректны, spr03 НЕ тронут (правильно — колонки нет). ДИФ 2 spr08 перечитка: пропуск МестноеТопливо=0 внутри цикла сверки, ложных несовпадений нет. ДИФ 3 ОбработатьОчередь Исключение (709-733): двойного инкремента нет, Записать(Истина) есть, >=30 → Очистить+журнал; Строка(битой ссылки) не падает. ДИФ 4 spr05: все 7 полей сверяются, Число() со стороны RS. ФИКС 5 (S02 строкой в adNumeric): ПРИНЯТЬ с пометкой — неявная конвертация ADO/ODBC для цифровых строк; нецифровой код даст явное исключение → очередь → 30 попыток → журнал; страховка перечиткой есть; паттерн годами в проде. Minor (не блокируют): пустой catch 732-733 защитный; журнал вне вложенной Попытки — теоретический риск. Рекомендация: при появлении нецифровых кодов — Число() у параметров. Рейтинги: 9/9/8/8. (Self-report вписан тимлидом — serena MCP ревьюера легла: 7 таймаутов подряд)
+SKILLS_LOADED: ["1c-dev"]
+MCP_USED: ["sequential-thinking", "serena: offline"]
+COMPLIANCE: true
+STATUS: resolved
+
+[2026-09-09] team-lead -> bus:
+TYPE: update | PRIORITY: high
+Project: agent-hq
+CONTENT: ДОВОДКА-2 ЗАВЕРШЕНА. (1) Word-отчёт «ИИ система.docx» (v2, 43 КБ) сохранён на рабочий стол: оптимизация памяти + вердикты по 22 инструментам + план волн 1-3 + security policy. (2) Исследовано лично 10 источников (agent-reach, last30days, openclaw-catalog, pretext, skills.sh, claudehub, impeccable, uiuxpromax, playwright-mcp, github-api) + research-агент (impeccable/task-observer/find-skills/claudehub) + 3 синтез-прогона (team-lead-1 план, product-manager MoSCoW, security-auditor риски). (3) Ключевой конфликт разрешён в пользу безопасности: last30days и agent-reach = CRITICAL (кража cookies браузеров / скрейпинг с корп. IP) — SKIP, хотя тимлид-план их рекомендовал. claudehub = SKIP (-принцип). codebase-memory = SKIP (Kaspersky+неактуально; альтернатива repomix). (4) Принято к внедрению: Волна 1 = Playwright MCP (headless msedge, без --extension) + скилл ui-references + порт Impeccable (без hook.mjs); Волна 2 = security policy в AGENTS.md + bookmark awesome-openclaw + фикс прокси context7/hermes; Волна 3 (триггерное) = claude-mem пилот non-NDA, omniroute, sentry self-hosted, Qdrant. RAM-бюджет: пик 66-68% — в лимите 75%. ТЗ на волну 1 будут оформлены по команде пользователя.
+SKILLS_LOADED: ["customize-opencode", "windows-safety"]
+MCP_USED: ["sequential-thinking", "webfetch"]
+COMPLIANCE: true
+STATUS: resolved
+
+[TIME] team-lead-1 (acting code-reviewer) → team-lead:
+TYPE: update | PRIORITY: medium
+Project: pong-advanced
+CONTENT: Ре-ревью по диффу (попытка 2, §5 — только фикс Input.ts guard). ВЕРДИКТ: APPROVE. (1) Guard на месте и корректен: Input.ts:7 let listenersInstalled=false (модульный скоуп), Input.ts:22-23 if (listenersInstalled) return; listenersInstalled=true — в самом начале setupListeners(), ДО всех трёх addEventListener; флаг ставится до навешивания, семантика «установить один раз» соблюдена. (2) initInput (9-13) и initLocalInput (15-19) по-прежнему мутируют socketRef/isLocalMode ДО вызова setupListeners — порядок корректен; замыкания листенеров читают модульные socketRef/isLocalMode/keys/isActive на момент события, поэтому повторные вызовы корректно переключают режим без переустановки листенеров. (3) Повторные вызовы (boot, каждый startLocalGame/rematch, каждый LAN-старт) теперь только обновляют режим: guard отсекает дубли keydown/keyup/blur — единственный блокер прошлой фазы P0 закрыт. (4) Новых проблем нет: sendToServer/getLocalInput/setInputActive/getKeys не тронуты; isActive-gate (стр.25,41) и keys.clear() при деактивации сохранены; initLocalInput сбрасывает socketRef=null — эмитов на старый сокет после LAN→local нет (плюс sendToServer гвардится !socketRef); при reconnect initInput обновит socketRef и листенеры подхватят новый сокет без утечек. Фикс = ровно минимальный фикс из REQUEST_CHANGES. Верификация тимлидом уже принята (tsc 0, build 0, 43/43, E2E 4/4).
+SKILLS_LOADED: []
+MCP_USED: ["sequential-thinking"]
+COMPLIANCE: true
+STATUS: resolved
+[2026-09-09 11:05] team-lead -> bus:
+TYPE: update | PRIORITY: medium
+Project: pong-advanced
+CONTENT: FAZA P0 ZAVERSHENA (priemka proydena: qa PASS + review APPROVE posle fiksa listener-leak). Sozdan MASTER_PLAN.md (P0-P5). P0.1 option-btn (App.ts:557+); P0.2 roundResetTimer v tick (LocalGame.ts:288); P0.3 p1/p2 razdelnyy input (Input.ts, LocalGame.ts:118); P0.4 initInput pri LAN-starte; P0.5 koren LAN-waiting: server rooms.get(socket.id) pri komnatakh po UUID -> findRoomBySocket (index.ts:1015), server restartnut (novyy PID 20624); P0.6 Renderer tema s documentElement. Dopolnitelno: listener-guard v Input.ts (po zamechaniyu review). E2E teper 4/4 (dobavlen lan.spec.ts). Testy 43/43, tsc 0, lint 26e/41w (лучше baseline). Backlog iz review (pre-existing): server goal() dvoinoy resetBall; touch v LAN ne shlet input; rematch LAN-clienta roomCode-UUID mismatch; Map<socketId,roomId> dlya goryachego puti input. NEXT: FAZA P1 (5 bagov iz rev'yu).
+SKILLS_LOADED: []
+MCP_USED: []
+COMPLIANCE: true
+STATUS: resolved
+
+
+[TIME] security-auditor-1 → team-lead:
+TYPE: update | PRIORITY: medium
+Project: 1c-kis-teplo
+CONTENT: вердикт НАЙДЕНЫ НАХОДКИ (minor/info), НЕ блокируют выкатку. SQL-инъекций нет (все параметризовано), новых секретов не добавлено, права роли адекватны (StandardAttribute Edit=false), транзакции закрыты корректно (Commit/Rollback во всех ветках). Minor: ОписаниеОшибки() ADODB может нести детали подключения в ТекстОшибки очереди/Сообщить/журнал — рекомендация санитизировать в будущем. Info: hardcoded строки подключения (существующие продовые) — вынести в хранилище отдельной задачей. Вердикт: МОЖНО ВЫКАТЫВАТЬ НА БОЕВУЮ. (Self-report вписан тимлидом — serena MCP агента отваливалась по таймаутам)
+SKILLS_LOADED: ["windows-safety"]
+MCP_USED: ["serena: offline"]
+COMPLIANCE: true
+STATUS: resolved
+
+### 2026-09-09 11:23 | team-lead | Project: 1c-kis-teplo | ЗАДАЧА ЗАВЕРШЕНА: СТАТУС ГОТОВО
+Редактирование показателей с записью в 1С + выгрузкой в Oracle — реализовано, принято независимой приёмкой (code-reviewer-1: ПРИНЯТО по дифу; qa-engineer: критичный блокер очереди закрыт; security-auditor-1: МОЖНО НА БОЕВУЮ, находки minor/info).
+Итоговые артефакты (в D:\Тест\agent-hq\projects\1c-kis-teplo\1с-kis-Teplo):
+- CommonModules\ВыгрузкаВOracle\Ext\Module.bsl (738 строк, UUID a3f7b2c1-4d8e-4f5a-9b6c-2e1d0f8a7c3b) + CommonModules\ВыгрузкаВOracle.xml
+- Documents\Тепло\Ext\ObjectModule.bsl, Documents\Топливо\Ext\ObjectModule.bsl (новые, Conducting + выгрузка)
+- Documents\ГрафикПрямойИОбратнойСетевойВоды\Ext\ObjectModule.bsl, Documents\ГрафикЦиркуляцииИПодпитки\Ext\ObjectModule.bsl (дополнены)
+- InformationRegisters\ОчередьВыгрузкиВOracle.xml (регистр очереди, UUID b1c2d3e4-f5a6-4b7c-8d9e-0f1a2b3c4d5e)
+- ScheduledJobs\ОбработкаОчередиВыгрузкиВOracle.xml + Ext\Schedule.xml (300 сек)
+- Roles\ПользовательТепло\Ext\Rights.xml (права Топливо + ТЧ Edit=true)
+- Configuration.xml, ConfigDumpInfo.xml (интеграция объектов)
+Технологии: ADODB транзакции (BeginTrans/Commit/Rollback), параметризованные запросы (131/135), upsert через SELECT COUNT, kod=MAX+1, datez=SYSDATE (кроме spr03 — колонки нет), контрольные перечитки со сверкой всех полей, очередь с лимитом 30 попыток и журналом регистрации.
+
+[2026-09-09] team-lead -> bus:
+TYPE: update | PRIORITY: medium
+Project: agent-hq
+CONTENT: ХЭНДОФФ-ДОПИСОК в «ИИ система.docx» (Часть 6): готовые ТЗ волны 1 (Playwright MCP с запретами --extension/--allow-unrestricted-file-access; скилл ui-references; порт Impeccable без hook.mjs; приёмка qa+code-reviewer параллельно), волна 2/3 кратко, ключевые запреты (last30days/agent-reach/claudehub/codebase-memory/npx skills add), профиль «ДОМ» (дома last30days+agent-reach можно пересмотреть — нет NDA/корп IP), известная проблема прокси context7/hermes, ключевые пути и цифры памяти. Пользователю разъяснено: лимит 200К — контекст модели GLM движка, не opencode; маркетинговые 1М-цифры относятся к other-конфигурациям моделей. Сессия-диагностика завершена, разработка продолжается в другой сессии.
+SKILLS_LOADED: []
+MCP_USED: []
+COMPLIANCE: true
+STATUS: resolved
+
+[2026-09-09T10:20:00] code-reviewer -> team-lead:
+TYPE: update | PRIORITY: medium
+Project: agent-hq
+CONTENT: Ревью диффа 6d69e88..HEAD (3 коммита). ВЕРДИКТ: ВОЗВРАТЬ (3 major, 0 critical). MAJOR-1 sync-agents.ps1: удаление legacy 'agent' секции даёт INVALID JSON во всех 3 позициях (двойная запятая, запятая после {, висячая перед }); спасает fail-safe откат; первый if needsCommaAfter - мёртвый код. MAJOR-2 agent-registry.ps1 + project-queue.ps1: Write-Error в catch при ErrorActionPreference=Stop -> terminating; ветки if (-not (Save-...)) и rollback-код мёртвые, exit 1 без сообщения. MAJOR-3 verify-phase.ps1 F7: не идемпотентен по данным - тестовые done/dead задачи копятся в projects/1c-buh/queue.json каждый прогон. Minors: create-project.ps1 не копирует README из шаблона + ложный Z-маркер; session-recovery.ps1 BOM; tracer.js msg-цепочка не смотрит event.error вне properties (компенсировано raw dump); Acquire race window; Complete-Task Release до Save-Queue; AGENTS.md par1 рассинхрон с opencode.json (code-reviewer на GLM). ОК: no BOM, .bak+валидация+откат, FileShare::None, секретов нет, PS 5.1 совместимость, FIFO. Рейтинги: 8/9/7/8.
+SKILLS_LOADED: []
+MCP_USED: ["sequential-thinking"]
+COMPLIANCE: true
+STATUS: resolved
+
+[2026-09-09] team-lead -> bus:
+TYPE: update | PRIORITY: medium
+Project: agent-hq
+CONTENT: Финальная сверка docx с исходным списком пользователя. Закрыто 2 пробела: (1) framer-motion — добавлен в ТЗ задачи 2 (ui-references): слои анимаций = framer-motion (React по умолчанию) + reactbits + lottiefiles, ставится в код проектов, не в систему. (2) Superpowers (obra) — УЖЕ встроены в AGENTS.md 3.6 (spec/plan/implement/test), доп. скиллы obra опциональны cherry-pick'ом, дублировать не надо. Плюс: сверка всех остальных пунктов исходного списка подтвердила полноту Частей 2-3. Предложения роутинга моделей (GLM 5.3 для team-lead/security из советов Qwen) — решение за сессией-разработчиком по ratings.jsonl. Отчёт финализирован (45.5+ КБ).
+SKILLS_LOADED: []
+MCP_USED: []
+COMPLIANCE: true
+STATUS: resolved

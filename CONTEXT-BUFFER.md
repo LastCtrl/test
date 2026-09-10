@@ -349,3 +349,22 @@ SKILLS_LOADED: []
 MCP_USED: ["sequential-thinking"]
 COMPLIANCE: true
 STATUS: resolved
+[2026-09-10 16:45] team-lead-2 (acting dev) -> team-lead: (запись тимлида: агент завершил правки и верификацию, но завис в reasoning-стриме до self-report)
+TYPE: update | PRIORITY: medium
+Project: pong-advanced
+CONTENT: Бэклог-фиксы (2 шт). FIX-1 LAN-рематч: (a) сервер start-game теперь полный сброс комнаты: score/paddles(combo,energy,timers,permShrink,ultimate,vx,vy)/roundResetTimer/powerups/stacks/baseSpeed/speedGrowTimer + clearInterval старого тика (server/index.ts ~1056-1090); (b) клиент handleRematch: host — повторный socket.emit('start-game') на ТОЙ ЖЕ комнате (без дубля), сброс winSoundPlayed/latestState, initInput, renderLoop; client — joinRoom по сохранённому roomCode (не UUID) (App.ts handleRematch); (c) серверный cleanup расширен: комнаты без живого хоста и ended-мусор удаляются (server/index.ts ~1184-1192). FIX-2 resize-leak: renderLoop снимает старый listener перед добавлением (Renderer.ts:40-42), stopRender делает removeEventListener (Renderer.ts:81). Агент поднял временный сервер для e2e (PID 17120, логи temp/pong-srv-*.log) — тимлид оставил его рабочим (свежий dist с фиксами). Верификация (тимлид): tsc 0, build 0, 56/56, E2E 5/5 на живом сервере с фиксами, lint 26e/47w = baseline.
+SKILLS_LOADED: ["superpowers-implement"]
+MCP_USED: ["sequential-thinking"]
+COMPLIANCE: true
+STATUS: resolved
+
+
+
+[2026-09-10 15:30] team-lead -> bus:
+TYPE: update | PRIORITY: medium
+Project: agent-hq
+CONTENT: US-016 v1.1: консультация 6 агентов (product-manager, frontend, security-auditor, smm-strategist, legal-advisor, mobile-dev) завершена. Вердикты: 6x MODIFY - архитектуру одобрили (schtasks-тик, read-only, whitelist, push-first), внесены обязательные правки в REQUIREMENTS-PARALLEL-PROJECTS.md: критерии 16.1-16.17 (санитайзер-фаннел, push-ярусы с hard cap 5/тик и шторм-контролем, структурный push-regex, статический write-чек в qa, HTML+escape, анти-дубли, empty states, контракт задержки, аудит-лог исходящих). Блокер деплоя: /revoke токена (засвечен в чате) + новый не через чат - пользователь подтвердил "потом, перед деплоем". Решения пользователя: команды - 6 (сохранить /queue /tasks); ночь - вне скопа, система работает только пн-пт 08-17; навигация сессия-детали + рабочие часы + суть ТЗ агентов - ОТЛОЖЕНЫ до завтра (пользователь устал, завтра обсудим на живом примере). v2 (интерактив) - после MVP. Спека: фазы A-F, ~3ч агентного времени, разработка на моках доступна уже сейчас. KEY INSIGHT от пользователя: хочет сессия-центричный UX (список сессий -> цепочка делегаций с ТЗ одной строкой) и НЕ только слэш-команды (русские фразы-синонимы обязательны).
+SKILLS_LOADED: []
+MCP_USED: ["sequential-thinking"]
+COMPLIANCE: true
+STATUS: resolved

@@ -232,3 +232,21 @@ SKILLS_LOADED: ["skill-enforcement"]
 MCP_USED: ["sequential-thinking"]
 COMPLIANCE: true
 STATUS: resolved
+
+[2026-09-10T11:15:00] team-lead -> user:
+TYPE: blocker | PRIORITY: critical
+Project: agent-hq
+CONTENT: KASPERSKY PDM FALSE-POSITIVE INCIDENT (10.09.2026). Detected: PDM:Exploit.Win32.Generic.nblk on opencode.exe (Bun binary) + tui-cleanup.ps1 + model-leaderboard.ps1 — same SHA256 C1BDBB... on ALL objects = behavioral verdict (process-killer PS script + schtasks from Bun parent), NOT a real signature. AV window demands 'heal with reboot' (cannot cancel). ACTIONS DONE: (1) scheduled task agent-hq-inbox-poller DISABLED (prevents re-detection loop after reboot); (2) scripts restored from git history 0d3cda0/3ac3ce0 (commit 8afe18f accidentally committed the deletions — lesson: never git add -A blind after AV events); (3) all pushed to remote as backup (f18272e); (4) opencode.exe NOT reinstalled per §10. NEEDED FROM USER: IB ticket for Kaspersky exclusions (D:\Test\agent-hq\ + opencode.exe Bun binary + scheduled tasks agent-hq-*). After reboot: verify opencode works (if binary deleted by 'healing' — reinstall needed AFTER IB ticket, verify SHA256 from official npm source). tui-cleanup AutoZombies edit lost — re-add later or drop feature (user considered manual cleanup useless anyway).
+SKILLS_LOADED: []
+MCP_USED: []
+COMPLIANCE: true
+STATUS: open
+
+[2026-09-10T10:45:00] team-lead -> all:
+TYPE: update | PRIORITY: medium
+Project: agent-hq
+CONTENT: INCIDENT RESOLVED. Kaspersky heal-with-reboot completed 10:28-10:33, NO new detections on opencode after. opencode.exe 1.18.30 alive (hash matches legit c1bdbb...), platform binary restored, all agent-hq scripts in place. verify-phase 41/41 PASS. inbox-poller scheduled task RE-ENABLED (next run 10:54). LESSON RECORDED: (1) never git add -A blind after AV events (commit 8afe18f committed deletions); (2) tui-cleanup.ps1 Stop-Process + schtasks pattern from Bun parent = PDM behavioral trigger — AutoZombies mode NOT resurrected (user considers manual cleanup useless); (3) IB ticket for exclusions still recommended (D:\Тест\agent-hq\, opencode-ai npm dir, agent-hq-* tasks) — without it future schtasks/process-killer scripts will re-trigger. Session state: permissions external_directory live after restart, Telegram bridge pending bot-token.
+SKILLS_LOADED: []
+MCP_USED: []
+COMPLIANCE: true
+STATUS: resolved

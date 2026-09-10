@@ -268,3 +268,29 @@ SKILLS_LOADED: ["customize-opencode", "superpowers-implement: not in available_s
 MCP_USED: ["none: no external libraries in task, context7 not applicable; sequential-thinking not invoked - planning done inline"]
 COMPLIANCE: true
 STATUS: resolved
+[2026-09-10 11:55] team-lead-2 (acting dev) -> team-lead:
+TYPE: update | PRIORITY: high
+Project: pong-advanced
+CONTENT: 3 bugfixa. BUG-1 (gravitaciya v vertical tyanula vniz ekrana vmesto levo-pravo): src/shared/physics.ts:342-346 applyGravity(ball, dt) -> applyGravity(ball, dt, orientation: Orientation): pri 'vertical' b.dx += GRAVITY_ACCEL*dt, pri 'horizontal' b.dy += GRAVITY_ACCEL*dt; obnovleny oba vyzova: src/server/index.ts:341 (peredaetsya room.orientation), src/client/game/LocalGame.ts:317 (peredaetsya this.orientation); testy tests/unit/physics.test.ts:169-197: obnovleny 2 sushestvuyuschih kejsa pod orientation + dobavlen kejs vertical -> dx rastet, dy = 0. BUG-2 (LAN lag: polling pervym v transports): src/client/App.ts:365 'polling','websocket' -> 'websocket','polling' (websocket-first, polling fallback). BUG-3 (LAN bonusy visyat u kraja - net dvizheniya v servernom tick): src/server/index.ts:396-413 v cikl powerups dobavleno dvizhenie pu.x += (pu.vx||0)*dt; pu.y += (pu.vy||0)*dt + udalenie po vihodu za granicu (continue) do collision-checka, po obrazcu LocalGame.ts:375-392, collision-blok sohranen bez dublirovaniya. Dopolnitelno: tests/e2e/lan.spec.ts:65-66 poryadok zakrytiya kontekstov izmenen na clientCtx.close() -> hostCtx.close() (pri websocket-first host-disconnected prihodit mgnovenno, alert('Host disconnected.') App.ts:434 sporil s clientCtx.close() -> Protocol error handleJavaScriptDialog; fix testa, ne produkta). VERIFIKACIYA (5/5): tsc --noEmit 0 oshibok; npm run build OK; npm test 56/56 passed (3 files; 1 unhandled EADDRINUSE :3333 - vyzvan importom server modulya pri rabotayuschem servere timlida PID 8932, baseline, ne svyazan s pravkami); npm run lint 26e/47w = baseline; npx playwright test 5/5 passed. Server :3333 NE restartilsya (po TZ). Vremennye fajly udaleny (test-results, playwright-report).
+SKILLS_LOADED: ["superpowers-implement"]
+MCP_USED: ["sequential-thinking"]
+COMPLIANCE: true
+STATUS: resolved
+[2026-09-10 12:10] dev-3 -> team-lead:
+TYPE: update | PRIORITY: medium
+Project: agent-hq
+CONTENT: CI-rezhim v verify-phase.ps1 (fix padeniya PR #4, 8 FAIL na CI-runnere). (1) Avto-detekt CI: $isCI = ($env:GITHUB_ACTIONS -eq 'true') -or ($env:CI -eq 'true') - stroka 4, do pervogo cheka; v shapke vyvoda dobavlena stroka 'Mode: LOCAL | CI'. (2) Helper-funkciya Test-LocalCheck (stroki 27-37): v CI vyvodit '  [CI-SKIP] <name> (local runtime artifact)' -ForegroundColor DarkYellow, inkrementiruet $script:ciSkipped, NE schitaetsya v passed/failed; lokalno - delegiruet v Test-Check. Imenno helper, ne kopipasta blokov - stil fajla sohranen. (3) Obernuto 8 chekov: Phase 0 - .memory/inbox/, .memory/dead-letter/, 'At least 1 agent inbox' (outbox ostavlen Test-Check - kommititsya); Phase 0.5 - .agents/worktrees/ + 'At least 1 worktree'; Phase E2 - traces.jsonl (LOCALAPPDATA); Phase F - F2 (projects/) i F7 (project-queue cikl 1c-buh; dopolnitel'no samo telo F7 obognano usloviem -not $isCI, chtoby v CI ne zapuskat' mutaciyu queue.json). (4) Itogovaya stroka: 'Passed: X / Y (Z skipped: CI-only artifacts)' - dobavlyaetsya tol'ko pri Z > 0; lokal'nyj vyvod bez izmenenij. Exit code: 1 pri FAIL, 0 net - CI-SKIP ne vliyaet. TESTY: (a) Parser::ParseFile = 0 oshibok; UTF-8 bez BOM (pervye 3 bajta 112,97,par - latiniCA 'par', ne EF BB BF). (b) Lokal'nyj progion (bez env): Mode: LOCAL, Passed: 41 / 41, Failed: 0 / 41, ALL CHECKS PASSED, exit 0 - rezultat identichen baseline, izmenenij nety. (c) CI-sim ($env:GITHUB_ACTIONS='true'): Mode: CI, rovno 8 chekov [CI-SKIP] (inbox, dead-letter, 1 mailbox, worktrees x2, traces.jsonl, F2, F7), Passed: 33 / 33 (8 skipped: CI-only artifacts), Failed: 0 / 33, ALL CHECKS PASSED, exit 0 - sootvetstvuet ozhidaniyu TZ (33 + skipped 8). Git: izmenen tol'ko .agents/scripts/verify-phase.ps1 + CONTEXT-BUFFER.md, kommit NE delal (po TZ). Vremennyh fajlov net.
+SKILLS_LOADED: ["superpowers-implement", "windows-safety"]
+MCP_USED: ["sequential-thinking"]
+COMPLIANCE: true
+STATUS: resolved
+
+
+[2026-09-10 12:20] team-lead-2 (acting dev) → team-lead:
+TYPE: update | PRIORITY: medium
+Project: pong-advanced
+CONTENT: P3-A1+A4 done. A1: slow-mo (Effects.ts:216 SlowMo class, :246 getSlowMo singleton, trigger in processState score-diff :394/:403), flash (Effects.ts:194 ScreenFlash, draw in EffectsManager.draw :498), score-pop (App.ts:100 updateScoreDisplay prev-compare + re-trigger offsetWidth; styles.css score-pop keyframes :274), respawn ring (Effects.ts:426 spawnRing, dist>200 detect :386, draw :495). localLoop slow-mo physics only local-mode (App.ts:330-340); LAN visual-only via renderLoop factor (Renderer.ts:72). A4: confetti launchConfetti 130 rect-particles theme colors (Effects.ts:453, Renderer.ts:79 export), local onGameEnd (App.ts:291) + LAN ended (App.ts:415, stopRender removed so confetti visible), win-glow-pulse + score-zoom-punch CSS (styles.css :561), win sound both paths confirmed existing. Checks: tsc 0, build 0, test 56/56 (EADDRINUSE = live server :3333 PID 836, pre-existing), lint 26e/47w (baseline), playwright 5/5.
+SKILLS_LOADED: ["superpowers-implement"]
+MCP_USED: ["sequential-thinking"]
+COMPLIANCE: true
+STATUS: resolved

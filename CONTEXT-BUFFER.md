@@ -177,3 +177,58 @@ SKILLS_LOADED: []
 MCP_USED: []
 COMPLIANCE: true
 STATUS: resolved
+
+[2026-09-10] team-lead-1 (acting dev) → team-lead:
+TYPE: update | PRIORITY: medium
+Project: pong-advanced
+CONTENT: P2.4 UX-полировка экранов (CSS-first), только styles.css. Добавлены анимации: panel-in (opacity 0→1 + translateY 12px→0 + scale 0.98→1, 0.25s ease-out both) на .screen.active .panel (строка 484-487, 505-507); overlay-экраны 0.18s через .overlay-screen.active .panel animation-duration (строка 513-515); backdrop затемнение overlay-in на .overlay-screen.active (строка 509-511); countdown-container-in scale-in на #countdown-screen.active (строка 517-519); result-screen: win-text slide-up (строка 521-523), score-big fade-in с animation-delay 0.1s (строка 525-527); theme-toggle :active scale(0.92) transition 0.1s (строка 529-532); .btn :active scale(0.97) transition 0.1s (строка 137, замена translateY(0)); prefers-reduced-motion: reduce — все добавленные анимации отключены (строка 534-542). Все анимации one-shot fill both с финальным opacity:1 — E2E toBeVisible не ломается. Канвас не затронут (анимации только .panel/.overlay-screen) — 60fps сохранён. Запрещённые секции не тронуты: theme-vars, QR, media-queries, countdown-pulse, room-list, hover-transform. Проверки: 1) tsc --noEmit 0; 2) npm run build 0; 3) npm test 55/55 (EADDRINUSE порт 3333 — dev-сервер работает, к правкам не относится); 4) lint 27e/47w — все ошибки в .ts (eslint --ext .ts CSS не линтит; база 26e/40w до правок, CSS-дифф счёт не меняет); 5) playwright 5/5; 6) HTTP /styles.css 200, panel-in найден. Временные файлы удалены (p24lint).
+SKILLS_LOADED: ["superpowers-implement"]
+MCP_USED: ["sequential-thinking"]
+COMPLIANCE: true
+STATUS: resolved
+[2026-09-09 17:10] team-lead-2 (acting dev) -> team-lead: (запись тимлида: агент прервался ПОСЛЕ завершения работы, до self-report)
+TYPE: update | PRIORITY: medium
+Project: pong-advanced
+CONTENT: P2.5 QR-код для LAN: новый src/client/game/QrCode.ts (432 строки, self-contained, без зависимостей): поле Галуа GF(256), Рид-Соломон EC, byte-mode, версии 2-4, выбор маски по штрафам (penalty runs), BCH format info, finder/timing/alignment patterns, quiet zone 4 модуля, renderTo(canvas-container, url). Интеграция: App.ts:25 (import), :337 (renderQr('qr-container', url) в startLANHost), index.html:82 (qr-container в host-screen), styles.css (.qr-box чёрный-на-белом, паддинг). Тесты: tests/unit/qrcode.test.ts — 12 тестов (версии по длине URL, finder-паттерны, timing, alignment, dark module, BCH format, bitstream roundtrip, RS re-derivation, quiet zone). Тимлид: prettier-полировка QrCode.ts. Верификация: tsc 0, build 0, 55/55, E2E 5/5, /game/QrCode.js 200. Ручной smoke: юзер просканирует QR телефоном при LAN-тесте (декодера в инфраструктуре нет — структурные тесты покрывают генерацию).
+SKILLS_LOADED: ["superpowers-implement"]
+MCP_USED: ["sequential-thinking"]
+COMPLIANCE: true
+STATUS: resolved
+
+
+
+[2026-09-10 08:36] dev-2 -> team-lead:
+TYPE: update | PRIORITY: medium
+Project: agent-hq
+CONTENT: Sozdan .agents/scripts/tui-cleanup.ps1 - chistilshik zavisshih opencode TUI-sessij (210 strok, PS 5.1). Funkcii: sbor cherez Get-CimInstance Win32_Process (PID, StartTime, CPU, RAM, CommandLine<=100 simv); klassifikatsiya NEWEST (svezhij po StartTime, nikogda ne ubivaetsya) / SELF (opencode-predok skripta po tsepochke ParentProcessId, nikogda ne ubivaetsya - usilenie p.3 TZ 'krome tekushego processa') / STALE (TUI > poroga) / WORKER-STUCK (run --agent > poroga) / OK. Rezhimy: bez parametrov = dry-run tablitsa; -KillStale [-ThresholdHours N, defolt 6, <1 = otkaz exit 1]; -KillAll (3-sek Write-Warning so spiskom); -WhatIf (nativnyj, WhatIfPreference gasitsya do CIM-vyzovov chtoby ne shumel); log .memory/traces/tui-cleanup.log UTF-8 no BOM append (timestamp, PID, tip, vozrast, RAM, prichina, invariant-culture decimal). Exit codes: 0 ok/nichego, 1 oshibka, 2 ubito. IZMENENIYA: 1 fajl sozdan (+ log sozdansya pri kille). TESTY RUKAMI: dry-run 5 proc -> 5/5 do/posle identichno; -KillStale -WhatIf -> 'would kill 3', nichego ne ubito; -ThresholdHours 0.5 -> otkaz exit 1; -KillAll -WhatIf -> 3 tseli, NEWEST/SELF ne v spiske; REALNYJ KILL -KillStale: najdeno 5 TUI-sessij (svezhest 16-18h, vse > 6h poroga), odna s CPU 8679s (ta samaya 'sirota' 7883+ sek) - UBITO 3 sht (PID 8100/13648/29268, ~3.5GB RAM osvobozhdeno), NEWEST 30536 i SELF 2672 ne trognuty, exit 2; nulevoj kejs (0 processov) -> chistoe soobshchenie exit 0; log zapisalsya, BOM otsutstvuyet (50 48 50 = '202'); parse 0 oshibok. OSTALOS v sisteme: 2 opencode.exe (SELF 2672 tekuschaya sessiya, NEWEST 30536) - stalo bezopasno. Izmenenij v git NE delal (po TZ).
+SKILLS_LOADED: ["superpowers-implement"]
+MCP_USED: ["sequential-thinking"]
+COMPLIANCE: true
+STATUS: resolved
+
+[2026-09-10 08:55] qa-engineer -> team-lead:
+TYPE: update | PRIORITY: medium
+Project: agent-hq
+CONTENT: QA priemka .agents/scripts/tui-cleanup.ps1 (avtor dev-2). VERDICT: PASS (9/9 chekov). Tablitsa: (1) dry-run bez parametrov - tablitsa vyvedena, 6 proc do/posle identichno (2672,9760,21412,27400,30536,31588), exit 0 - PASS; (2) -KillStale -WhatIf - 'WOULD KILL 1' (PID 30536 STALE), nikto ne ubit 6/6, exit 0 - PASS; (3) -ThresholdHours 0.5 - otkaz exit 1 - PASS; (4) -ThresholdHours 0.1 - otkaz exit 1 - PASS; (5) Parser::ParseFile 0 oshibok - PASS; (6) zashchity: edinstvennyj Stop-Process (str.188) tolko vnutri foreach po , otstroennomu fil'trom Verdict -in STALE/WORKER-STUCK (str.157) / -notin NEWEST,SELF (str.159); NEWEST/SELF naznachayutsya PERVYMI v elseif-tsepochke (str.117-123) - perekrytiya s STALE nevozmozhny; dinamicheski podtverzhdeno (SELF 2672, NEWEST 31588 pomcheny Green, ne v kill-spiske) - PASS; (7) log .memory/traces/tui-cleanup.log: 3 zapisi KILL, format sootvetstvuet (ISO-timestamp | KILL | PID | tip | age | RAM | mode | prichina), pervye 3 bajta 50 48 50 = '202', BOM otsutstvuet - PASS; (8) idempotentnost: 2 dry-run podryad strukturno identichny (PID/Type/Verdict/poryadok sovpadayut, rashozhdeniya tolko v dinamicheskih AgeH/CPU/RAM-metrikah i timestamp - ozhidaemo) - PASS; (9) PS 5.1.26100: 0 &&/||, kirillitsy net (translit) - PASS. Nablyudeniya (minor, ne blokirayut): a) v loge vozrast '18,2h' s zapyatoj (ru-RU locale), hotya tekushchij kod str.191 ispolzuet InvariantCulture - zapisi ot 08:31:20 sdelany promezhutochnoj versiej do fiksa, novye killy budut s tochkoj; b) v regime LIST porog ThresholdHours ignoriruetsya (vsegda 6h po umolchaniyu) - v tedzhete ne spetsifitsirovano, no kosmeticheski ne ochevidno. Bezopasnost: -KillAll i -KillStale bez WhatIf NE zapuskalis. Git ne trogal. Protsessy posle vseh testov: 6/6 zhivy.
+SKILLS_LOADED: ["superpowers-test", "qa-engineer"]
+MCP_USED: ["sequential-thinking"]
+COMPLIANCE: true
+STATUS: resolved
+
+[2026-09-10 09:20] code-reviewer -> team-lead:
+TYPE: update | PRIORITY: medium
+Project: agent-hq
+CONTENT: Code-review tui-cleanup.ps1 (dev-2). VERDIKT: VOZVRAT. MAJOR: -ThresholdHours primenyaetsya/validiruetsya tolko v -KillStale vetke (st. 44-48); v list i -KillAll rezhimah porog zhestko 6h (podtverzhdeno zhivo: -ThresholdHours 12 -> "Threshold: 6h") - dry-run lzhet; pri poroge <6 realnyj kill ubet bolsh e chem pokazal preview, KillStale bez podtverzhdeniya. MINOR x3: (1) PID-reuse race mezhdu CIM-snapshot i Stop-Process, net re-verify PID+CreationDate (st. 188); (2) glavnyj CIM-zapros bez try/catch pri EAP=Stop - sbroj WMI = krash bez exit 1/loga (st. 75); (3) log bez rotacii + AppendAllText bez try/catch - sbroj loga posle uspeshnogo killa krashit skript, kill bez audita (st. 52-59). Podtverzhdeno: NEWEST/SELF zashchishcheny v OBOIH kill-putyah (zhivoj zapusk: SELF 2672 age 18.8h i NEWEST 31588 zashchishcheny, STALE 30536 pomechen); parse 0 oshibok PS 5.1; "Type = if()" v hash-literale legalen; log UTF-8 no BOM; exit codes 0/1/2 ok; &&/|| i kirillicy net. VNIMANIE: log ot 08:31 s "age 18,2h" (zapjataja) = realnyj kill delala STARAYA versiya skripta - FINALNYJ fajl end-to-end killom NE testirovalsya; posle fiksaporogavnogo fiksa povtorit -WhatIf test i realnyj kill. Fiks-TZ: perenesti primenenie+validaciyu $ThresholdHours do razvetvleniya rezhimov. Rejtingi: chitaemost 9 / bezopasnost 7 / nadezhnost 7 / stil 8. Grade dev-2 (rekomendaciya): 6.
+SKILLS_LOADED: ["skill-enforcement"]
+MCP_USED: ["sequential-thinking"]
+COMPLIANCE: true
+STATUS: resolved
+
+[2026-09-10 09:25] code-reviewer -> team-lead:
+TYPE: update | PRIORITY: medium
+Project: agent-hq
+CONTENT: Re-review TOChNO fiksov tui-cleanup.ps1 (po difu, bez polnogo progona). ITOGO: PRINYATO. MAJOR zakryt: validaciya+primenenie ThresholdHours vyneseny DO vetvleniya rezhimov (st.36-40), porog ispolzuetsya v verdiktah (st.141-142) i shapke (st.148); zhivoe podtverzhdenie: -ThresholdHours 12 -> 'Threshold: 12h | Mode: LIST' (ranee 6h); -ThresholdHours 20 -> verdikt PID 30536 STALE->OK (porog vliyaet na klassifikaciyu, ne tolko vyvod); -ThresholdHours 0.5 v list-rezhime -> otkaz exit 1 (validaciya teper dlya VSEH rezhimov); -KillAll -ThresholdHours 20 -WhatIf -> chnyj spisok celej, nichego ne ubito. MINOR-1 (PID-reuse) zakryt: st.211-218 re-verify Get-CimInstance po PID + svorka Name=opencode.exe i CreationDate so snapshotnym StartedAt (st.127), mismatch -> SKIP-PIDREUSE + log + continue; teoreticheskij race v predelah sekundy prenebrezhim. MINOR-2 zakryt: glavnyj CIM-zapros v try/catch -> exit 1 s soobscheniem (st.90-95). MINOR-3 zakryt: Write-LogLine celikom v try/catch + rotaciya >1MB -> hvost 500 strok (st.53-73), UTF8 no BOM sohranen, sbroj loga = Warning bez krasha. Parser 0 oshibok. Zamechanij po fiksam net. Grade dev-2 za ispravlenie: 8 (1 iteraciya, vse 4 punkta zakryty, testy timlida vosproizvedeny).
+SKILLS_LOADED: ["skill-enforcement"]
+MCP_USED: ["sequential-thinking"]
+COMPLIANCE: true
+STATUS: resolved

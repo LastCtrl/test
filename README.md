@@ -46,7 +46,7 @@
 | `.opencode/agents/registry.json` | Реестр агентов со specialization matrix + required_skills |
 | `.opencode/plugins/tracer.js` | Плагин distributed tracing → traces.jsonl |
 | `.opencode/plugins/scoring.js` | Плагин performance scoring → performance.jsonl |
-| `.agents/scripts/` | 7 скриптов: sync-agents.ps1, verify-phase.ps1, health-check.ps1, message-queue.ps1, create-project.ps1, inbox-poller.ps1, session-recovery.ps1 |
+| `.agents/scripts/` | 18 скриптов — Управление: sync-agents.ps1, verify-phase.ps1, health-check.ps1, message-queue.ps1, cleanup-garbage.ps1, generate-agent-cards.ps1; Мультипроектность: create-project.ps1 (US-011), agent-registry.ps1 (пул агентов US-012), project-queue.ps1 (очереди US-013), agent-utilization.ps1 (утилизация US-014); Quality: compliance-gate.ps1, prompt-gate.ps1, model-leaderboard.ps1; Recovery: inbox-poller.ps1, run-poller.ps1, run-daemons.ps1, session-recovery.ps1, tui-cleanup.ps1 (ручной чистильщик сессий) |
 | `.agents/skills/` | 24 скилла: 17 для 1С + 7 core + 4 superpowers (spec/plan/implement/test) |
 | `.agents/tasks/` | Задачи для агентов (текстовые файлы) |
 | `.agents/worktrees/` | **30 git worktrees** — изолированные песочницы для каждого агента |

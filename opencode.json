@@ -66,484 +66,514 @@
   },
   "agents": {
     "backend-1": {
-      "description": "Backend Specialist (copy 1) — REST/GraphQL API, бизнес-логика, middleware, авторизация для параллельной работы.",
-      "mode": "subagent",
-      "model": "tokenrouter/z-ai/glm-5.3-free",
-      "temperature": 0.2,
-      "permission": {
-        "bash": "allow",
-        "edit": "allow",
-        "glob": "allow",
-        "grep": "allow",
-        "read": "allow",
-        "skill": "allow",
-        "task": "deny"
-      },
-      "prompt": "{file:.opencode/agents/prompts/backend-1.txt}"
-    },
-    "backend": {
-      "description": "Backend Specialist — REST/GraphQL API, бизнес-логика, middleware, авторизация.",
-      "mode": "subagent",
-      "model": "tokenrouter/z-ai/glm-5.3-free",
-      "temperature": 0.2,
-      "permission": {
-        "bash": "allow",
-        "edit": "allow",
-        "glob": "allow",
-        "grep": "allow",
-        "read": "allow",
-        "skill": "allow",
-        "task": "deny"
-      },
-      "prompt": "{file:.opencode/agents/prompts/backend.txt}"
-    },
-    "code-reviewer-1": {
-      "description": "Code Reviewer (copy 1) — code review, best practices, clean code для параллельной работы.",
-      "mode": "subagent",
-      "model": "tokenrouter/z-ai/glm-5.3-free",
-      "temperature": 0.1,
-      "permission": {
-        "bash": "deny",
-        "edit": "deny",
-        "glob": "allow",
-        "grep": "allow",
-        "question": "allow",
-        "read": "allow",
-        "task": "deny"
-      },
-      "prompt": "{file:.opencode/agents/prompts/code-reviewer-1.txt}"
-    },
-    "code-reviewer": {
-      "description": "Code Reviewer — code review, best practices, clean code, антипаттерны. Только чтение.",
-      "mode": "subagent",
-      "model": "tokenrouter/z-ai/glm-5.3-free",
-      "temperature": 0.1,
-      "permission": {
-        "bash": "deny",
-        "edit": "deny",
-        "glob": "allow",
-        "grep": "allow",
-        "question": "allow",
-        "read": "allow",
-        "task": "deny"
-      },
-      "prompt": "{file:.opencode/agents/prompts/code-reviewer.txt}"
-    },
-    "data-engineer": {
-      "description": "Data Engineer — ETL, data pipelines, аналитика, DWH, Big Data.",
-      "mode": "subagent",
-      "model": "tokenrouter/z-ai/glm-5.3-free",
-      "temperature": 0.2,
-      "permission": {
-        "bash": "allow",
-        "edit": "allow",
-        "glob": "allow",
-        "grep": "allow",
-        "read": "allow",
-        "skill": "allow",
-        "task": "deny"
-      },
-      "prompt": "{file:.opencode/agents/prompts/data-engineer.txt}"
-    },
-    "db-specialist": {
-      "description": "DB Specialist — SQL/NoSQL, ORM, миграции, оптимизация запросов, проектирование схем.",
-      "mode": "subagent",
-      "model": "tokenrouter/z-ai/glm-5.3-free",
-      "temperature": 0.2,
-      "permission": {
-        "bash": "allow",
-        "edit": "allow",
-        "glob": "allow",
-        "grep": "allow",
-        "read": "allow",
-        "skill": "allow",
-        "task": "deny"
-      },
-      "prompt": "{file:.opencode/agents/prompts/db-specialist.txt}"
-    },
-    "dev-1-1": {
-      "description": "Developer #1 (copy 1) — универсальный разработчик для параллельной работы.",
-      "mode": "subagent",
-      "model": "tokenrouter/z-ai/glm-5.3-free",
-      "temperature": 0.2,
-      "permission": {
-        "bash": "allow",
-        "edit": "allow",
-        "glob": "allow",
-        "grep": "allow",
-        "read": "allow",
-        "skill": "allow",
-        "task": "deny"
-      },
-      "prompt": "{file:.opencode/agents/prompts/dev-1-1.txt}"
-    },
-    "dev-1": {
-      "description": "Developer #1 — универсальный разработчик. Пишет код на любых языках.",
-      "mode": "subagent",
-      "model": "tokenrouter/z-ai/glm-5.3-free",
-      "temperature": 0.2,
-      "permission": {
-        "bash": "allow",
-        "edit": "allow",
-        "glob": "allow",
-        "grep": "allow",
-        "read": "allow",
-        "skill": "allow",
-        "task": "deny"
-      },
-      "prompt": "{file:.opencode/agents/prompts/dev-1.txt}"
-    },
-    "dev-2-1": {
-      "description": "Developer #2 (copy 1) — альтернативный разработчик для параллельной работы.",
-      "mode": "subagent",
-      "model": "tokenrouter/z-ai/glm-5.3-free",
-      "temperature": 0.3,
-      "permission": {
-        "bash": "allow",
-        "edit": "allow",
-        "glob": "allow",
-        "grep": "allow",
-        "read": "allow",
-        "skill": "allow",
-        "task": "deny"
-      },
-      "prompt": "{file:.opencode/agents/prompts/dev-2-1.txt}"
-    },
-    "dev-2": {
-      "description": "Developer #2 — альтернативный разработчик. Предлагает другие подходы к решению.",
-      "mode": "subagent",
-      "model": "tokenrouter/z-ai/glm-5.3-free",
-      "temperature": 0.3,
-      "permission": {
-        "bash": "allow",
-        "edit": "allow",
-        "glob": "allow",
-        "grep": "allow",
-        "read": "allow",
-        "skill": "allow",
-        "task": "deny"
-      },
-      "prompt": "{file:.opencode/agents/prompts/dev-2.txt}"
-    },
-    "dev-3-1": {
-      "description": "Developer #3 (copy 1) — надёжный разработчик для параллельной работы.",
-      "mode": "subagent",
-      "model": "tokenrouter/z-ai/glm-5.3-free",
-      "temperature": 0.2,
-      "permission": {
-        "bash": "allow",
-        "edit": "allow",
-        "glob": "allow",
-        "grep": "allow",
-        "read": "allow",
-        "skill": "allow",
-        "task": "deny"
-      },
-      "prompt": "{file:.opencode/agents/prompts/dev-3-1.txt}"
-    },
-    "dev-3": {
-      "description": "Developer #3 — надёжный разработчик. Внимание к граничным случаям и обработке ошибок.",
-      "mode": "subagent",
-      "model": "tokenrouter/z-ai/glm-5.3-free",
-      "temperature": 0.2,
-      "permission": {
-        "bash": "allow",
-        "edit": "allow",
-        "glob": "allow",
-        "grep": "allow",
-        "read": "allow",
-        "skill": "allow",
-        "task": "deny"
-      },
-      "prompt": "{file:.opencode/agents/prompts/dev-3.txt}"
-    },
-    "devops": {
-      "description": "DevOps — Docker, CI/CD, Kubernetes, облака, мониторинг инфраструктуры.",
-      "mode": "subagent",
-      "model": "tokenrouter/z-ai/glm-5.3-free",
-      "temperature": 0.2,
-      "permission": {
-        "bash": "allow",
-        "edit": "allow",
-        "glob": "allow",
-        "grep": "allow",
-        "read": "allow",
-        "skill": "allow",
-        "task": "deny"
-      },
-      "prompt": "{file:.opencode/agents/prompts/devops.txt}"
-    },
-    "frontend": {
-      "description": "Frontend Specialist — React/Vue/Angular, HTML/CSS, UI/UX, accessibility.",
-      "mode": "subagent",
-      "model": "tokenrouter/z-ai/glm-5.3-free",
-      "temperature": 0.2,
-      "permission": {
-        "bash": "allow",
-        "edit": "allow",
-        "glob": "allow",
-        "grep": "allow",
-        "read": "allow",
-        "skill": "allow",
-        "task": "deny"
-      },
-      "prompt": "{file:.opencode/agents/prompts/frontend.txt}"
-    },
-    "integration-specialist": {
-      "description": "Integration Specialist — REST/SOAP/gRPC, Kafka/RabbitMQ, webhooks, API Gateway.",
-      "mode": "subagent",
-      "model": "tokenrouter/z-ai/glm-5.3-free",
-      "temperature": 0.2,
-      "permission": {
-        "bash": "allow",
-        "edit": "allow",
-        "glob": "allow",
-        "grep": "allow",
-        "read": "allow",
-        "skill": "allow",
-        "task": "deny"
-      },
-      "prompt": "{file:.opencode/agents/prompts/integration-specialist.txt}"
-    },
-    "legal-advisor": {
-      "description": "Юридический советник — законы РБ, ПД, авторское право, платёжное законодательство, налоги, юрлица.",
-      "mode": "subagent",
-      "model": "tokenrouter/z-ai/glm-5.3-free",
-      "temperature": 0.1,
-      "permission": {
-        "bash": "deny",
-        "edit": "deny",
-        "glob": "allow",
-        "grep": "allow",
-        "read": "allow",
-        "task": "deny",
-        "webfetch": "allow"
-      },
-      "prompt": "{file:.opencode/agents/prompts/legal-advisor.txt}"
-    },
-    "mobile-dev": {
-      "description": "Mobile Dev — React Native/Flutter/Swift/Kotlin, mobile-first UI, offline-first.",
-      "mode": "subagent",
-      "model": "tokenrouter/z-ai/glm-5.3-free",
-      "temperature": 0.2,
-      "permission": {
-        "bash": "allow",
-        "edit": "allow",
-        "glob": "allow",
-        "grep": "allow",
-        "read": "allow",
-        "skill": "allow",
-        "task": "deny"
-      },
-      "prompt": "{file:.opencode/agents/prompts/mobile-dev.txt}"
-    },
-    "product-manager": {
-      "description": "Product Manager — превращает размытые требования в user stories, acceptance criteria, MoSCoW.",
-      "mode": "subagent",
-      "model": "tokenrouter/z-ai/glm-5.3-free",
-      "temperature": 0.2,
-      "permission": {
-        "bash": "deny",
-        "edit": "allow",
-        "question": "allow",
-        "read": "allow",
-        "task": "deny"
-      },
-      "prompt": "{file:.opencode/agents/prompts/product-manager.txt}"
-    },
-    "qa-engineer-1": {
-      "description": "QA Engineer (copy 1) — тесты, edge cases, баг-репорты, регрессия для параллельной работы.",
-      "mode": "subagent",
-      "model": "tokenrouter/z-ai/glm-5.3-free",
-      "temperature": 0.2,
-      "permission": {
-        "bash": "allow",
-        "edit": "allow",
-        "glob": "allow",
-        "grep": "allow",
-        "read": "allow",
-        "skill": "allow",
-        "task": "deny"
-      },
-      "prompt": "{file:.opencode/agents/prompts/qa-engineer-1.txt}"
-    },
-    "qa-engineer": {
-      "description": "QA Engineer — тесты, edge cases, баг-репорты, регрессия.",
-      "mode": "subagent",
-      "model": "tokenrouter/z-ai/glm-5.3-free",
-      "temperature": 0.2,
-      "permission": {
-        "bash": "allow",
-        "edit": "allow",
-        "glob": "allow",
-        "grep": "allow",
-        "read": "allow",
-        "skill": "allow",
-        "task": "deny"
-      },
-      "prompt": "{file:.opencode/agents/prompts/qa-engineer.txt}"
-    },
-    "security-auditor-1": {
-      "description": "Security Auditor (copy 1) — OWASP, уязвимости, поиск secrets для параллельной работы.",
-      "mode": "subagent",
-      "model": "tokenrouter/z-ai/glm-5.3-free",
-      "temperature": 0,
-      "permission": {
-        "bash": "deny",
-        "edit": "deny",
-        "glob": "allow",
-        "grep": "allow",
-        "read": "allow",
-        "task": "deny"
-      },
-      "prompt": "{file:.opencode/agents/prompts/security-auditor-1.txt}"
-    },
-    "security-auditor": {
-      "description": "Security Auditor — OWASP, уязвимости, поиск secrets и утечек. Только чтение.",
-      "mode": "subagent",
-      "model": "tokenrouter/z-ai/glm-5.3-free",
-      "temperature": 0,
-      "permission": {
-        "bash": "deny",
-        "edit": "deny",
-        "glob": "allow",
-        "grep": "allow",
-        "read": "allow",
-        "task": "deny"
-      },
-      "prompt": "{file:.opencode/agents/prompts/security-auditor.txt}"
-    },
-    "skill-surgeon": {
-      "description": "Skill Surgeon — ищет, скачивает и создаёт скиллы для любых технологий.",
-      "mode": "subagent",
-      "model": "tokenrouter/z-ai/glm-5.3-free",
-      "temperature": 0.2,
-      "permission": {
-        "bash": "allow",
-        "edit": "allow",
-        "glob": "allow",
-        "grep": "allow",
-        "read": "allow",
-        "skill": "allow",
-        "task": "deny"
-      },
-      "prompt": "{file:.opencode/agents/prompts/skill-surgeon.txt}"
-    },
-    "smm-strategist": {
-      "description": "SMM/Маркетинг стратег — продвижение, ЦА, воронка, контент-стратегия, виральные механики.",
-      "mode": "subagent",
-      "model": "tokenrouter/z-ai/glm-5.3-free",
-      "temperature": 0.3,
-      "permission": {
-        "bash": "allow",
-        "edit": "allow",
-        "glob": "allow",
-        "grep": "allow",
-        "read": "allow",
-        "skill": "allow",
-        "task": "deny",
-        "webfetch": "allow"
-      },
-      "prompt": "{file:.opencode/agents/prompts/smm-strategist.txt}"
-    },
-    "team-lead-1": {
-      "description": "Team Lead (copy 1) — оркестратор для параллельной оркестрации.",
-      "mode": "subagent",
-      "model": "tokenrouter/z-ai/glm-5.3-free",
-      "temperature": 0.1,
-      "permission": {
-        "bash": "allow",
-        "edit": "allow",
-        "glob": "allow",
-        "grep": "allow",
-        "question": "allow",
-        "read": "allow",
-        "skill": "allow",
-        "task": "deny"
-      },
-      "prompt": "{file:.opencode/agents/prompts/team-lead-1.txt}"
-    },
-    "team-lead-2": {
-      "description": "Team Lead (copy 2) — оркестратор для параллельной оркестрации.",
-      "mode": "subagent",
-      "model": "tokenrouter/z-ai/glm-5.3-free",
-      "temperature": 0.1,
-      "permission": {
-        "bash": "allow",
-        "edit": "allow",
-        "glob": "allow",
-        "grep": "allow",
-        "question": "allow",
-        "read": "allow",
-        "skill": "allow",
-        "task": "deny"
-      },
-      "prompt": "{file:.opencode/agents/prompts/team-lead-2.txt}"
-    },
-    "team-lead-3": {
-      "description": "Team Lead (copy 3) — оркестратор для параллельной оркестрации.",
-      "mode": "subagent",
-      "model": "tokenrouter/z-ai/glm-5.3-free",
-      "temperature": 0.1,
-      "permission": {
-        "bash": "allow",
-        "edit": "allow",
-        "glob": "allow",
-        "grep": "allow",
-        "question": "allow",
-        "read": "allow",
-        "skill": "allow",
-        "task": "deny"
-      },
-      "prompt": "{file:.opencode/agents/prompts/team-lead-3.txt}"
-    },
-    "team-lead": {
-      "description": "Team Lead — оркестратор мультиагентной команды. Декомпозирует задачи, назначает агентов, контролирует качество.",
-      "mode": "subagent",
-      "model": "tokenrouter/z-ai/glm-5.3-free",
-      "temperature": 0.1,
-      "permission": {
-        "bash": "allow",
-        "edit": "allow",
-        "glob": "allow",
-        "grep": "allow",
-        "question": "allow",
-        "read": "allow",
-        "skill": "allow",
-        "task": "deny"
-      },
-      "prompt": "{file:.opencode/agents/prompts/team-lead.txt}"
-    },
-    "tech-writer-1": {
-      "description": "Tech Writer (copy 1) — README, API docs, changelog, архитектурная документация для параллельной работы.",
-      "mode": "subagent",
-      "model": "tokenrouter/z-ai/glm-5.3-free",
-      "temperature": 0.2,
-      "permission": {
-        "bash": "deny",
-        "edit": "allow",
-        "glob": "allow",
-        "grep": "allow",
-        "read": "allow",
-        "task": "deny"
-      },
-      "prompt": "{file:.opencode/agents/prompts/tech-writer-1.txt}"
-    },
-    "tech-writer": {
-      "description": "Tech Writer — генерирует README, API docs, changelog, архитектурную документацию.",
-      "mode": "subagent",
-      "model": "tokenrouter/z-ai/glm-5.3-free",
-      "temperature": 0.2,
-      "permission": {
-        "bash": "deny",
-        "edit": "allow",
-        "glob": "allow",
-        "grep": "allow",
-        "read": "allow",
-        "task": "deny"
-      },
-      "prompt": "{file:.opencode/agents/prompts/tech-writer.txt}"
+        "description": "Backend Specialist (copy 1) — REST/GraphQL API, бизнес-логика, middleware, авторизация для параллельной работы.",
+        "mode": "subagent",
+        "model": "tokenrouter/z-ai/glm-5.3-free",
+        "temperature": 0.2,
+        "permission": {
+            "bash": "allow",
+            "edit": "allow",
+            "glob": "allow",
+            "grep": "allow",
+            "read": "allow",
+            "skill": "allow",
+            "task": "deny"
+        },
+        "prompt": "{file:.opencode/agents/prompts/backend-1.txt}"
     }
+,
+    "backend": {
+        "description": "Backend Specialist — REST/GraphQL API, бизнес-логика, middleware, авторизация.",
+        "mode": "subagent",
+        "model": "tokenrouter/z-ai/glm-5.3-free",
+        "temperature": 0.2,
+        "permission": {
+            "bash": "allow",
+            "edit": "allow",
+            "glob": "allow",
+            "grep": "allow",
+            "read": "allow",
+            "skill": "allow",
+            "task": "deny"
+        },
+        "prompt": "{file:.opencode/agents/prompts/backend.txt}"
+    }
+,
+    "code-reviewer-1": {
+        "description": "Code Reviewer (copy 1) — code review, best practices, clean code для параллельной работы.",
+        "mode": "subagent",
+        "model": "tokenrouter/z-ai/glm-5.3-free",
+        "temperature": 0.1,
+        "permission": {
+            "bash": "deny",
+            "edit": "deny",
+            "glob": "allow",
+            "grep": "allow",
+            "question": "allow",
+            "read": "allow",
+            "task": "deny"
+        },
+        "prompt": "{file:.opencode/agents/prompts/code-reviewer-1.txt}"
+    }
+,
+    "code-reviewer": {
+        "description": "Code Reviewer — code review, best practices, clean code, антипаттерны. Только чтение.",
+        "mode": "subagent",
+        "model": "tokenrouter/z-ai/glm-5.3-free",
+        "temperature": 0.1,
+        "permission": {
+            "bash": "deny",
+            "edit": "deny",
+            "glob": "allow",
+            "grep": "allow",
+            "question": "allow",
+            "read": "allow",
+            "task": "deny"
+        },
+        "prompt": "{file:.opencode/agents/prompts/code-reviewer.txt}"
+    }
+,
+    "data-engineer": {
+        "description": "Data Engineer — ETL, data pipelines, аналитика, DWH, Big Data.",
+        "mode": "subagent",
+        "model": "tokenrouter/z-ai/glm-5.3-free",
+        "temperature": 0.2,
+        "permission": {
+            "bash": "allow",
+            "edit": "allow",
+            "glob": "allow",
+            "grep": "allow",
+            "read": "allow",
+            "skill": "allow",
+            "task": "deny"
+        },
+        "prompt": "{file:.opencode/agents/prompts/data-engineer.txt}"
+    }
+,
+    "db-specialist": {
+        "description": "DB Specialist — SQL/NoSQL, ORM, миграции, оптимизация запросов, проектирование схем.",
+        "mode": "subagent",
+        "model": "tokenrouter/z-ai/glm-5.3-free",
+        "temperature": 0.2,
+        "permission": {
+            "bash": "allow",
+            "edit": "allow",
+            "glob": "allow",
+            "grep": "allow",
+            "read": "allow",
+            "skill": "allow",
+            "task": "deny"
+        },
+        "prompt": "{file:.opencode/agents/prompts/db-specialist.txt}"
+    }
+,
+    "dev-1-1": {
+        "description": "Developer #1 (copy 1) — универсальный разработчик для параллельной работы.",
+        "mode": "subagent",
+        "model": "tokenrouter/z-ai/glm-5.3-free",
+        "temperature": 0.2,
+        "permission": {
+            "bash": "allow",
+            "edit": "allow",
+            "glob": "allow",
+            "grep": "allow",
+            "read": "allow",
+            "skill": "allow",
+            "task": "deny"
+        },
+        "prompt": "{file:.opencode/agents/prompts/dev-1-1.txt}"
+    }
+,
+    "dev-1": {
+        "description": "Developer #1 — универсальный разработчик. Пишет код на любых языках.",
+        "mode": "subagent",
+        "model": "tokenrouter/z-ai/glm-5.3-free",
+        "temperature": 0.2,
+        "permission": {
+            "bash": "allow",
+            "edit": "allow",
+            "glob": "allow",
+            "grep": "allow",
+            "read": "allow",
+            "skill": "allow",
+            "task": "deny"
+        },
+        "prompt": "{file:.opencode/agents/prompts/dev-1.txt}"
+    }
+,
+    "dev-2-1": {
+        "description": "Developer #2 (copy 1) — альтернативный разработчик для параллельной работы.",
+        "mode": "subagent",
+        "model": "tokenrouter/z-ai/glm-5.3-free",
+        "temperature": 0.3,
+        "permission": {
+            "bash": "allow",
+            "edit": "allow",
+            "glob": "allow",
+            "grep": "allow",
+            "read": "allow",
+            "skill": "allow",
+            "task": "deny"
+        },
+        "prompt": "{file:.opencode/agents/prompts/dev-2-1.txt}"
+    }
+,
+    "dev-2": {
+        "description": "Developer #2 — альтернативный разработчик. Предлагает другие подходы к решению.",
+        "mode": "subagent",
+        "model": "tokenrouter/z-ai/glm-5.3-free",
+        "temperature": 0.3,
+        "permission": {
+            "bash": "allow",
+            "edit": "allow",
+            "glob": "allow",
+            "grep": "allow",
+            "read": "allow",
+            "skill": "allow",
+            "task": "deny"
+        },
+        "prompt": "{file:.opencode/agents/prompts/dev-2.txt}"
+    }
+,
+    "dev-3-1": {
+        "description": "Developer #3 (copy 1) — надёжный разработчик для параллельной работы.",
+        "mode": "subagent",
+        "model": "tokenrouter/z-ai/glm-5.3-free",
+        "temperature": 0.2,
+        "permission": {
+            "bash": "allow",
+            "edit": "allow",
+            "glob": "allow",
+            "grep": "allow",
+            "read": "allow",
+            "skill": "allow",
+            "task": "deny"
+        },
+        "prompt": "{file:.opencode/agents/prompts/dev-3-1.txt}"
+    }
+,
+    "dev-3": {
+        "description": "Developer #3 — надёжный разработчик. Внимание к граничным случаям и обработке ошибок.",
+        "mode": "subagent",
+        "model": "tokenrouter/z-ai/glm-5.3-free",
+        "temperature": 0.2,
+        "permission": {
+            "bash": "allow",
+            "edit": "allow",
+            "glob": "allow",
+            "grep": "allow",
+            "read": "allow",
+            "skill": "allow",
+            "task": "deny"
+        },
+        "prompt": "{file:.opencode/agents/prompts/dev-3.txt}"
+    }
+,
+    "devops": {
+        "description": "DevOps — Docker, CI/CD, Kubernetes, облака, мониторинг инфраструктуры.",
+        "mode": "subagent",
+        "model": "tokenrouter/z-ai/glm-5.3-free",
+        "temperature": 0.2,
+        "permission": {
+            "bash": "allow",
+            "edit": "allow",
+            "glob": "allow",
+            "grep": "allow",
+            "read": "allow",
+            "skill": "allow",
+            "task": "deny"
+        },
+        "prompt": "{file:.opencode/agents/prompts/devops.txt}"
+    }
+,
+    "frontend": {
+        "description": "Frontend Specialist — React/Vue/Angular, HTML/CSS, UI/UX, accessibility.",
+        "mode": "subagent",
+        "model": "tokenrouter/z-ai/glm-5.3-free",
+        "temperature": 0.2,
+        "permission": {
+            "bash": "allow",
+            "edit": "allow",
+            "glob": "allow",
+            "grep": "allow",
+            "read": "allow",
+            "skill": "allow",
+            "task": "deny"
+        },
+        "prompt": "{file:.opencode/agents/prompts/frontend.txt}"
+    }
+,
+    "integration-specialist": {
+        "description": "Integration Specialist — REST/SOAP/gRPC, Kafka/RabbitMQ, webhooks, API Gateway.",
+        "mode": "subagent",
+        "model": "tokenrouter/z-ai/glm-5.3-free",
+        "temperature": 0.2,
+        "permission": {
+            "bash": "allow",
+            "edit": "allow",
+            "glob": "allow",
+            "grep": "allow",
+            "read": "allow",
+            "skill": "allow",
+            "task": "deny"
+        },
+        "prompt": "{file:.opencode/agents/prompts/integration-specialist.txt}"
+    }
+,
+    "legal-advisor": {
+        "description": "Юридический советник — законы РБ, ПД, авторское право, платёжное законодательство, налоги, юрлица.",
+        "mode": "subagent",
+        "model": "tokenrouter/z-ai/glm-5.3-free",
+        "temperature": 0.1,
+        "permission": {
+            "bash": "deny",
+            "edit": "deny",
+            "glob": "allow",
+            "grep": "allow",
+            "read": "allow",
+            "task": "deny",
+            "webfetch": "allow"
+        },
+        "prompt": "{file:.opencode/agents/prompts/legal-advisor.txt}"
+    }
+,
+    "mobile-dev": {
+        "description": "Mobile Dev — React Native/Flutter/Swift/Kotlin, mobile-first UI, offline-first.",
+        "mode": "subagent",
+        "model": "tokenrouter/z-ai/glm-5.3-free",
+        "temperature": 0.2,
+        "permission": {
+            "bash": "allow",
+            "edit": "allow",
+            "glob": "allow",
+            "grep": "allow",
+            "read": "allow",
+            "skill": "allow",
+            "task": "deny"
+        },
+        "prompt": "{file:.opencode/agents/prompts/mobile-dev.txt}"
+    }
+,
+    "product-manager": {
+        "description": "Product Manager — превращает размытые требования в user stories, acceptance criteria, MoSCoW.",
+        "mode": "subagent",
+        "model": "tokenrouter/z-ai/glm-5.3-free",
+        "temperature": 0.2,
+        "permission": {
+            "bash": "deny",
+            "edit": "allow",
+            "question": "allow",
+            "read": "allow",
+            "task": "deny"
+        },
+        "prompt": "{file:.opencode/agents/prompts/product-manager.txt}"
+    }
+,
+    "qa-engineer-1": {
+        "description": "QA Engineer (copy 1) — тесты, edge cases, баг-репорты, регрессия для параллельной работы.",
+        "mode": "subagent",
+        "model": "tokenrouter/z-ai/glm-5.3-free",
+        "temperature": 0.2,
+        "permission": {
+            "bash": "allow",
+            "edit": "allow",
+            "glob": "allow",
+            "grep": "allow",
+            "read": "allow",
+            "skill": "allow",
+            "task": "deny"
+        },
+        "prompt": "{file:.opencode/agents/prompts/qa-engineer-1.txt}"
+    }
+,
+    "qa-engineer": {
+        "description": "QA Engineer — тесты, edge cases, баг-репорты, регрессия.",
+        "mode": "subagent",
+        "model": "tokenrouter/z-ai/glm-5.3-free",
+        "temperature": 0.2,
+        "permission": {
+            "bash": "allow",
+            "edit": "allow",
+            "glob": "allow",
+            "grep": "allow",
+            "read": "allow",
+            "skill": "allow",
+            "task": "deny"
+        },
+        "prompt": "{file:.opencode/agents/prompts/qa-engineer.txt}"
+    }
+,
+    "security-auditor-1": {
+        "description": "Security Auditor (copy 1) — OWASP, уязвимости, поиск secrets для параллельной работы.",
+        "mode": "subagent",
+        "model": "tokenrouter/z-ai/glm-5.3-free",
+        "temperature": 0,
+        "permission": {
+            "bash": "deny",
+            "edit": "deny",
+            "glob": "allow",
+            "grep": "allow",
+            "read": "allow",
+            "task": "deny"
+        },
+        "prompt": "{file:.opencode/agents/prompts/security-auditor-1.txt}"
+    }
+,
+    "security-auditor": {
+        "description": "Security Auditor — OWASP, уязвимости, поиск secrets и утечек. Только чтение.",
+        "mode": "subagent",
+        "model": "tokenrouter/z-ai/glm-5.3-free",
+        "temperature": 0,
+        "permission": {
+            "bash": "deny",
+            "edit": "deny",
+            "glob": "allow",
+            "grep": "allow",
+            "read": "allow",
+            "task": "deny"
+        },
+        "prompt": "{file:.opencode/agents/prompts/security-auditor.txt}"
+    }
+,
+    "skill-surgeon": {
+        "description": "Skill Surgeon — ищет, скачивает и создаёт скиллы для любых технологий.",
+        "mode": "subagent",
+        "model": "tokenrouter/z-ai/glm-5.3-free",
+        "temperature": 0.2,
+        "permission": {
+            "bash": "allow",
+            "edit": "allow",
+            "glob": "allow",
+            "grep": "allow",
+            "read": "allow",
+            "skill": "allow",
+            "task": "deny"
+        },
+        "prompt": "{file:.opencode/agents/prompts/skill-surgeon.txt}"
+    }
+,
+    "smm-strategist": {
+        "description": "SMM/Маркетинг стратег — продвижение, ЦА, воронка, контент-стратегия, виральные механики.",
+        "mode": "subagent",
+        "model": "tokenrouter/z-ai/glm-5.3-free",
+        "temperature": 0.3,
+        "permission": {
+            "bash": "allow",
+            "edit": "allow",
+            "glob": "allow",
+            "grep": "allow",
+            "read": "allow",
+            "skill": "allow",
+            "task": "deny",
+            "webfetch": "allow"
+        },
+        "prompt": "{file:.opencode/agents/prompts/smm-strategist.txt}"
+    }
+,
+    "team-lead-1": {
+        "description": "Team Lead (copy 1) — оркестратор для параллельной оркестрации.",
+        "mode": "subagent",
+        "model": "tokenrouter/z-ai/glm-5.3-free",
+        "temperature": 0.1,
+        "permission": {
+            "bash": "allow",
+            "edit": "allow",
+            "glob": "allow",
+            "grep": "allow",
+            "question": "allow",
+            "read": "allow",
+            "skill": "allow",
+            "task": "deny"
+        },
+        "prompt": "{file:.opencode/agents/prompts/team-lead-1.txt}"
+    }
+,
+    "team-lead-2": {
+        "description": "Team Lead (copy 2) — оркестратор для параллельной оркестрации.",
+        "mode": "subagent",
+        "model": "tokenrouter/z-ai/glm-5.3-free",
+        "temperature": 0.1,
+        "permission": {
+            "bash": "allow",
+            "edit": "allow",
+            "glob": "allow",
+            "grep": "allow",
+            "question": "allow",
+            "read": "allow",
+            "skill": "allow",
+            "task": "deny"
+        },
+        "prompt": "{file:.opencode/agents/prompts/team-lead-2.txt}"
+    }
+,
+    "team-lead-3": {
+        "description": "Team Lead (copy 3) — оркестратор для параллельной оркестрации.",
+        "mode": "subagent",
+        "model": "tokenrouter/z-ai/glm-5.3-free",
+        "temperature": 0.1,
+        "permission": {
+            "bash": "allow",
+            "edit": "allow",
+            "glob": "allow",
+            "grep": "allow",
+            "question": "allow",
+            "read": "allow",
+            "skill": "allow",
+            "task": "deny"
+        },
+        "prompt": "{file:.opencode/agents/prompts/team-lead-3.txt}"
+    }
+,
+    "team-lead": {
+        "description": "Team Lead — оркестратор мультиагентной команды. Декомпозирует задачи, назначает агентов, контролирует качество.",
+        "mode": "subagent",
+        "model": "tokenrouter/z-ai/glm-5.3-free",
+        "temperature": 0.1,
+        "permission": {
+            "bash": "allow",
+            "edit": "allow",
+            "glob": "allow",
+            "grep": "allow",
+            "question": "allow",
+            "read": "allow",
+            "skill": "allow",
+            "task": "deny"
+        },
+        "prompt": "{file:.opencode/agents/prompts/team-lead.txt}"
+    }
+,
+    "tech-writer-1": {
+        "description": "Tech Writer (copy 1) — README, API docs, changelog, архитектурная документация для параллельной работы.",
+        "mode": "subagent",
+        "model": "tokenrouter/z-ai/glm-5.3-free",
+        "temperature": 0.2,
+        "permission": {
+            "bash": "deny",
+            "edit": "allow",
+            "glob": "allow",
+            "grep": "allow",
+            "read": "allow",
+            "task": "deny"
+        },
+        "prompt": "{file:.opencode/agents/prompts/tech-writer-1.txt}"
+    }
+,
+    "tech-writer": {
+        "description": "Tech Writer — генерирует README, API docs, changelog, архитектурную документацию.",
+        "mode": "subagent",
+        "model": "tokenrouter/z-ai/glm-5.3-free",
+        "temperature": 0.2,
+        "permission": {
+            "bash": "deny",
+            "edit": "allow",
+            "glob": "allow",
+            "grep": "allow",
+            "read": "allow",
+            "task": "deny"
+        },
+        "prompt": "{file:.opencode/agents/prompts/tech-writer.txt}"
+    }
+
   },
   "memory": {
     "bank_path": ".memory/",

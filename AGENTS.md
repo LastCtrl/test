@@ -178,7 +178,8 @@ STATUS: resolved
 ## 9. План и скрипты
 
 - Полный план: FULL_PLAN.md
-- Скрипты: sync-agents.ps1, verify-phase.ps1, health-check.ps1, message-queue.ps1, create-project.ps1, cleanup-garbage.ps1
+- Скрипты (18): sync-agents.ps1, verify-phase.ps1, health-check.ps1, message-queue.ps1, cleanup-garbage.ps1, generate-agent-cards.ps1, compliance-gate.ps1, prompt-gate.ps1, model-leaderboard.ps1, inbox-poller.ps1, run-poller.ps1, run-daemons.ps1, session-recovery.ps1, tui-cleanup.ps1
+- Мультипроектность: agent-registry.ps1 (US-012), project-queue.ps1 (US-013), agent-utilization.ps1 (US-014), create-project.ps1 (US-011)
 
 ## 10. PowerShell и безопасность Windows (ОБЯЗАТЕЛЬНО)
 

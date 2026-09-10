@@ -340,3 +340,12 @@ COMPLIANCE: true
 STATUS: resolved
 
 
+
+[2026-09-10 13:40] team-lead -> bus:
+TYPE: update | PRIORITY: medium
+Project: agent-hq
+CONTENT: US-016 Telegram-мост зафиксирован в REQUIREMENTS-PARALLEL-PROJECTS.md (Could Have). MVP = monitoring-first, сессия-центрично: /sessions (открытые сессии opencode из SQLite readonly: директория, суть задачи, агент, активность), /agents, /queue, /tasks, /buffer + push (blocker critical, dead-letter, REJECT, задача завершена) с дедупом. Режим: schtasks-прогон 5-15с каждые 1-2 мин (аналог inbox-poller, ноль PDM-паттернов в коде). Стек: aiogram 3.29 (уже стоит, без новых пакетов), cntlm 127.0.0.1:3128. Whitelist chat_id, токен вне git, MVP read-only. План: A dev-1 каркас 30м, B dev-2 collectors 30м, C dev-1 push-детектор 20м, D qa тесты 20м, E review+security 15+15м, F tech-writer 10м. v2 (интерактив: reply->inbox, кнопки ОК, /run) - после того как MVP поживёт. Решения пользователя: push - всё сразу; v2 - потом; schtasks - ОК с оговоркой "а точно безопасно" (объяснил 4 аргументами: прецедент poller, исключения ЦКБ, разница с sberbank-ботом, отсутствие опасных паттернов; финальное подтверждение возьму при деплое). Blocker деплоя (не разработки): bot-token от пользователя - скинет позже, не горит. Разработка на моках доступна сразу.
+SKILLS_LOADED: []
+MCP_USED: ["sequential-thinking"]
+COMPLIANCE: true
+STATUS: resolved

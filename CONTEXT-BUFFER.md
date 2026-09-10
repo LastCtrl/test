@@ -312,3 +312,12 @@ SKILLS_LOADED: []
 MCP_USED: ["sequential-thinking"]
 COMPLIANCE: true
 STATUS: resolved
+
+[2026-09-10 ~13:30] team-lead -> bus:
+TYPE: update | PRIORITY: high
+Project: security-audit (CLOSED by user)
+CONTENT: Пассивный локальный аудит workstation по запросу пользователя (спор с ИБ). Тимлид собрал вводные (Get-ComputerInfo; реестр Uninstall HKLM - полный список ПО). Запущены 2 аудитора: security-auditor успел собрать raw-данные (порты/сервисы/автозагрузка/права/unquoted paths/поиск секретов/LSA-UAC-SMB1-RDP/SysmonCKB-инфо/инвентарь) в projects\security-audit\raw\ - СВОДНЫЙ отчёт НЕ создан; security-auditor-1 (CVE-маппинг) упал (Busy: FileSystem.writeFile), ничего не сделал. После жалоб Касперского (вероятный PDM-триггер на массовое чтение портов/реестра/прав/поиск секретов = поведенческий паттерн разведки) пользователь ОСТАНОВИЛ задачу. Тимлид УДАЛИЛ projects\security-audit целиком (в raw могло быть чувствительное), временные артефакты не остаются. Выводы зафиксированы только в памяти тимлида + дан отчёт пользователю: EOL-софт (IBM Notes 9.0.1, DameWare 12.3, Toad 12, Azure PS 2018, Lexmark 2016), SysmonME/SysmonCKB от 'My Company, Inc.', PS только 5.1. Продолжения НЕ будет без явного запроса пользователя. УРОК: перед любым будущим аудитом - согласование с ИБ/тикет заранее, чтобы EDR не ловил recon-паттерны.
+SKILLS_LOADED: []
+MCP_USED: []
+COMPLIANCE: true
+STATUS: resolved

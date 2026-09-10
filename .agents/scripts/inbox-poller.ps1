@@ -236,10 +236,26 @@ function Process-InboxFile {
         return
     }
 
-    # Call opencode run --agent <name> "<prompt>"
-    Write-Log "🚀 Calling opencode run for agent: $targetAgent"
-    $result = & opencode run --agent "$targetAgent" "$prompt" 2>&1
-    $exitCode = $LASTEXITCODE
+    # Call opencode run --agent <name> "<prompt>" with 15-min hard timeout
+    # (prevents a hung agent from blocking the whole poller cycle forever)
+    Write-Log "🚀 Calling opencode run for agent: $targetAgent (timeout: 900s)"
+    $result = $null
+    $job = Start-Job -ScriptBlock {
+        param($agent, $taskPrompt)
+        & opencode run --agent $agent $taskPrompt 2>&1
+    } -ArgumentList $targetAgent, $prompt
+    $completed = Wait-Job -Job $job -Timeout 900
+    if ($completed) {
+        $result = Receive-Job -Job $job
+        $exitCode = 0
+        if (-not $result) { $exitCode = 1 }
+    } else {
+        Stop-Job -Job $job -Force
+        Write-Log "⏱️ TIMEOUT 900s: agent '$targetAgent' hung — job killed"
+        $result = "TIMEOUT: agent '$targetAgent' did not respond in 900 seconds"
+        $exitCode = 124
+    }
+    Remove-Job -Job $job -Force -ErrorAction SilentlyContinue
 
     $finishedAt = Format-DateTime
 
@@ -249,11 +265,25 @@ function Process-InboxFile {
             -priority $priority -payload $payload -startedAt $startedAt `
             -response $result -filePath $filePath -fullFileName $fullFileName
     } else {
-        # Failed — 1 retry
+        # Failed — 1 retry (also with timeout)
         Write-Log "❌ First attempt failed (exit code: $exitCode), retrying..."
-
-        $result2 = & opencode run --agent "$targetAgent" "$prompt" 2>&1
-        $exitCode2 = $LASTEXITCODE
+        $result2 = $null
+        $job2 = Start-Job -ScriptBlock {
+            param($agent, $taskPrompt)
+            & opencode run --agent $agent $taskPrompt 2>&1
+        } -ArgumentList $targetAgent, $prompt
+        $completed2 = Wait-Job -Job $job2 -Timeout 900
+        if ($completed2) {
+            $result2 = Receive-Job -Job $job2
+            $exitCode2 = 0
+            if (-not $result2) { $exitCode2 = 1 }
+        } else {
+            Stop-Job -Job $job2 -Force
+            Write-Log "⏱️ TIMEOUT 900s on retry: agent '$targetAgent' hung — job killed"
+            $result2 = "TIMEOUT: retry of agent '$targetAgent' did not respond in 900 seconds"
+            $exitCode2 = 124
+        }
+        Remove-Job -Job $job2 -Force -ErrorAction SilentlyContinue
 
         if ($exitCode2 -eq 0 -and $result2) {
             Complete-InboxFile -messageId $messageId -from $from -targetAgent $targetAgent `

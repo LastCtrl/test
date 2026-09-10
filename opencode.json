@@ -73,6 +73,12 @@
         "permission": {
             "bash": "allow",
             "edit": "allow",
+            "external_directory": {
+                "C:\\Users\\Ermak_DS\\.config\\opencode\\**": "allow",
+                "C:\\Users\\Ermak_DS\\.local\\share\\opencode\\**": "allow",
+                "C:\\Users\\Ermak_DS\\AppData\\Local\\opencode\\**": "allow",
+                "D:\\Тест\\**": "allow"
+            },
             "glob": "allow",
             "grep": "allow",
             "read": "allow",
@@ -90,6 +96,12 @@
         "permission": {
             "bash": "allow",
             "edit": "allow",
+            "external_directory": {
+                "C:\\Users\\Ermak_DS\\.config\\opencode\\**": "allow",
+                "C:\\Users\\Ermak_DS\\.local\\share\\opencode\\**": "allow",
+                "C:\\Users\\Ermak_DS\\AppData\\Local\\opencode\\**": "allow",
+                "D:\\Тест\\**": "allow"
+            },
             "glob": "allow",
             "grep": "allow",
             "read": "allow",
@@ -107,6 +119,12 @@
         "permission": {
             "bash": "deny",
             "edit": "deny",
+            "external_directory": {
+                "C:\\Users\\Ermak_DS\\.config\\opencode\\**": "allow",
+                "C:\\Users\\Ermak_DS\\.local\\share\\opencode\\**": "allow",
+                "C:\\Users\\Ermak_DS\\AppData\\Local\\opencode\\**": "allow",
+                "D:\\Тест\\**": "allow"
+            },
             "glob": "allow",
             "grep": "allow",
             "question": "allow",
@@ -124,6 +142,12 @@
         "permission": {
             "bash": "deny",
             "edit": "deny",
+            "external_directory": {
+                "C:\\Users\\Ermak_DS\\.config\\opencode\\**": "allow",
+                "C:\\Users\\Ermak_DS\\.local\\share\\opencode\\**": "allow",
+                "C:\\Users\\Ermak_DS\\AppData\\Local\\opencode\\**": "allow",
+                "D:\\Тест\\**": "allow"
+            },
             "glob": "allow",
             "grep": "allow",
             "question": "allow",
@@ -141,6 +165,12 @@
         "permission": {
             "bash": "allow",
             "edit": "allow",
+            "external_directory": {
+                "C:\\Users\\Ermak_DS\\.config\\opencode\\**": "allow",
+                "C:\\Users\\Ermak_DS\\.local\\share\\opencode\\**": "allow",
+                "C:\\Users\\Ermak_DS\\AppData\\Local\\opencode\\**": "allow",
+                "D:\\Тест\\**": "allow"
+            },
             "glob": "allow",
             "grep": "allow",
             "read": "allow",
@@ -158,6 +188,12 @@
         "permission": {
             "bash": "allow",
             "edit": "allow",
+            "external_directory": {
+                "C:\\Users\\Ermak_DS\\.config\\opencode\\**": "allow",
+                "C:\\Users\\Ermak_DS\\.local\\share\\opencode\\**": "allow",
+                "C:\\Users\\Ermak_DS\\AppData\\Local\\opencode\\**": "allow",
+                "D:\\Тест\\**": "allow"
+            },
             "glob": "allow",
             "grep": "allow",
             "read": "allow",
@@ -175,6 +211,12 @@
         "permission": {
             "bash": "allow",
             "edit": "allow",
+            "external_directory": {
+                "C:\\Users\\Ermak_DS\\.config\\opencode\\**": "allow",
+                "C:\\Users\\Ermak_DS\\.local\\share\\opencode\\**": "allow",
+                "C:\\Users\\Ermak_DS\\AppData\\Local\\opencode\\**": "allow",
+                "D:\\Тест\\**": "allow"
+            },
             "glob": "allow",
             "grep": "allow",
             "read": "allow",
@@ -192,6 +234,12 @@
         "permission": {
             "bash": "allow",
             "edit": "allow",
+            "external_directory": {
+                "C:\\Users\\Ermak_DS\\.config\\opencode\\**": "allow",
+                "C:\\Users\\Ermak_DS\\.local\\share\\opencode\\**": "allow",
+                "C:\\Users\\Ermak_DS\\AppData\\Local\\opencode\\**": "allow",
+                "D:\\Тест\\**": "allow"
+            },
             "glob": "allow",
             "grep": "allow",
             "read": "allow",
@@ -209,6 +257,12 @@
         "permission": {
             "bash": "allow",
             "edit": "allow",
+            "external_directory": {
+                "C:\\Users\\Ermak_DS\\.config\\opencode\\**": "allow",
+                "C:\\Users\\Ermak_DS\\.local\\share\\opencode\\**": "allow",
+                "C:\\Users\\Ermak_DS\\AppData\\Local\\opencode\\**": "allow",
+                "D:\\Тест\\**": "allow"
+            },
             "glob": "allow",
             "grep": "allow",
             "read": "allow",
@@ -226,6 +280,12 @@
         "permission": {
             "bash": "allow",
             "edit": "allow",
+            "external_directory": {
+                "C:\\Users\\Ermak_DS\\.config\\opencode\\**": "allow",
+                "C:\\Users\\Ermak_DS\\.local\\share\\opencode\\**": "allow",
+                "C:\\Users\\Ermak_DS\\AppData\\Local\\opencode\\**": "allow",
+                "D:\\Тест\\**": "allow"
+            },
             "glob": "allow",
             "grep": "allow",
             "read": "allow",
@@ -243,6 +303,12 @@
         "permission": {
             "bash": "allow",
             "edit": "allow",
+            "external_directory": {
+                "C:\\Users\\Ermak_DS\\.config\\opencode\\**": "allow",
+                "C:\\Users\\Ermak_DS\\.local\\share\\opencode\\**": "allow",
+                "C:\\Users\\Ermak_DS\\AppData\\Local\\opencode\\**": "allow",
+                "D:\\Тест\\**": "allow"
+            },
             "glob": "allow",
             "grep": "allow",
             "read": "allow",
@@ -260,6 +326,12 @@
         "permission": {
             "bash": "allow",
             "edit": "allow",
+            "external_directory": {
+                "C:\\Users\\Ermak_DS\\.config\\opencode\\**": "allow",
+                "C:\\Users\\Ermak_DS\\.local\\share\\opencode\\**": "allow",
+                "C:\\Users\\Ermak_DS\\AppData\\Local\\opencode\\**": "allow",
+                "D:\\Тест\\**": "allow"
+            },
             "glob": "allow",
             "grep": "allow",
             "read": "allow",
@@ -277,6 +349,12 @@
         "permission": {
             "bash": "allow",
             "edit": "allow",
+            "external_directory": {
+                "C:\\Users\\Ermak_DS\\.config\\opencode\\**": "allow",
+                "C:\\Users\\Ermak_DS\\.local\\share\\opencode\\**": "allow",
+                "C:\\Users\\Ermak_DS\\AppData\\Local\\opencode\\**": "allow",
+                "D:\\Тест\\**": "allow"
+            },
             "glob": "allow",
             "grep": "allow",
             "read": "allow",
@@ -294,6 +372,12 @@
         "permission": {
             "bash": "allow",
             "edit": "allow",
+            "external_directory": {
+                "C:\\Users\\Ermak_DS\\.config\\opencode\\**": "allow",
+                "C:\\Users\\Ermak_DS\\.local\\share\\opencode\\**": "allow",
+                "C:\\Users\\Ermak_DS\\AppData\\Local\\opencode\\**": "allow",
+                "D:\\Тест\\**": "allow"
+            },
             "glob": "allow",
             "grep": "allow",
             "read": "allow",
@@ -311,6 +395,12 @@
         "permission": {
             "bash": "allow",
             "edit": "allow",
+            "external_directory": {
+                "C:\\Users\\Ermak_DS\\.config\\opencode\\**": "allow",
+                "C:\\Users\\Ermak_DS\\.local\\share\\opencode\\**": "allow",
+                "C:\\Users\\Ermak_DS\\AppData\\Local\\opencode\\**": "allow",
+                "D:\\Тест\\**": "allow"
+            },
             "glob": "allow",
             "grep": "allow",
             "read": "allow",
@@ -328,6 +418,12 @@
         "permission": {
             "bash": "deny",
             "edit": "deny",
+            "external_directory": {
+                "C:\\Users\\Ermak_DS\\.config\\opencode\\**": "allow",
+                "C:\\Users\\Ermak_DS\\.local\\share\\opencode\\**": "allow",
+                "C:\\Users\\Ermak_DS\\AppData\\Local\\opencode\\**": "allow",
+                "D:\\Тест\\**": "allow"
+            },
             "glob": "allow",
             "grep": "allow",
             "read": "allow",
@@ -345,6 +441,12 @@
         "permission": {
             "bash": "allow",
             "edit": "allow",
+            "external_directory": {
+                "C:\\Users\\Ermak_DS\\.config\\opencode\\**": "allow",
+                "C:\\Users\\Ermak_DS\\.local\\share\\opencode\\**": "allow",
+                "C:\\Users\\Ermak_DS\\AppData\\Local\\opencode\\**": "allow",
+                "D:\\Тест\\**": "allow"
+            },
             "glob": "allow",
             "grep": "allow",
             "read": "allow",
@@ -362,6 +464,12 @@
         "permission": {
             "bash": "deny",
             "edit": "allow",
+            "external_directory": {
+                "C:\\Users\\Ermak_DS\\.config\\opencode\\**": "allow",
+                "C:\\Users\\Ermak_DS\\.local\\share\\opencode\\**": "allow",
+                "C:\\Users\\Ermak_DS\\AppData\\Local\\opencode\\**": "allow",
+                "D:\\Тест\\**": "allow"
+            },
             "question": "allow",
             "read": "allow",
             "task": "deny"
@@ -377,6 +485,12 @@
         "permission": {
             "bash": "allow",
             "edit": "allow",
+            "external_directory": {
+                "C:\\Users\\Ermak_DS\\.config\\opencode\\**": "allow",
+                "C:\\Users\\Ermak_DS\\.local\\share\\opencode\\**": "allow",
+                "C:\\Users\\Ermak_DS\\AppData\\Local\\opencode\\**": "allow",
+                "D:\\Тест\\**": "allow"
+            },
             "glob": "allow",
             "grep": "allow",
             "read": "allow",
@@ -394,6 +508,12 @@
         "permission": {
             "bash": "allow",
             "edit": "allow",
+            "external_directory": {
+                "C:\\Users\\Ermak_DS\\.config\\opencode\\**": "allow",
+                "C:\\Users\\Ermak_DS\\.local\\share\\opencode\\**": "allow",
+                "C:\\Users\\Ermak_DS\\AppData\\Local\\opencode\\**": "allow",
+                "D:\\Тест\\**": "allow"
+            },
             "glob": "allow",
             "grep": "allow",
             "read": "allow",
@@ -411,6 +531,12 @@
         "permission": {
             "bash": "deny",
             "edit": "deny",
+            "external_directory": {
+                "C:\\Users\\Ermak_DS\\.config\\opencode\\**": "allow",
+                "C:\\Users\\Ermak_DS\\.local\\share\\opencode\\**": "allow",
+                "C:\\Users\\Ermak_DS\\AppData\\Local\\opencode\\**": "allow",
+                "D:\\Тест\\**": "allow"
+            },
             "glob": "allow",
             "grep": "allow",
             "read": "allow",
@@ -427,6 +553,12 @@
         "permission": {
             "bash": "deny",
             "edit": "deny",
+            "external_directory": {
+                "C:\\Users\\Ermak_DS\\.config\\opencode\\**": "allow",
+                "C:\\Users\\Ermak_DS\\.local\\share\\opencode\\**": "allow",
+                "C:\\Users\\Ermak_DS\\AppData\\Local\\opencode\\**": "allow",
+                "D:\\Тест\\**": "allow"
+            },
             "glob": "allow",
             "grep": "allow",
             "read": "allow",
@@ -443,6 +575,12 @@
         "permission": {
             "bash": "allow",
             "edit": "allow",
+            "external_directory": {
+                "C:\\Users\\Ermak_DS\\.config\\opencode\\**": "allow",
+                "C:\\Users\\Ermak_DS\\.local\\share\\opencode\\**": "allow",
+                "C:\\Users\\Ermak_DS\\AppData\\Local\\opencode\\**": "allow",
+                "D:\\Тест\\**": "allow"
+            },
             "glob": "allow",
             "grep": "allow",
             "read": "allow",
@@ -460,6 +598,12 @@
         "permission": {
             "bash": "allow",
             "edit": "allow",
+            "external_directory": {
+                "C:\\Users\\Ermak_DS\\.config\\opencode\\**": "allow",
+                "C:\\Users\\Ermak_DS\\.local\\share\\opencode\\**": "allow",
+                "C:\\Users\\Ermak_DS\\AppData\\Local\\opencode\\**": "allow",
+                "D:\\Тест\\**": "allow"
+            },
             "glob": "allow",
             "grep": "allow",
             "read": "allow",
@@ -478,6 +622,12 @@
         "permission": {
             "bash": "allow",
             "edit": "allow",
+            "external_directory": {
+                "C:\\Users\\Ermak_DS\\.config\\opencode\\**": "allow",
+                "C:\\Users\\Ermak_DS\\.local\\share\\opencode\\**": "allow",
+                "C:\\Users\\Ermak_DS\\AppData\\Local\\opencode\\**": "allow",
+                "D:\\Тест\\**": "allow"
+            },
             "glob": "allow",
             "grep": "allow",
             "question": "allow",
@@ -496,6 +646,12 @@
         "permission": {
             "bash": "allow",
             "edit": "allow",
+            "external_directory": {
+                "C:\\Users\\Ermak_DS\\.config\\opencode\\**": "allow",
+                "C:\\Users\\Ermak_DS\\.local\\share\\opencode\\**": "allow",
+                "C:\\Users\\Ermak_DS\\AppData\\Local\\opencode\\**": "allow",
+                "D:\\Тест\\**": "allow"
+            },
             "glob": "allow",
             "grep": "allow",
             "question": "allow",
@@ -514,6 +670,12 @@
         "permission": {
             "bash": "allow",
             "edit": "allow",
+            "external_directory": {
+                "C:\\Users\\Ermak_DS\\.config\\opencode\\**": "allow",
+                "C:\\Users\\Ermak_DS\\.local\\share\\opencode\\**": "allow",
+                "C:\\Users\\Ermak_DS\\AppData\\Local\\opencode\\**": "allow",
+                "D:\\Тест\\**": "allow"
+            },
             "glob": "allow",
             "grep": "allow",
             "question": "allow",
@@ -532,6 +694,12 @@
         "permission": {
             "bash": "allow",
             "edit": "allow",
+            "external_directory": {
+                "C:\\Users\\Ermak_DS\\.config\\opencode\\**": "allow",
+                "C:\\Users\\Ermak_DS\\.local\\share\\opencode\\**": "allow",
+                "C:\\Users\\Ermak_DS\\AppData\\Local\\opencode\\**": "allow",
+                "D:\\Тест\\**": "allow"
+            },
             "glob": "allow",
             "grep": "allow",
             "question": "allow",
@@ -550,6 +718,12 @@
         "permission": {
             "bash": "deny",
             "edit": "allow",
+            "external_directory": {
+                "C:\\Users\\Ermak_DS\\.config\\opencode\\**": "allow",
+                "C:\\Users\\Ermak_DS\\.local\\share\\opencode\\**": "allow",
+                "C:\\Users\\Ermak_DS\\AppData\\Local\\opencode\\**": "allow",
+                "D:\\Тест\\**": "allow"
+            },
             "glob": "allow",
             "grep": "allow",
             "read": "allow",
@@ -566,6 +740,12 @@
         "permission": {
             "bash": "deny",
             "edit": "allow",
+            "external_directory": {
+                "C:\\Users\\Ermak_DS\\.config\\opencode\\**": "allow",
+                "C:\\Users\\Ermak_DS\\.local\\share\\opencode\\**": "allow",
+                "C:\\Users\\Ermak_DS\\AppData\\Local\\opencode\\**": "allow",
+                "D:\\Тест\\**": "allow"
+            },
             "glob": "allow",
             "grep": "allow",
             "read": "allow",
@@ -587,7 +767,7 @@
   "compaction": {
     "auto": true,
     "prune": true,
-    "tail_turns": 15
+    "tail_turns": 12
   },
   "watcher": {
     "ignore": [
@@ -661,6 +841,14 @@
           "name": "North Mini Code (free)"
         }
       }
+    }
+  },
+  "permission": {
+    "external_directory": {
+      "D:\\\\Тест\\\\**": "allow",
+      "C:\\\\Users\\\\Ermak_DS\\\\.local\\\\share\\\\opencode\\\\**": "allow",
+      "C:\\\\Users\\\\Ermak_DS\\\\AppData\\\\Local\\\\opencode\\\\**": "allow",
+      "C:\\\\Users\\\\Ermak_DS\\\\.config\\\\opencode\\\\**": "allow"
     }
   }
 }

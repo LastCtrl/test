@@ -65,14 +65,17 @@ foreach ($line in $lines) {
 
     try {
         $obj = $trimmed | ConvertFrom-Json
-        # Validate required fields
+        # Validate required fields (date optional — legacy entries predate the standard)
         if ([string]::IsNullOrEmpty($obj.model) -or
             [string]::IsNullOrEmpty($obj.agent) -or
             [string]::IsNullOrEmpty($obj.task_type) -or
-            $null -eq $obj.grade -or
-            [string]::IsNullOrEmpty($obj.date)) {
-            Write-Warning "Line ${lineNum}: skipped - missing required fields (model/agent/task_type/grade/date)"
+            $null -eq $obj.grade) {
+            Write-Warning "Line ${lineNum}: skipped - missing required fields (model/agent/task_type/grade)"
             continue
+        }
+        # Backfill missing date for legacy entries
+        if ([string]::IsNullOrEmpty($obj.date)) {
+            $obj | Add-Member -MemberType NoteProperty -Name "date" -Value "legacy" -Force
         }
         # Validate grade type
         if ($obj.grade -isnot [int] -and $obj.grade -isnot [double]) {

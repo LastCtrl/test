@@ -109,9 +109,23 @@ function ConvertTo-AgentJson {
     for ($i = 0; $i -lt $permKeys.Count; $i++) {
         $k = $permKeys[$i]
         $v = $permission[$k]
-        $permJson = ConvertTo-JsonString $v
-        $comma = if ($i -lt $permKeys.Count - 1) { ',' } else { '' }
-        [void]$sb.AppendLine('            ' + (ConvertTo-JsonString $k) + ': ' + $permJson + $comma)
+        if ($v -is [System.Collections.IDictionary]) {
+            # nested dict (external_directory patterns) — ручная сериализация
+            [void]$sb.AppendLine('            ' + (ConvertTo-JsonString $k) + ': {')
+            $subKeys = @($v.Keys | Sort-Object)
+            for ($j = 0; $j -lt $subKeys.Count; $j++) {
+                $sk = $subKeys[$j]
+                $sv = $v[$sk]
+                $subComma = if ($j -lt $subKeys.Count - 1) { ',' } else { '' }
+                [void]$sb.AppendLine('                ' + (ConvertTo-JsonString $sk) + ': ' + (ConvertTo-JsonString $sv) + $subComma)
+            }
+            $comma = if ($i -lt $permKeys.Count - 1) { ',' } else { '' }
+            [void]$sb.AppendLine('            }' + $comma)
+        } else {
+            $permJson = ConvertTo-JsonString $v
+            $comma = if ($i -lt $permKeys.Count - 1) { ',' } else { '' }
+            [void]$sb.AppendLine('            ' + (ConvertTo-JsonString $k) + ': ' + $permJson + $comma)
+        }
     }
     [void]$sb.AppendLine('        ' + '},')
 
@@ -355,6 +369,14 @@ foreach ($file in $jsonFiles) {
         } elseif ($denyIfMissing -contains $key) {
             $perm[$key] = "deny"
         }
+    }
+    # external_directory: глобальные доверенные зоны (D:\Тест + opencode-пути на C:)
+    # Без этого per-agent permission перекрывает top-level и агенты просят подтверждение
+    $perm["external_directory"] = [ordered]@{
+        "D:\Тест\**"                                        = "allow"
+        "C:\Users\Ermak_DS\.local\share\opencode\**"        = "allow"
+        "C:\Users\Ermak_DS\AppData\Local\opencode\**"       = "allow"
+        "C:\Users\Ermak_DS\.config\opencode\**"             = "allow"
     }
 
     # Собираем entry как хэштаблицу (не PSCustomObject — для ручной сериализации)

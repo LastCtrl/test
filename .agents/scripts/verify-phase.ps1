@@ -1,11 +1,16 @@
 param()
 
+# CI auto-detect: GitHub Actions / generic CI runners have no local runtime artifacts
+$isCI = ($env:GITHUB_ACTIONS -eq "true") -or ($env:CI -eq "true")
+
 Write-Host "=== Agent-HQ Phase Verification ===" -ForegroundColor Cyan
+Write-Host "Mode: $(if ($isCI) { 'CI' } else { 'LOCAL' })" -ForegroundColor Cyan
 Write-Host ""
 
 $pass = 0
 $fail = 0
 $total = 0
+$ciSkipped = 0
 
 function Test-Check {
     param([string]$Name, [bool]$Condition)
@@ -19,22 +24,34 @@ function Test-Check {
     }
 }
 
+# Local-only check: runtime artifact of a working machine, absent on CI runners.
+# In CI mode prints [CI-SKIP] and is not counted in pass/fail.
+function Test-LocalCheck {
+    param([string]$Name, [bool]$Condition)
+    if ($script:isCI) {
+        Write-Host "  [CI-SKIP] $Name (local runtime artifact)" -ForegroundColor DarkYellow
+        $script:ciSkipped++
+    } else {
+        Test-Check $Name $Condition
+    }
+}
+
 # Phase 0: ACP
 Write-Host "Phase 0: Agent Communication Protocol" -ForegroundColor Yellow
-Test-Check ".memory/inbox/ exists" (Test-Path ".memory\inbox")
+Test-LocalCheck ".memory/inbox/ exists" (Test-Path ".memory\inbox")
 Test-Check ".memory/outbox/ exists" (Test-Path ".memory\outbox")
-Test-Check ".memory/dead-letter/ exists" (Test-Path ".memory\dead-letter")
+Test-LocalCheck ".memory/dead-letter/ exists" (Test-Path ".memory\dead-letter")
 
 $inboxAgents = Get-ChildItem ".memory\inbox" -Directory -ErrorAction SilentlyContinue | Measure-Object
-Test-Check "At least 1 agent inbox" ($inboxAgents.Count -ge 1)
+Test-LocalCheck "At least 1 agent inbox" ($inboxAgents.Count -ge 1)
 
 # Phase 0.5: Sandbox
 Write-Host ""
 Write-Host "Phase 0.5: Sandbox via git worktree" -ForegroundColor Yellow
-Test-Check ".agents/worktrees/ exists" (Test-Path ".agents\worktrees")
+Test-LocalCheck ".agents/worktrees/ exists" (Test-Path ".agents\worktrees")
 
 $worktrees = Get-ChildItem ".agents\worktrees" -Directory -ErrorAction SilentlyContinue | Measure-Object
-Test-Check "At least 1 worktree" ($worktrees.Count -ge 1)
+Test-LocalCheck "At least 1 worktree" ($worktrees.Count -ge 1)
 
 # Phase 1: Memory Bank
 Write-Host ""
@@ -138,9 +155,9 @@ $tracesPath = Join-Path $tracesDir "traces.jsonl"
 $tracesExists = Test-Path $tracesPath
 if ($tracesExists) {
     $tracesSize = (Get-Item $tracesPath).Length
-    Test-Check "traces.jsonl exists and not empty (in LOCALAPPDATA)" ($tracesSize -gt 0)
+    Test-LocalCheck "traces.jsonl exists and not empty (in LOCALAPPDATA)" ($tracesSize -gt 0)
 } else {
-    Test-Check "traces.jsonl exists and not empty (in LOCALAPPDATA)" $false
+    Test-LocalCheck "traces.jsonl exists and not empty (in LOCALAPPDATA)" $false
 }
 
 # Phase F: US-011..015 Multi-Project
@@ -183,7 +200,7 @@ if ($projectsExist) {
         }
     }
 }
-Test-Check "F2: projects/ has >= 2 valid projects ($validProjects found)" ($validProjects -ge 2)
+Test-LocalCheck "F2: projects/ has >= 2 valid projects ($validProjects found)" ($validProjects -ge 2)
 
 # F3: create-project.ps1 contains "templates"
 $createProjectPath = ".agents\scripts\create-project.ps1"
@@ -239,10 +256,11 @@ if (Test-Path $regScript) {
 Test-Check "F6: agent-registry.ps1 -Acquire nonexistent spec exits 2" $f6Pass
 
 # F7: project-queue.ps1 test on 1c-buh: -Add (critical) -> -Next (returns critical) -> -Complete (done) -> -List confirms -> cleanup to empty
+# Local-only: full cycle mutates projects/<name>/queue.json (gitignored runtime data), absent on CI.
 $queueScript = ".agents\scripts\project-queue.ps1"
 $f7Pass = $false
 $testProject = "1c-buh"
-if (Test-Path $queueScript) {
+if (-not $isCI -and (Test-Path $queueScript)) {
     # Add a critical task
     $addResult = & powershell -NoProfile -ExecutionPolicy Bypass -File $queueScript -Add -Project $testProject -Title "Test critical task" -Priority critical 2>&1
     $addExit = $LASTEXITCODE
@@ -281,7 +299,7 @@ if (Test-Path $queueScript) {
         }
     }
 }
-Test-Check "F7: project-queue.ps1 full cycle (Add->Next->Complete->cleanup) on 1c-buh" $f7Pass
+Test-LocalCheck "F7: project-queue.ps1 full cycle (Add->Next->Complete->cleanup) on 1c-buh" $f7Pass
 
 # F7-cleanup: убрать тестовый мусор из queue.json (задачи с тестовым title),
 # чтобы прогоны F7 не накапливали done/dead задачи. Идемпотентно: повторные
@@ -359,7 +377,11 @@ Test-Check "F11: team-lead.txt contains 'DUAL-AGENT DELEGATION'" $f11Pass
 # Summary
 Write-Host ""
 Write-Host "=== Results ===" -ForegroundColor Cyan
-Write-Host "Passed: $pass / $total" -ForegroundColor Green
+$summaryLine = "Passed: $pass / $total"
+if ($ciSkipped -gt 0) {
+    $summaryLine += " ($ciSkipped skipped: CI-only artifacts)"
+}
+Write-Host $summaryLine -ForegroundColor Green
 if ($fail -gt 0) {
     Write-Host "Failed: $fail / $total" -ForegroundColor Red
 } else {

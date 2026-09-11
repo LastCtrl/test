@@ -36,9 +36,9 @@ function Get-StagedAddedLines {
 # inside a double-quoted string does NOT escape the quote (escape char is `).
 $patterns = @(
     @{ Re = '(?i)password\s*[:=]\s*[''"]([^''"]{4,})[''"]';       Type = 'password' },
-    @{ Re = '(?i)\bpwd\s*[:=]\s*[''"]([^''"]{4,})[''"]';          Type = 'pwd' },
+    @{ Re = '(?i)\bpwd\s*[:=]\s*[''"]?([A-Za-z0-9_\-]{4,})[''"]?';          Type = 'pwd' },
     @{ Re = '(?i)secret\s*[:=]\s*[''"]([^''"]{4,})[''"]';          Type = 'secret' },
-    @{ Re = '(?i)token\s*[:=]\s*[''"]([A-Za-z0-9_\-]{10,})[''"]'; Type = 'token' },
+    @{ Re = '(?i)token[''"]?\s*[:=]\s*[''"]?([A-Za-z0-9_\-\.]{10,})[''"]?'; Type = 'token' },
     @{ Re = '(?i)api[_\-]?key\s*[:=]\s*[''"]([^''"]{8,})[''"]';   Type = 'api-key' },
     @{ Re = 'eyJ[A-Za-z0-9_-]{10,}';                              Type = 'JWT' },
     @{ Re = 'ghp_[A-Za-z0-9]{20,}';                               Type = 'GitHub token' },
@@ -66,8 +66,10 @@ foreach ($a in $added) {
         # excluded fake values
         if ($val -and ($val -match $exclValue)) { continue }
         # a pure a-z0-9- token that is a vault secret-NAME reference (not a literal):
-        # only allowed in lines that clearly reference the vault/env mechanism
-        if ($val -and $val -match '^[a-z0-9-]{2,40}$' -and $text -match '(?i)(secret|vault|env)') { continue }
+        # case-sensitive: a vault name is lowercase[-hyphen-lowercase] (tg-bot-token);
+        # allowed only with a vault/env mechanism reference in the line, or when the
+        # value itself is hyphen-joined lowercase words; SuperSecret99/hardcoded123 never pass
+        if ($val -and $val -cmatch '^[a-z0-9][a-z0-9-]{1,39}$' -and (($text -cmatch '(get-secret|set-secret|\-Name|\-AsEnv|\$env:|env:)') -or ($val -cmatch '[a-z0-9]-[a-z0-9]'))) { continue }
         $masked = if ($val.Length -gt 3) { $val.Substring(0,3) + '***' } else { '***' }
         $findings += ("{0}:{1} — подозрение на {2} ({3})" -f $a.File, $a.Line, $p.Type, $masked)
     }

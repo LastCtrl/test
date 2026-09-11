@@ -65,3 +65,4 @@ task-summary*
 opencode.local.json
 *.apikey
 .env*
+*.enc

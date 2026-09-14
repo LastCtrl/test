@@ -36,7 +36,7 @@ function Get-StagedAddedLines {
 # inside a double-quoted string does NOT escape the quote (escape char is `).
 $patterns = @(
     @{ Re = '(?i)password\s*[:=]\s*[''"]([^''"]{4,})[''"]';       Type = 'password' },
-    @{ Re = '(?i)\bpwd\s*[:=]\s*[''"]?([A-Za-z0-9_\-]{4,})[''"]?';          Type = 'pwd' },
+    @{ Re = '(?i)\bpwd[''"]?\s*[:=]\s*[''"]?([A-Za-z0-9_\-]{4,})[''"]?';          Type = 'pwd' },
     @{ Re = '(?i)secret\s*[:=]\s*[''"]([^''"]{4,})[''"]';          Type = 'secret' },
     @{ Re = '(?i)token[''"]?\s*[:=]\s*[''"]?([A-Za-z0-9_\-\.]{10,})[''"]?'; Type = 'token' },
     @{ Re = '(?i)api[_\-]?key\s*[:=]\s*[''"]([^''"]{8,})[''"]';   Type = 'api-key' },
@@ -51,6 +51,11 @@ $patterns = @(
 # exclusion: mock / doc / env-read / vault-reference lines are fine
 $exclValue = '(?i)^(test|example|placeholder|xxxx|dummy|mock)[a-z0-9_-]*$'
 $exclLine  = '(?i)\$env:|get-secret|set-secret'
+
+# prefix-token types (JWT, ghp_, xoxb-, sk-, AKIA, PEM): the literal ITSELF is the
+# giveaway, so the hyphen shape of the value must never exempt them; only an
+# explicit vault/env mechanism reference in the line can exclude them.
+$prefixTypes = @('JWT', 'GitHub token', 'Slack token', 'OpenAI-style key', 'AWS key id', 'private key')
 
 $added = Get-StagedAddedLines
 $findings = @()
@@ -67,9 +72,15 @@ foreach ($a in $added) {
         if ($val -and ($val -match $exclValue)) { continue }
         # a pure a-z0-9- token that is a vault secret-NAME reference (not a literal):
         # case-sensitive: a vault name is lowercase[-hyphen-lowercase] (tg-bot-token);
-        # allowed only with a vault/env mechanism reference in the line, or when the
-        # value itself is hyphen-joined lowercase words; SuperSecret99/hardcoded123 never pass
-        if ($val -and $val -cmatch '^[a-z0-9][a-z0-9-]{1,39}$' -and (($text -cmatch '(get-secret|set-secret|\-Name|\-AsEnv|\$env:|env:)') -or ($val -cmatch '[a-z0-9]-[a-z0-9]'))) { continue }
+        # allowed with a vault/env mechanism reference in the line, or — for non-prefix
+        # types only — when the value itself is hyphen-joined lowercase words.
+        # Prefix tokens (xoxb-/sk-/ghp_/AKIA/JWT/PEM) are NEVER exempt by hyphen shape:
+        # xoxb-123... is a literal token, not a vault name. SuperSecret99/hardcoded123 never pass.
+        if ($val -and $val -cmatch '^[a-z0-9][a-z0-9-]{1,39}$') {
+            $vaultCtx = $text -cmatch '(get-secret|set-secret|\-Name|\-AsEnv|\$env:|env:)'
+            $hyphenName = $val -cmatch '[a-z0-9]-[a-z0-9]'
+            if ($vaultCtx -or ($hyphenName -and ($prefixTypes -notcontains $p.Type))) { continue }
+        }
         $masked = if ($val.Length -gt 3) { $val.Substring(0,3) + '***' } else { '***' }
         $findings += ("{0}:{1} — подозрение на {2} ({3})" -f $a.File, $a.Line, $p.Type, $masked)
     }

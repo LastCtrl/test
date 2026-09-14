@@ -404,3 +404,53 @@ SKILLS_LOADED: []
 MCP_USED: ["sequential-thinking"]
 COMPLIANCE: true
 STATUS: resolved
+
+[2026-09-14 14:10] team-lead -> bus:
+TYPE: update | PRIORITY: medium
+Project: agent-hq
+CONTENT: Диагностика мигающего окна. Причина — плановая задача 'agent-hq-inbox-poller' (триггер repeat PT5M) запускала powershell.exe с видимой консолью; inbox пуст, поэтому каждый 5-мин проход = мигание и выход. Действие задачи изменено на '-NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -File ...inbox-poller.ps1 -Once' + Settings.Hidden=true. Проверка: ручной Start-ScheduledTask -> LastTaskResult=0, poller.log обновился, процесс завершился. VBS-лаунчер отменён (Kaspersky блокирует WScript->PowerShell, 800A0046 permission denied), run-poller-hidden.vbs удалён. Функционал шины и эффект 'не уходит в сон' сохранены.
+SKILLS_LOADED: ["windows-safety"]
+MCP_USED: ["context7: offline", "hermes-atlas: offline"]
+COMPLIANCE: true
+STATUS: resolved
+================================================================================
+[2026-09-14 20:15] team-lead -> bus: HANDOFF / СНИМОК ПЕРЕД /compact
+TYPE: update | PRIORITY: high
+Project: agent-hq
+================================================================================
+СОСТОЯНИЕ СЕССИИ (всё ниже реализовано и закоммичено в ветке feature/skills-mcp-enforcement):
+
+1) VAULT СЕКРЕТОВ (DPAPI) — ГОТОВ И ПРИНЯТ (qa PASS + 5 ревьюеров APPROVE(_WITH_*)):
+   коммиты 2e0fe3c (vault) -> 53d28fd + b18b6bf (фиксы сканера) -> cde3a70 (hardening) -> 61f8709 (fiх worktree-хука).
+   Файлы: .agents/scripts/{set-secret,get-secret,run-bridge,pre-commit-secrets}.ps1, tests/test-vault.ps1,
+   .agents/hooks/pre-commit (канонический, worktree-safe через git rev-parse), .gitignore (+*.enc).
+   Хранилище: C:\Users\Ermak_DS\.agent-secrets\secret.<имя>.enc. Секретов пока НОЛЬ (пользователь не вводил).
+   Live-верификация hook 4/4: worktree+секрет БЛОК (ghp***), worktree+чистый ПРОХОД, main+секрет БЛОК (Pro***), main+чистый ПРОХОД.
+   Известное поведение: значения вида test*/example* проходят по ДИЗАЙНУ (mock-словарь), например Test12345.
+   Границы (в §11): entropy=null, env-наследование, ротация=рестарт, бэкап профиля=компрометация,
+   сканер не покрывает бинарники/имена файлов/удалённые строки/историю, --no-verify запрещён политикой.
+
+2) AGENTS.md §11 «Секреты» — ЗАКОММИЧЕН (cde3a70). Контракт public API заморожен.
+3) US-016 критерий 16.8 + фаза A — переписаны под vault (токен ТОЛЬКО env:TG_TOKEN через run-bridge, имя tg-bot-token).
+   МОСТ НА ПАУЗЕ по решению пользователя («мост пока не нужен»). Спека заморожена, готова к запуску.
+4) ГАЙД по vault: C:\Users\Ermak_DS\Desktop\vault-гайд.md (полный цикл, вне git).
+5) МОДЕЛИ: 6 dev-агентов (dev-1, dev-1-1, dev-2, dev-2-1, dev-3, dev-3-1) переключены на
+   opencode-go/deepseek-v4.1-flash (source .opencode/agents/dev-*.json + sync + коммит fc170e0).
+   Остальные 24 агента — tokenrouter/z-ai/glm-5.3-free.
+6) РЕЙТИНГИ (ratings.jsonl, коммит cde3a70): dev-1=6 (ложный DONE/пустые ответы), dev-3=8, qa=10,
+   code-reviewer=9, security=9, integration=10, legal=8, pm=9.
+
+ОТКРЫТЫЕ ЗАДАЧИ / СЛЕДУЮЩИЕ ШАГИ:
+- Пользователь (только он): (а) /revoke старого TG-токена в BotFather (засвечен в чате); (б) декларация vault в ИБ; (в) завести 1С-юзера AgentRO (read-only).
+- НЕ сделано (отложено осознанно): run-with-secret.ps1 (обёртка) + sync-worktree-scripts.ps1 — триггер: первая 1С-задача с паролем. Паттерн уже в §11.
+- Ветка feature/skills-mcp-enforcement на 10 коммитов впереди origin/main — при желании нужен новый PR в main (прошлый merge был до vault-работы).
+- Ночной режим/мост — ждут решения пользователя.
+
+УРОКИ СЕССИИ (важно):
+- git reset --hard у агентов (qa/dev) СТИРАЕТ незакоммиченные правки тимлида — коммитить доки/конфиги ДО запуска git-агентов.
+- Тест-значения (Test12345) сканер пропускает по дизайну (mock-словарь) — для тестов брать не-мок (ProstoParol777).
+SKILLS_LOADED: []
+MCP_USED: ["sequential-thinking"]
+COMPLIANCE: true
+STATUS: resolved
+================================================================================

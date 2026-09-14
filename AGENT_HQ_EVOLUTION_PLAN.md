@@ -1113,3 +1113,383 @@ Agent HQ:
 3. старые планы переместить в документированный archive только отдельным согласованным изменением;
 4. создать задачи GitHub по Phase 0–2;
 5. начинать реализацию с P0, не смешивая её с advanced features.
+
+---
+
+## 23. Operational Self-Healing — восстановление CNTLM, API, модели и сессии
+
+### 23.1. Проблема из реальной эксплуатации
+
+В текущей системе наблюдаются повторяющиеся классы сбоев:
+
+| Сигнатура | Фактическое ручное действие | Требуемое автоматическое действие |
+|---|---|---|
+| `Cannot connect to API: Unable to connect` | остановить запрос, перезапустить CNTLM, повторить задачу | определить слой отказа, восстановить proxy, проверить API, безопасно перезапустить attempt |
+| `Busy: FileSystem.writeFile (...snapshot...info/exclude)` | отменить/подождать/написать «продолжай» | распознать lock conflict, применить jitter/backoff, исключить конкурентный доступ, возобновить с checkpoint |
+| `cache-only admission rejected a cold, unavailable, or overloaded request` | вручную `/compact` | proactive token budget, compact/checkpoint до лимита, новый session attempt при необходимости |
+| `BackendAdmissionRejected ... incoming_uncached_tokens=256224 ... max=200000` | повторять `/compact` | не отправлять oversized cold request; создать компактный handoff и новую сессию |
+| Агент/субагент остановился без terminal result | вручную написать «продолжай» | heartbeat + progress watchdog + probe + checkpoint + restart/resume |
+| Требуется сменить модель | вручную отменить запрос и повторить | сохранить task checkpoint, завершить старый attempt, создать новый attempt на резервной модели |
+
+Персональные заметки пользователя, не являющиеся системной ошибкой (например, напоминание о враче), не должны попадать в failure classifier.
+
+### 23.2. Главный архитектурный принцип
+
+**Supervisor работает вне OpenCode и вне ИИ-сессии.**
+
+```text
+Windows service / user-space supervisor
+        │
+        ├── CNTLM process + port + proxy probe
+        ├── Internet/upstream probe
+        ├── Provider/API health
+        ├── OpenCode process/session health
+        ├── Worker heartbeat/progress
+        ├── Task lease/checkpoint
+        └── Telegram notifications/control
+```
+
+Если recovery реализован только prompt-инструкцией агента, он не сработает именно тогда, когда агент, модель или OpenCode зависли.
+
+### 23.3. Иерархия диагностики
+
+Нельзя при любой сетевой ошибке сразу перезапускать CNTLM. Supervisor проверяет слои снизу вверх:
+
+1. **Process:** существует ли ожидаемый PID CNTLM.
+2. **Port:** слушается ли `127.0.0.1:3128`.
+3. **Proxy handshake:** проходит ли тестовый HTTP CONNECT/HTTPS-запрос через CNTLM.
+4. **Network/DNS:** доступен ли внешний контрольный endpoint.
+5. **Provider:** отвечает ли конкретный API; код 401/403/429/5xx/timeout.
+6. **Model:** доступна ли выбранная модель и принимает ли cold request.
+7. **OpenCode:** жив ли процесс и обновляются ли session events.
+8. **Agent attempt:** есть ли heartbeat/tool progress/terminal result.
+
+Recovery выполняется на первом сломанном слое. Смена модели не исправляет упавший локальный proxy, а перезапуск CNTLM не исправляет oversized context.
+
+### 23.4. CNTLM Supervisor
+
+#### Health check
+
+Проверки должны быть сильнее одного `netstat`:
+
+- процесс запущен из разрешённого пути;
+- PID соответствует процессу, которым управляет Agent HQ;
+- порт 3128 слушается;
+- реальный HTTPS probe через proxy завершается успешно;
+- latency и серия ошибок записываются в telemetry.
+
+#### Recovery sequence
+
+```text
+HEALTHY
+  └── N последовательных ошибок
+          ▼
+      DEGRADED
+          ├── probe success → HEALTHY
+          └── probe failed → RESTARTING
+                                ├── graceful stop owned PID
+                                ├── timeout
+                                ├── forced kill only owned cntlm PID
+                                ├── start known executable + known config
+                                ├── wait for port
+                                ├── HTTPS proxy probe
+                                └── success → HEALTHY / fail → OPEN CIRCUIT
+```
+
+#### Ограничения безопасности
+
+- Не выполнять `taskkill /IM cntlm.exe /F` без проверки владельца/PID: команда может остановить чужой экземпляр.
+- Хранить canonical executable/config paths в локальном gitignored config.
+- Не логировать proxy credentials и содержимое `cntlm.ini`.
+- Ограничить число рестартов, например 3 за 10 минут.
+- После превышения лимита открыть circuit и уведомить пользователя вместо бесконечного restart loop.
+- Предпочтительный production-вариант — Windows service с recovery policy, если это разрешено корпоративной средой и явно одобрено пользователем.
+- Без прав администратора использовать отдельный user-space supervisor process.
+
+### 23.5. Provider и API Failover
+
+Provider health хранится отдельно от model capability:
+
+```json
+{
+  "provider": "tokenrouter",
+  "state": "degraded",
+  "last_success_at": "...",
+  "consecutive_failures": 3,
+  "http_429_rate": 0.25,
+  "http_5xx_rate": 0.10,
+  "timeout_rate": 0.15,
+  "circuit_open_until": "..."
+}
+```
+
+#### Политика
+
+- `401/403` → не retry; credential/config blocker.
+- `429` → учитывать `Retry-After`, quota и переключать provider/model по policy.
+- `5xx/timeout` → bounded retry с exponential backoff + jitter, затем fallback.
+- локальный proxy down → сначала восстановить proxy, не штрафовать provider/model.
+- все fallback фиксируются с reason code.
+- резервный API должен быть заранее настроен и проверен командой `/doctor`; нельзя впервые настраивать его во время аварии.
+- обход корпоративного proxy прямым соединением запрещён, если это нарушает сетевую policy.
+
+### 23.6. Agent/Session Watchdog
+
+#### Heartbeat недостаточен сам по себе
+
+Долгий reasoning не всегда означает зависание. Watchdog учитывает:
+
+- session event timestamp;
+- tool activity;
+- provider streaming/progress;
+- CPU/process state, если доступно;
+- task-class expected duration;
+- отсутствие terminal structured result.
+
+#### Состояния
+
+```text
+RUNNING
+  ├── progress → RUNNING
+  ├── soft timeout → PROBING
+  ├── provider failure → FAILOVER
+  └── hard timeout → CANCELLING
+
+PROBING
+  ├── response/progress → RUNNING
+  └── no response → CANCELLING
+
+CANCELLING
+  ├── stop old request/process
+  ├── reconcile worktree
+  ├── save checkpoint
+  └── RESTARTING
+```
+
+Автоматическое сообщение «продолжай» допускается только как один **soft probe**, если API поддерживает продолжение и session ещё здорова. Оно не является универсальным recovery: при сломанном proxy, lock или переполненном контексте такой prompt только создаёт дополнительную нагрузку.
+
+### 23.7. Checkpoint и перезапуск сессии
+
+Не следует пытаться переносить всю непрозрачную историю старой сессии. На границе attempt создаётся структурированный handoff:
+
+```json
+{
+  "project_id": "...",
+  "task_id": "...",
+  "attempt_id": "old-attempt",
+  "goal": "...",
+  "acceptance_criteria": ["..."],
+  "completed_steps": ["..."],
+  "pending_steps": ["..."],
+  "files_changed": ["..."],
+  "base_commit": "...",
+  "worktree": "...",
+  "commands_run": [{"command":"...","exit_code":0}],
+  "known_failures": ["..."],
+  "last_verified_state": "...",
+  "token_budget_summary": "..."
+}
+```
+
+При смене модели:
+
+1. остановить или признать потерянным старый request;
+2. пометить старый attempt terminal state `failed/replaced`;
+3. проверить и при необходимости откатить worktree к last verified state;
+4. создать новый attempt ID;
+5. выбрать резервную модель/provider;
+6. передать компактный checkpoint;
+7. продолжить в том же безопасном worktree либо создать новый attempt worktree;
+8. не выполнять два attempt одной задачи одновременно без специального shadow-mode.
+
+### 23.8. Context Budget и Admission Rejection
+
+Ошибка с `incoming_uncached_tokens=256224` при лимите `200000` должна предотвращаться до API-вызова.
+
+#### Политика token budget
+
+- soft threshold, например 60–70% допустимого cold context;
+- proactive summary/checkpoint;
+- удаление устаревших tool outputs из нового handoff;
+- сохранение ссылок на artifacts вместо вставки полного содержимого;
+- оценка размера **до** запроса;
+- hard reject oversized request на стороне Agent HQ;
+- новая сессия с compact handoff вместо повторного `/compact` вслепую.
+
+`/compact` остаётся инструментом, но не основной recovery-стратегией.
+
+### 23.9. Snapshot/FileSystem lock
+
+Для `Busy: FileSystem.writeFile (...snapshot...info/exclude)`:
+
+1. классифицировать как локальный lock conflict, а не model failure;
+2. не снижать рейтинг агента/модели;
+3. применить bounded exponential backoff с jitter;
+4. проверить, не работают ли две сессии с одним worktree/session storage;
+5. сериализовать snapshot operation для одного worktree;
+6. при превышении timeout отменить старую session operation;
+7. создать новый attempt/checkpoint только после reconciliation;
+8. не запускать бесконечные копии team-lead, использующие тот же конфликтующий ресурс.
+
+### 23.10. Recovery decision table
+
+| Failure class | Retry same session | Restart session | Restart CNTLM | Switch API/model | Human |
+|---|---:|---:|---:|---:|---:|
+| CNTLM process/port/probe failed | нет | после proxy recovery | да | нет, пока proxy общий | после restart budget |
+| Provider 429 | после Retry-After | возможно | нет | да | при отсутствии резерва |
+| Provider 5xx/timeout | bounded | возможно | только если proxy probe fail | да | после budget |
+| Oversized/cold admission | нет | да, compact checkpoint | нет | только если другой backend имеет лимит | если нельзя сократить |
+| Snapshot lock | после backoff | после reconciliation | нет | нет | при постоянном lock |
+| Agent no-progress | один probe | да | только если network layer fail | возможно | после attempt budget |
+| Permission denied | нет | нет | нет | нет | policy fix/approval |
+| Invalid credentials | нет | нет | нет | резервный заранее настроенный provider | да |
+
+### 23.11. SLO self-healing
+
+- false recovery success: 0%;
+- потерянные задачи при restart: 0;
+- два активных production-attempt одной задачи: 0;
+- CNTLM auto-recovery success: целевое ≥95% после накопления статистики;
+- provider failover без потери task state: ≥99%;
+- terminal attempt без checkpoint/result: 0;
+- restart storm: 0;
+- mean time to detect proxy failure: <30 секунд;
+- mean time to recover обычный proxy failure: <2 минут;
+- oversized request, отправленный provider: 0 после внедрения preflight.
+
+### 23.12. Roadmap operational resilience
+
+#### OR-P0 — классификация и наблюдаемость
+
+- structured failure taxonomy;
+- настоящий process exit code;
+- proxy/API/session probes;
+- correlation IDs;
+- token preflight;
+- реальные failure fixtures из этого раздела;
+- fake provider/CNTLM/OpenCode test harness.
+
+#### OR-P1 — безопасное восстановление
+
+- CNTLM supervisor с restart budget;
+- provider circuit breaker;
+- session watchdog;
+- checkpoint/handoff;
+- restart attempt на той же модели;
+- model/provider fallback;
+- snapshot-lock backoff/reconciliation.
+
+#### OR-P2 — production hardening
+
+- Windows service recovery или user supervisor;
+- chaos tests;
+- soak tests;
+- Telegram alerts;
+- runbooks;
+- dashboard SLO;
+- human approval paths.
+
+---
+
+## 24. Telegram Bridge — мониторинг и безопасное управление
+
+### 24.1. Назначение
+
+Telegram-мост является адаптером к control plane, а не отдельным оркестратором. Он показывает состояние и отправляет ограниченные команды в тот же transactional API, которым пользуются CLI/dashboard.
+
+```text
+Telegram Bot
+     │ authenticated command
+     ▼
+Agent HQ Control API
+     │ transaction + audit
+     ▼
+Scheduler / Supervisor / Approval Queue
+```
+
+Telegram bot не должен напрямую запускать shell-команды или редактировать state-файлы.
+
+### 24.2. Команды MVP
+
+| Команда | Назначение |
+|---|---|
+| `/status` | здоровье CNTLM/API/OpenCode, активные проекты и задачи |
+| `/projects` | проекты, очереди, прогресс, blockers |
+| `/agents` | free/busy/stale/error и текущие назначения |
+| `/providers` | provider/model health, circuit state, quota warnings |
+| `/task <id>` | timeline, attempt, agent, model, last checkpoint |
+| `/pause <project|task>` | безопасно остановить новые назначения |
+| `/resume <project|task>` | продолжить scheduler |
+| `/cancel <task>` | запросить отмену с подтверждением и rollback policy |
+| `/retry <task>` | создать новый attempt по policy |
+| `/approve <id>` | подтвердить ожидающее действие |
+| `/reject <id>` | отклонить действие |
+| `/logs <task> [N]` | последние redacted события, не полный сырой лог |
+| `/doctor` | запустить безопасные read-only probes |
+| `/help` | доступные команды текущей роли пользователя |
+
+### 24.3. Уведомления
+
+Bot отправляет события, а не поток каждого tool call:
+
+- task started/completed/rejected;
+- retry/model switch/provider failover;
+- CNTLM degraded/restarted/circuit open;
+- agent stale/recovered;
+- запрос human approval;
+- budget/quota threshold;
+- Critical blocker;
+- итог проекта/релиза.
+
+Нужны grouping и cooldown, чтобы авария не создала сотни сообщений.
+
+### 24.4. Безопасность Telegram
+
+- allowlist Telegram user/chat IDs;
+- роли `viewer/operator/approver/admin`;
+- токен только из vault/environment, никогда в Git/логах;
+- webhook secret либо безопасный long polling;
+- anti-replay/idempotency key для команд;
+- подтверждение destructive/high-risk действий;
+- запрет произвольного shell через Telegram;
+- redaction secrets/paths/payload;
+- audit: кто, когда, из какого chat ID выполнил команду;
+- возможность мгновенно отключить control commands, оставив read-only monitoring;
+- rate limits;
+- TTL для approval request;
+- Critical действия желательно подтверждать вторым фактором/локально, если позволяет среда.
+
+### 24.5. Связь с существующим FastAPI
+
+Текущий `api/main.py` с `/health` можно не удалять, а превратить в минимальный control plane:
+
+- `/health/live` — процесс жив;
+- `/health/ready` — DB/scheduler готовы;
+- `/health/dependencies` — redacted состояние CNTLM/providers/OpenCode;
+- read API для projects/tasks/agents/events;
+- command API с auth/RBAC/idempotency;
+- Telegram adapter вызывает этот API;
+- dashboard в будущем использует тот же API.
+
+Mutation endpoints нельзя добавлять без аутентификации, RBAC, audit и idempotency.
+
+### 24.6. Telegram rollout
+
+1. **Observe-only:** `/status`, `/projects`, `/agents`, alerts.
+2. **Safe operations:** pause/resume/retry через policy.
+3. **Approvals:** approve/reject с TTL и аудитом.
+4. **Advanced control:** cancel/rollback только после надёжного scheduler.
+5. **Никогда:** произвольный удалённый shell.
+
+### 24.7. DoD Telegram MVP
+
+- неизвестный chat ID не получает данные;
+- viewer не может выполнить mutation;
+- повтор одного update не создаёт две команды;
+- секреты не попадают в сообщения;
+- Telegram outage не влияет на scheduler;
+- команда проходит через transactional control API;
+- каждое действие имеет audit event;
+- bot показывает proxy/provider/session failures раздельно;
+- `/retry` создаёт новый attempt, а не дублирует текущий;
+- integration tests используют fake Telegram API.

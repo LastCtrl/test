@@ -395,3 +395,12 @@ SKILLS_LOADED: []
 MCP_USED: ["sequential-thinking"]
 COMPLIANCE: true
 STATUS: resolved
+
+[2026-09-14 19:45] team-lead -> bus:
+TYPE: update | PRIORITY: medium
+Project: agent-hq
+CONTENT: Live-верификация секретного периметра по запросу пользователя вскрыла и закрыла 2 пробела: (1) fallback-путь хука для worktrees считал ../../ вместо ../ от git-common-dir — секрет из worktree НЕ блокировался (только warn+skip); хук переписан (try_scanner: common-dir/main-root first, then toplevel), скопирован в .git/hooks. Тесты 4/4: worktree+секрет БЛОК (ghp***), worktree+чистый ПРОХОД, main+секрет БЛОК (Pro***), main+чистый ПРОХОД. Урок-2 (повтор §11-инцидента): git reset --hard/test-rollback откатывает незакоммиченные правки — теперь хук коммитится ДО тестов. Также: Test12345 прошёл сканер по ДИЗАЙНУ (mock-словарь 'test*' исключает) — задокументировано как известное поведение, не баг. Мусор-коммит b96346d (m-s.txt 'password=Test12345' mock) откачен reset --hard HEAD~1 — в истории нет.
+SKILLS_LOADED: []
+MCP_USED: ["sequential-thinking"]
+COMPLIANCE: true
+STATUS: resolved

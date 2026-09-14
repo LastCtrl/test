@@ -206,7 +206,7 @@
     "dev-1-1": {
         "description": "Developer #1 (copy 1) — универсальный разработчик для параллельной работы.",
         "mode": "subagent",
-        "model": "tokenrouter/z-ai/glm-5.3-free",
+        "model": "opencode-go/deepseek-v4.1-flash",
         "temperature": 0.2,
         "permission": {
             "bash": "allow",
@@ -229,7 +229,7 @@
     "dev-1": {
         "description": "Developer #1 — универсальный разработчик. Пишет код на любых языках.",
         "mode": "subagent",
-        "model": "tokenrouter/z-ai/glm-5.3-free",
+        "model": "opencode-go/deepseek-v4.1-flash",
         "temperature": 0.2,
         "permission": {
             "bash": "allow",
@@ -252,7 +252,7 @@
     "dev-2-1": {
         "description": "Developer #2 (copy 1) — альтернативный разработчик для параллельной работы.",
         "mode": "subagent",
-        "model": "tokenrouter/z-ai/glm-5.3-free",
+        "model": "opencode-go/deepseek-v4.1-flash",
         "temperature": 0.3,
         "permission": {
             "bash": "allow",
@@ -275,7 +275,7 @@
     "dev-2": {
         "description": "Developer #2 — альтернативный разработчик. Предлагает другие подходы к решению.",
         "mode": "subagent",
-        "model": "tokenrouter/z-ai/glm-5.3-free",
+        "model": "opencode-go/deepseek-v4.1-flash",
         "temperature": 0.3,
         "permission": {
             "bash": "allow",
@@ -298,7 +298,7 @@
     "dev-3-1": {
         "description": "Developer #3 (copy 1) — надёжный разработчик для параллельной работы.",
         "mode": "subagent",
-        "model": "tokenrouter/z-ai/glm-5.3-free",
+        "model": "opencode-go/deepseek-v4.1-flash",
         "temperature": 0.2,
         "permission": {
             "bash": "allow",
@@ -321,7 +321,7 @@
     "dev-3": {
         "description": "Developer #3 — надёжный разработчик. Внимание к граничным случаям и обработке ошибок.",
         "mode": "subagent",
-        "model": "tokenrouter/z-ai/glm-5.3-free",
+        "model": "opencode-go/deepseek-v4.1-flash",
         "temperature": 0.2,
         "permission": {
             "bash": "allow",

@@ -9,7 +9,7 @@
 $ErrorActionPreference = 'Continue'
 $here     = $PSScriptRoot
 $getToken = Join-Path $here 'get-secret.ps1'
-$bridgePy = 'D:\Тест\agent-hq\projects\telegram-bridge\bridge.py'
+$bridgePy = Join-Path (Split-Path -Parent (Split-Path -Parent $here)) 'projects\telegram-bridge\bridge.py'
 
 # 1) secret presence check (exit 1 + error from get-secret if missing)
 & $getToken -Name tg-bot-token -Verify

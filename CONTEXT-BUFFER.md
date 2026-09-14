@@ -386,3 +386,12 @@ SKILLS_LOADED: []
 MCP_USED: []
 COMPLIANCE: true
 STATUS: resolved
+
+[2026-09-14 19:00] team-lead -> bus:
+TYPE: update | PRIORITY: medium
+Project: agent-hq
+CONTENT: Vault US-011 принят ИТОГО: qa PASS (3 итерации), 5 ревьюеров APPROVE(_WITH_*). Критичные действия ВЫПОЛНЕНЫ тимлидом: (1) канонический hook .agents/hooks/pre-commit с git rev-parse --show-toplevel (работает в главном репо и 29 worktrees, кириллица не через argv; guard fail-open при отсутствии сканера на старых ветках) + тесты: чистый коммит проходит, LeakedPass99 блокируется Lea***; (2) AGENTS.md §11 восстановлен (был потерян при reset --hard qa — урок: коммитить доки до запуска git-агентов) с trade-offs (entropy, env-наследование, ротация, границы сканера, --no-verify запрет); (3) 16.8 переписан: токен ТОЛЬКО env:TG_TOKEN через run-bridge (vault tg-bot-token), first-run подсказка set-secret; (4) фаза A US-016 дополнена vault-контрактом; (5) run-bridge.ps1: относительный путь от  (был abs). ОТКРЫТО (A4 integration): run-with-secret.ps1 обёртка + sync-worktree-scripts.ps1 ИЛИ политика абсолютных путей (уже в §11) — рекомендую решить при первой 1c-buh задаче с паролем. Юр: рекомендация декларации vault в ИБ (пользователь решает). Рейтинги выставлены (dev-1:6 false-DONE, dev-3:8, qa:10, code-reviewer:9, security:9, integration:10, legal:8, pm:9).
+SKILLS_LOADED: []
+MCP_USED: ["sequential-thinking"]
+COMPLIANCE: true
+STATUS: resolved

@@ -138,7 +138,7 @@ agent-hqCurrently supports 2 concurrent projects (news-bot, pong-advanced) with 
 | 16.5 | `/buffer` — хвост CONTEXT-BUFFER (последние записи) | Последние N записей |
 | 16.6 | Push-уведомления (ярусы): 🔴 blocker `PRIORITY:critical` + 💀 dead-letter — instant, со звуком, до 3 в сообщении; ⚠️ REJECT — все за тик одним сообщением-списком; ✅ «задача завершена» — одно сводное сообщение за тик. Hard cap 5 сообщений/тик, шторм-контроль (авто-почасовик), тумблер `/alerts`. Дедуп по id события, state в bridge-state.json переживает рестарт | Push ≤ 1 тик после события, без дублей |
 | 16.7 | Whitelist: отвечает ТОЛЬКО chat_id пользователя; чужие — игнор + лог | Сообщение с чужого chat_id не вызывает ответа |
-| 16.8 | Токен бота не попадает в git (config.local.json в .gitignore + env). /revoke старого токена (засвечен в чате opencode) — БЛОКЕР деплоя; новый передаётся НЕ через чат | `git log -p` не содержит токена |
+| 16.8 | Токен бота хранится ТОЛЬКО в DPAPI-vault (имя `tg-bot-token`, AGENTS.md §11): bridge.py читает ТОЛЬКО `env:TG_TOKEN` (проставляет `run-bridge.ps1`); токен не принимается через argv/config-файлы/код. First-run без env:TG_TOKEN → понятная ошибка «запусти set-secret.ps1 -Name tg-bot-token, затем run-bridge.ps1», exit≠0. /revoke старого токена (засвечен в чате opencode) — БЛОКЕР деплоя; новый — через set-secret.ps1 (маскированный ввод), НЕ через чат | `git log -p` не содержит токена; grep по bridge.py: нет чтения токена кроме env |
 | 16.9 | MVP ничего не пишет в шину/очереди/сессии — только читает. Статический write-чек в qa: SQL только SELECT, SQLite `?mode=ro` + `PRAGMA query_only=1`, BUSY → тихий скип тика; запрет open(w/a)/subprocess/schtasks/регментра в коде | grep-чек по запрет-листу PASS |
 | 16.10 | Запуск вручную `python bridge.py --once` работает без регистрации schtasks (для отладки) | Команда выводит дайджест в консоль |
 | 16.11 | Санитайзер — единая точка перед sendMessage: секреты (token=, password=, api_key=, `sk-`, `ghp_`, `xoxb-`, JWT eyJ, PEM, connection-strings) → `[REDACTED:...]`; пути → теги проектов; `html.escape()` на весь динамический контент; `disable_web_page_preview` | Фикстура с секретами не покидает ПК в исходном виде |
@@ -158,7 +158,7 @@ agent-hqCurrently supports 2 concurrent projects (news-bot, pong-advanced) with 
 
 | Фаза | Кто | Что | Оценка (агент) |
 |------|-----|-----|----------------|
-| A | dev-1 | Каркас: aiogram + прокси, setMyCommands, whitelist, анти-дубли, `--once`, HTML+escape, empty states | 35 мин |
+| A | dev-1 | Каркас: aiogram + прокси, setMyCommands, whitelist, анти-дубли, `--once`, HTML+escape, empty states. Токен ТОЛЬКО из `env:TG_TOKEN` (проставляет `run-bridge.ps1`, vault `tg-bot-token` — AGENTS.md §11); first-run без токена → ошибка с подсказкой set-secret, exit≠0 (16.14) | 35 мин |
 | B | dev-2 | collectors + санитайзер-фаннел (16.11) + форматтеры (сегментация 4096, теги проектов, 2-строчные блоки, empty states) | 40 мин |
 | C | dev-1 | Push-детектор: структурный regex (16.12), ярусы (16.6), дедуп, cap, шторм-контроль, тумблер /alerts | 30 мин |
 | D | qa-engineer | Тесты на моках + статический write-чек (16.9) + фикстура 20+ сессий со спецсимволами `<>&_*[]` и секретами | 25 мин |

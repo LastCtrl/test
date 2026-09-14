@@ -1,0 +1,21 @@
+#!/bin/sh
+# Canonical location: .agents/hooks/pre-commit (synced to .git/hooks by sync-agents.ps1)
+# Scanner path is derived from the repo root (git rev-parse) because agent worktrees
+# share this .git/hooks dir but do NOT contain .agents/scripts/pre-commit-secrets.ps1
+# on their branches. Works for main repo AND all worktrees; avoids hardcoding the
+# cyrillic path (D:\Тест\...) which breaks through sh encoding.
+ROOT="$(git rev-parse --show-toplevel 2>/dev/null)"
+SCRIPT="$ROOT/.agents/scripts/pre-commit-secrets.ps1"
+if [ -f "$SCRIPT" ]; then
+  powershell -NoProfile -ExecutionPolicy Bypass -File "$SCRIPT"
+  exit $?
+fi
+# fallback: main repo path via git-dir mapping (worktree without scanner script)
+GITDIR="$(git rev-parse --git-common-dir 2>/dev/null)"
+SCRIPT2="$GITDIR/../../.agents/scripts/pre-commit-secrets.ps1"
+if [ -f "$SCRIPT2" ]; then
+  powershell -NoProfile -ExecutionPolicy Bypass -File "$SCRIPT2"
+  exit $?
+fi
+echo "pre-commit: secret scanner not found — skipping check"
+exit 0

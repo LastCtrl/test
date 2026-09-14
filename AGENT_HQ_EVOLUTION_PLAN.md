@@ -1,11 +1,13 @@
 # Agent HQ — стратегический план развития автономной ИИ-команды
 
-**Статус:** предложение для согласования  
+**Статус:** canonical proposal; архитектурное решение Go Hybrid принято для roadmap
 **Дата:** 2026-09-14  
 **Связанный аудит:** `PROJECT_AUDIT_2026-09-14.md`  
 **Назначение:** объединить исходную идею владельца, результаты технического аудита и предложения по развитию в единый реализуемый roadmap.
 
 > Этот документ не заменяет `MASTER_PLAN.md` и `FULL_PLAN.md` до явного решения владельца. После согласования планы следует объединить, чтобы оставить один источник истины.
+>
+> **Название `Agent HQ` является рабочим.** Перед публичным выпуском нужен новый бренд и отдельная проверка названия, доменов и товарных знаков: GitHub уже использует обозначение Agent HQ для собственной платформы управления coding agents.
 
 ---
 
@@ -27,7 +29,9 @@
 
 ## 2. Оценка идеи
 
-### Итоговая оценка концепции: **8.7/10**
+### Итоговая оценка концепции как инженерного/internal продукта: **8.7/10**
+
+Это не оценка рыночной уникальности и не гарантия продаж. Как generic-идея продукт не уникален; ценность должна быть доказана надёжной эксплуатацией, удобным развёртыванием и внутренним кейсом с несколькими пользователями.
 
 | Критерий | Оценка | Обоснование |
 |---|---:|---|
@@ -35,7 +39,8 @@
 | Актуальность | 9/10 | Routing, evaluation и agent orchestration — ключевые задачи прикладных ИИ-систем |
 | Масштабируемость идеи | 9/10 | Общий пул и временные команды естественно масштабируются |
 | Техническая реализуемость | 8/10 | Реализуемо, но требует строгой state machine и транзакционного состояния |
-| Уникальность комбинации | 8/10 | Отдельные элементы известны, но сочетание Windows/OpenCode/30 ролей/оценки полезно |
+| Уникальность идеи | 3/10 | Оркестрация coding agents, routing, checkpoints и observability уже представлены отдельными продуктами |
+| Уникальность целостной реализации | 6.5/10 | Ценность может дать единый локальный Go control plane: durable tasks, self-healing, доступы и заменяемые executors |
 | Потенциал самооптимизации | 9/10 | История задач позволяет обучать routing без обучения самих моделей |
 | Сложность эксплуатации | 6/10 | Много внешних компонентов, моделей, prompts и failure modes |
 | Текущая зрелость реализации | 3.5/10 | Каркас богатый, но главный автоматический цикл пока не замкнут |
@@ -128,25 +133,33 @@
 
 ### Компоненты
 
-#### Control Plane
+#### Control Plane — самостоятельный Go-сервис
 
-- проекты;
-- задачи и зависимости;
-- registry агентов;
-- scheduler;
-- policies;
-- model catalog;
-- approvals;
-- состояние workflow.
+Go является владельцем жизненного цикла задачи, а не тонкой оболочкой вокруг CLI:
 
-#### Data Plane
+- API/CLI и в дальнейшем dashboard/Telegram adapters;
+- проекты, пользователи, роли и доступы;
+- задачи, зависимости и durable state machine;
+- registry агентов и executor capabilities;
+- scheduler, leases, heartbeat и recovery;
+- policies, budgets и model catalog;
+- approvals, audit и состояние workflow;
+- SQLite migrations, backup и integrity checks.
 
-- OpenCode sessions;
-- worktrees;
-- MCP tools;
-- выполнение команд;
-- тесты;
-- создание артефактов.
+PowerShell после миграции остаётся только для Windows bootstrap/admin-задач. Он не должен владеть очередью, scheduler или authoritative state.
+
+#### Data Plane — заменяемые Executor adapters
+
+Первым production adapter остаётся OpenCode. Контракт не должен зависеть от его внутреннего формата настолько, чтобы нельзя было добавить Claude Code, Codex, OpenHands или direct-provider executor:
+
+- запуск/отмена/resume OpenCode sessions;
+- нормализация streaming events и exit/result;
+- worktrees и filesystem boundaries;
+- MCP/tools и выполнение allowlisted команд;
+- тесты и machine-generated evidence;
+- создание артефактов и checkpoint/handoff.
+
+OpenCode — worker, а не источник истины. Падение или зависание его процесса не должно терять задачу. Собственный native agent runtime на Go не входит в ближайший roadmap; его допустимо начинать только после измеримого доказательства, что adapters ограничивают надёжность или продукт.
 
 #### Evaluation Plane
 
@@ -482,8 +495,32 @@ PowerShell orchestration → Pester + Windows integration + concurrency
 
 - исполнитель может приложить self-report;
 - self-report не является приёмкой;
+- существование названного файла само по себе не является доказательством корректности;
 - финальный score рассчитывается после независимого verdict;
 - для High/Critical verifier желательно использовать другую модель или deterministic tests.
+
+### Machine-generated evidence
+
+Runtime, а не модель, формирует доказательства и связывает их с конкретной попыткой:
+
+```json
+{
+  "task_id": "tq-001",
+  "attempt_id": "attempt-002",
+  "tool_call_id": "tool-uuid",
+  "artifact": "src/file.py",
+  "sha256_before": "...",
+  "sha256_after": "...",
+  "git_diff_id": "...",
+  "command": "pytest",
+  "exit_code": 0,
+  "stdout_hash": "...",
+  "started_at": "...",
+  "finished_at": "..."
+}
+```
+
+Compliance parser проверяет структурированный формат и fail-closed при отсутствии записи. На следующем уровне self-report сопоставляется с runtime trace по `session_id/task_id/attempt_id/tool_call_id`; текст, написанный моделью, не доказывает вызов skill, MCP, теста или создание артефакта.
 
 ---
 
@@ -858,60 +895,88 @@ backend + QA + reviewer
 
 ## Phase 0 — Baseline и воспроизводимость
 
-**Цель:** зафиксировать реальное текущее поведение.
+**Цель:** зафиксировать реальное текущее поведение и версии источников.
 
-- [ ] Зафиксировать версию OpenCode.
-- [ ] Зафиксировать актуальную schema.
+- [ ] Зафиксировать версию OpenCode и актуальную JSON Schema.
+- [ ] Для runtime-находок записывать `observed_at`, environment, команду и hash/ссылку на raw output.
+- [ ] Для внешних планов/аудитов указывать source branch, commit SHA и file path.
 - [ ] Добавить `.editorconfig` UTF-8 no BOM.
 - [ ] Создать команду `doctor`.
-- [ ] Создать fake OpenCode CLI для тестирования orchestration.
-- [ ] Записать baseline happy/failure scenarios.
+- [ ] Создать fake OpenCode/provider/CNTLM для тестирования orchestration.
+- [ ] Записать baseline happy/failure scenarios и rollback tests.
 
-**Acceptance:** чистая Windows-машина воспроизводит smoke test по документации.
+**Acceptance:** чистая Windows-машина воспроизводит smoke test по документации; утверждения о runtime и CI воспроизводимы.
 
-## Phase 1 — Исправление критического runtime
+## Phase 1 — Критические контракты до миграции
 
-**Цель:** убрать ложную автоматизацию.
+**Цель:** убрать ложную автоматизацию и определить стабильные контракты для Go.
 
-- [ ] Исправить `agent` config и убрать неизвестные OpenCode keys.
-- [ ] Исправить `sync-agents.ps1`.
-- [ ] Настроить task allowlist orchestrator.
-- [ ] Добавить frontmatter всем skills.
-- [ ] Исправить poller native exit code.
-- [ ] Сделать structured worker result.
-- [ ] Заменить fail-open compliance.
-- [ ] Исправить false DONE.
+### P0-A — Runtime configuration
 
-**Acceptance:** ошибки agent/permission/tool/timeout попадают в failed/dead-letter, а не done.
+- [ ] Мигрировать `opencode.json`: `agent`, а не `agents`; удалить неизвестные keys.
+- [ ] Вынести metadata Agent HQ в отдельный `agent-hq.json`.
+- [ ] Добавить schema validation и CI fail при неизвестном ключе.
+- [ ] Доказать обнаружение всех 30 зарегистрированных агентов.
+- [ ] Добавить корректный frontmatter всем skills; проверить unique names, directory/name и registry references.
+- [ ] Доказать native skill discovery через автоматический test.
 
-## Phase 2 — Единый scheduler
+### P0-B — Исполнение
 
-**Цель:** замкнуть существующие registry, queue и inbox.
+- [ ] Передавать настоящий process exit code.
+- [ ] Ввести versioned structured worker result.
+- [ ] Убрать Team Lead self-recursion.
+- [ ] Ввести deny-by-default task allowlist: orchestrators могут делегировать только разрешённым ролям, leaf workers — нет.
+- [ ] Отделить granular command policy от task permissions.
+- [ ] Запускать worker только в assignment worktree и проверять filesystem boundary.
+- [ ] Устранить False DONE на всех terminal paths.
 
-- [ ] Ввести scheduler service/command.
-- [ ] Связать task ID со всеми состояниями.
-- [ ] Реализовать atomic acquire.
-- [ ] Реализовать lease/heartbeat.
-- [ ] Связать terminal state с release.
-- [ ] Связать stale/dead с release/reassignment.
-- [ ] Автоматически писать assignment audit.
+### P0-C — Проверка
+
+- [ ] Исправить compliance parser и отсутствие ожидаемой записи считать FAIL.
+- [ ] Отдельно сопоставлять self-report с runtime trace; не доверять модельным полям.
+- [ ] Ввести machine-generated evidence с hashes, exit code и correlation IDs.
+- [ ] Исправить health verdict и проверить fake CLI fixtures.
+- [ ] Добавить intentional rejection E2E: QA/reviewer реально блокирует неверный результат.
+
+### P0-D — Безопасность и переносимость
+
+- [ ] Исправить и автоматически устанавливать secret hook.
+- [ ] Убрать абсолютные пользовательские пути.
+- [ ] Ограничить external directories и доступ к чужим проектам.
+- [ ] Redact payload/stdout/stderr и секреты.
+- [ ] Закрепить внешние зависимости по версии/SHA.
+- [ ] Добавить rollback tests для config/state migrations.
+
+**Acceptance:** config и skills обнаруживаются автоматически; поддельный self-report не проходит gate; ошибки agent/permission/tool/timeout попадают в failed/dead-letter, а не done.
+
+## Phase 2 — Go Control Plane и transactional state
+
+**Цель:** ввести новый authoritative core по strangler-подходу, не переписывая agent runtime.
+
+- [ ] Создать один Go binary с versioned config и migrations.
+- [ ] Ввести SQLite schema: projects, users, tasks, attempts, assignments, events, approvals, artifacts.
+- [ ] Реализовать transactional API/CLI, idempotency keys и append-only audit events.
+- [ ] Мигрировать registry и project queues с dry-run и rollback.
+- [ ] Реализовать JSON/Markdown export, backup и integrity recovery.
+- [ ] Зафиксировать versioned интерфейс `Executor` независимо от OpenCode internals.
+- [ ] Реализовать fake executor как reference conformance test.
+
+**Acceptance:** Go/SQLite переживает restart без потери или двойного claim; миграция обратима и проверена.
+
+## Phase 3 — Scheduler, OpenCode adapter и supervisor
+
+**Цель:** превратить OpenCode из интерактивной сессии в управляемый worker.
+
+- [ ] Реализовать OpenCode executor adapter: start, events, cancel, resume, terminal result.
+- [ ] Реализовать atomic acquire, lease, heartbeat, release и reassignment.
 - [ ] Разрешить параллельных workers без глобального bottleneck mutex.
+- [ ] Связать project/task/attempt/session/tool IDs.
+- [ ] Реализовать progress watchdog, checkpoint/handoff и bounded restart.
+- [ ] Реализовать CNTLM/API probes, provider circuit breaker и model failover.
+- [ ] Реализовать token preflight и snapshot-lock reconciliation.
+- [ ] Добавить chaos scenarios: kill OpenCode, stop CNTLM, timeout provider, corrupt session.
 
-**Acceptance:** два проекта одновременно получают разные допустимые команды без duplicate assignment.
-
-## Phase 3 — Транзакционное состояние
-
-**Цель:** убрать гонки и drift.
-
-- [ ] Ввести SQLite schema.
-- [ ] Мигрировать registry.
-- [ ] Мигрировать project queues.
-- [ ] Ввести event log.
-- [ ] Добавить idempotency keys.
-- [ ] Сделать JSON/Markdown export.
-- [ ] Добавить backup/integrity recovery.
-
-**Acceptance:** concurrency tests с 20 workers не теряют задачи и назначения.
+**Acceptance:** два проекта работают параллельно; убийство OpenCode или остановка CNTLM не теряет задачу, recovery завершается без ручного «продолжай» либо выдаёт честный blocker после исчерпания budget.
 
 ## Phase 4 — Verification и безопасность
 
@@ -986,45 +1051,45 @@ backend + QA + reviewer
 
 ## 18. Приоритетный backlog
 
-### P0 — делать сейчас
+### P0 — закрыть до переноса orchestration в Go
 
-1. OpenCode schema/config.
-2. Orchestrator task permissions.
-3. Skill discovery/frontmatter.
-4. Poller exit/result correctness.
-5. Structured compliance.
-6. Сквозной project/task/attempt ID.
-7. E2E happy path и intentional failure.
+1. OpenCode schema migration и отделение `agent-hq.json`.
+2. Миграция frontmatter/discovery всех skills.
+3. Настоящий process exit code и structured worker result.
+4. Self-recursion fix, task allowlist и worktree boundary.
+5. Fail-closed compliance parser.
+6. Runtime-generated evidence и trace correlation.
+7. Secret hook, redaction, dependency pinning и portable paths.
+8. Fake CLI/provider tests, intentional rejection E2E и migration rollback.
 
-### P1 — сразу после P0
+### P1 — Go foundation
 
-8. Scheduler integration.
-9. Atomic acquire/release.
-10. Stale/dead release.
-11. Parallel worker design.
-12. SQLite state.
-13. Permission hardening.
-14. Structured telemetry.
+9. Go binary и versioned configuration.
+10. SQLite migrations и transactional state machine.
+11. Executor interface + fake conformance suite.
+12. OpenCode adapter.
+13. Scheduler: acquire/lease/heartbeat/release.
+14. Supervisor: watchdog/checkpoint/restart.
+15. CNTLM/provider recovery и token preflight.
+16. RBAC/audit foundations для внутреннего multi-user rollout.
 
-### P2 — после надёжности
+### P2 — надёжная внутренняя эксплуатация
 
-15. Evaluation schema.
-16. Model router.
-17. Provider health/quota.
-18. Benchmark/shadow mode.
-19. Dashboard/explainability.
-20. Prompt versioning.
+17. Verification policy и machine evidence gates.
+18. 2–5 коллег, отдельные проекты/credentials/workspaces.
+19. Quotas, approvals и emergency stop.
+20. Telegram observe-only, затем безопасные control commands.
+21. Soak/chaos tests и SLO dashboard.
+22. Evaluation schema и provider/model separation.
 
-### P3 — продвинутые функции
+### P3 — после подтверждённой пользы
 
-21. Team optimizer.
-22. A/B prompts.
-23. Canary models.
-24. Failure memory.
-25. Chaos testing.
-26. Policy simulation.
-
----
+23. Adaptive model router.
+24. Benchmark/shadow mode.
+25. Prompt versioning/A-B/canary.
+26. Team optimizer и failure memory.
+27. Дополнительные executor adapters.
+28. Платный пилот только после измеримого внутреннего кейса.
 
 ## 19. Что не следует делать пока
 
@@ -1038,6 +1103,8 @@ backend + QA + reviewer
 - Не выдавать отсутствие распознанных данных за PASS.
 - Не гарантировать `$0`, если provider policy не контролируется системой.
 - Не проводить model experiment на Critical задачах.
+- Не писать собственный native Go agent runtime, MCP/tool loop и provider protocols до измеримого доказательства ограничений adapter-подхода.
+- Не строить generic SaaS до успешного внутреннего rollout и интервью с потенциальными B2B-пользователями.
 
 ---
 
@@ -1072,12 +1139,14 @@ backend + QA + reviewer
 - общий registry из 30 агентов сохраняется;
 - используются 3–5 агентов в тестовом workflow;
 - один orchestrator имеет ограниченное право делегации;
-- scheduler автоматически связывает queue, registry и worker;
-- состояние транзакционно;
+- Go scheduler автоматически связывает queue, registry и worker;
+- Go + SQLite владеют транзакционным состоянием;
+- OpenCode подключён через versioned Executor adapter;
 - worker возвращает настоящий exit code и structured result;
-- QA может реально отклонить результат;
+- QA может реально отклонить результат на основании machine-generated evidence;
 - все terminal paths освобождают агента;
-- есть Windows CI E2E;
+- watchdog восстанавливает хотя бы OpenCode process failure и CNTLM failure без ручного «продолжай»;
+- есть Windows CI E2E и failure drills;
 - false DONE = 0.
 
 ### Демонстрационный сценарий
@@ -1459,9 +1528,9 @@ Bot отправляет события, а не поток каждого tool 
 - TTL для approval request;
 - Critical действия желательно подтверждать вторым фактором/локально, если позволяет среда.
 
-### 24.5. Связь с существующим FastAPI
+### 24.5. Переход от существующего FastAPI к Go API
 
-Текущий `api/main.py` с `/health` можно не удалять, а превратить в минимальный control plane:
+Текущий `api/main.py` с `/health` можно временно сохранить как compatibility adapter или использовать для проверки API-контрактов, но он не должен становиться вторым authoritative control plane. Целевые endpoints реализуются в Go:
 
 - `/health/live` — процесс жив;
 - `/health/ready` — DB/scheduler готовы;
@@ -1471,7 +1540,7 @@ Bot отправляет события, а не поток каждого tool 
 - Telegram adapter вызывает этот API;
 - dashboard в будущем использует тот же API.
 
-Mutation endpoints нельзя добавлять без аутентификации, RBAC, audit и idempotency.
+Во время миграции FastAPI не записывает состояние в обход Go API/SQLite. После переноса клиентов compatibility adapter удаляется. Mutation endpoints нельзя добавлять без аутентификации, RBAC, audit и idempotency.
 
 ### 24.6. Telegram rollout
 
@@ -1493,3 +1562,105 @@ Mutation endpoints нельзя добавлять без аутентифика
 - bot показывает proxy/provider/session failures раздельно;
 - `/retry` создаёт новый attempt, а не дублирует текущий;
 - integration tests используют fake Telegram API.
+
+---
+
+## 25. Архитектурное решение: Go Hybrid, а не полный rewrite
+
+### Решение
+
+Целевая архитектура ближайших версий:
+
+```text
+Users / CLI / Telegram / future UI
+                 │
+                 ▼
+       Go Control Plane + SQLite
+ API · RBAC · scheduler · supervisor · audit
+                 │
+       versioned Executor interface
+        ┌────────┼─────────┐
+        ▼        ▼         ▼
+    OpenCode   future     fake
+    adapter    adapters   executor
+```
+
+### Почему
+
+- проблема ручного `Stop → restart → продолжай` находится над OpenCode и решается durable supervisor;
+- замена OpenCode целиком потребует заново реализовать provider streaming, tool loop, MCP, context/session management, permissions и sandbox;
+- adapter сохраняет скорость разработки и позволяет заменить executor позже;
+- Go получает только те обязанности, которыми система должна владеть независимо от выбранного coding agent.
+
+### Граница продукта
+
+Это не попытка создать ещё один coding agent. Продуктовый core — единый self-hosted слой над разными исполнителями:
+
+- durable multi-project tasks;
+- автоматическое восстановление process/session/proxy/provider failures;
+- изоляция пользователей, проектов и credentials;
+- доказуемая приёмка вместо self-report;
+- routing моделей и executors по результатам;
+- единый audit/control API.
+
+Отдельные аналоги покрывают части этой схемы, поэтому сам список функций не является преимуществом. Преимущество считается доказанным только после воспроизводимого внутреннего rollout, где система требует меньше ручного вмешательства, чем прямое использование OpenCode/другого executor.
+
+### Build vs buy
+
+| Область | Решение сейчас |
+|---|---|
+| Durable task state, scheduler, recovery, RBAC | строить в Go: это core продукта |
+| Coding agent/tool loop | использовать OpenCode через adapter |
+| Provider transport/gateway | использовать готовый слой, если он удовлетворяет policy; не делать differentiator из retry API |
+| Telemetry protocol | OpenTelemetry-compatible export вместо собственного закрытого формата |
+| UI | сначала CLI/Telegram/API, dashboard после подтверждения workflow |
+| Native Go executor | отложить до отдельного ADR с benchmark и подтверждёнными ограничениями |
+
+### Exit criteria для начала native executor
+
+Достаточно хотя бы одного подтверждённого условия:
+
+1. OpenCode adapter систематически не может безопасно resume/cancel/reconcile задачи.
+2. Невозможно обеспечить требуемую изоляцию или machine evidence.
+3. Стоимость/latency adapter существенно хуже direct runtime и это доказано benchmark.
+4. Ключевой customer requirement невозможно выполнить через доступные executors.
+
+До этого полный rewrite считается неоправданным scope.
+
+---
+
+## 26. Внутренний multi-user rollout и проверка продукта
+
+Первый реальный рынок — собственная команда. Развёртывание коллегам является не финальным enterprise-релизом, а контролируемым pilot.
+
+### Обязательная изоляция
+
+- отдельные user identities и роли `viewer/developer/operator/approver/admin`;
+- allowlist проектов и репозиториев на пользователя/группу;
+- отдельные worktrees/workspaces и запрет чтения соседних проектов;
+- credentials хранятся сервером и никогда не выдаются агенту/пользователю без необходимости;
+- provider/model allowlist и budget/quota на пользователя/проект;
+- approvals для merge, destructive commands и изменения policies;
+- immutable audit событий пользователя, агента и runtime;
+- emergency pause/cancel без прямого shell-доступа;
+- backup/restore и процедура удаления доступа сотрудника.
+
+### Последовательность rollout
+
+1. Владелец: один пользователь, один проект, failure drills.
+2. Один доверенный коллега: read-only/Low-risk задачи.
+3. 2–5 коллег: раздельные проекты, quotas и approvals.
+4. Командный pilot: измерение экономии времени и числа ручных вмешательств.
+5. Только после этого — решение о внешних платных пилотах.
+
+### Product validation gates
+
+Продукт готов к внутреннему pilot, когда:
+
+- E2E `task → worktree → executor → tests → review → accept/reject` воспроизводим;
+- kill OpenCode/CNTLM/provider failure восстанавливаются без ручного «продолжай»;
+- пользователь не видит чужой проект, логи или credentials;
+- false DONE, потерянные tasks и duplicate production attempts равны нулю в test suite;
+- установка и обновление воспроизводимы на чистой Windows-машине.
+
+Внешний платный pilot рассматривается, когда внутренние пользователи регулярно применяют систему и есть измеримый результат: сокращение ручных вмешательств, времени выполнения или стоимости accepted task. Само наличие большого пула агентов не является доказательством ценности.

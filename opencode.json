@@ -68,7 +68,7 @@
     "backend-1": {
         "description": "Backend Specialist (copy 1) — REST/GraphQL API, бизнес-логика, middleware, авторизация для параллельной работы.",
         "mode": "subagent",
-        "model": "tokenrouter/z-ai/glm-5.3-free",
+        "model": "opencode-go/deepseek-v4.1-flash",
         "temperature": 0.2,
         "permission": {
             "bash": "allow",
@@ -91,7 +91,7 @@
     "backend": {
         "description": "Backend Specialist — REST/GraphQL API, бизнес-логика, middleware, авторизация.",
         "mode": "subagent",
-        "model": "tokenrouter/z-ai/glm-5.3-free",
+        "model": "opencode-go/deepseek-v4.1-flash",
         "temperature": 0.2,
         "permission": {
             "bash": "allow",
@@ -160,7 +160,7 @@
     "data-engineer": {
         "description": "Data Engineer — ETL, data pipelines, аналитика, DWH, Big Data.",
         "mode": "subagent",
-        "model": "tokenrouter/z-ai/glm-5.3-free",
+        "model": "opencode-go/deepseek-v4.1-flash",
         "temperature": 0.2,
         "permission": {
             "bash": "allow",
@@ -183,7 +183,7 @@
     "db-specialist": {
         "description": "DB Specialist — SQL/NoSQL, ORM, миграции, оптимизация запросов, проектирование схем.",
         "mode": "subagent",
-        "model": "tokenrouter/z-ai/glm-5.3-free",
+        "model": "opencode-go/deepseek-v4.1-flash",
         "temperature": 0.2,
         "permission": {
             "bash": "allow",
@@ -344,7 +344,7 @@
     "devops": {
         "description": "DevOps — Docker, CI/CD, Kubernetes, облака, мониторинг инфраструктуры.",
         "mode": "subagent",
-        "model": "tokenrouter/z-ai/glm-5.3-free",
+        "model": "opencode-go/deepseek-v4.1-flash",
         "temperature": 0.2,
         "permission": {
             "bash": "allow",
@@ -367,7 +367,7 @@
     "frontend": {
         "description": "Frontend Specialist — React/Vue/Angular, HTML/CSS, UI/UX, accessibility.",
         "mode": "subagent",
-        "model": "tokenrouter/z-ai/glm-5.3-free",
+        "model": "opencode-go/deepseek-v4.1-flash",
         "temperature": 0.2,
         "permission": {
             "bash": "allow",
@@ -390,7 +390,7 @@
     "integration-specialist": {
         "description": "Integration Specialist — REST/SOAP/gRPC, Kafka/RabbitMQ, webhooks, API Gateway.",
         "mode": "subagent",
-        "model": "tokenrouter/z-ai/glm-5.3-free",
+        "model": "opencode-go/deepseek-v4.1-flash",
         "temperature": 0.2,
         "permission": {
             "bash": "allow",
@@ -413,7 +413,7 @@
     "legal-advisor": {
         "description": "Юридический советник — законы РБ, ПД, авторское право, платёжное законодательство, налоги, юрлица.",
         "mode": "subagent",
-        "model": "tokenrouter/z-ai/glm-5.3-free",
+        "model": "opencode-go/deepseek-v4.1-flash",
         "temperature": 0.1,
         "permission": {
             "bash": "deny",
@@ -436,7 +436,7 @@
     "mobile-dev": {
         "description": "Mobile Dev — React Native/Flutter/Swift/Kotlin, mobile-first UI, offline-first.",
         "mode": "subagent",
-        "model": "tokenrouter/z-ai/glm-5.3-free",
+        "model": "opencode-go/deepseek-v4.1-flash",
         "temperature": 0.2,
         "permission": {
             "bash": "allow",
@@ -459,7 +459,7 @@
     "product-manager": {
         "description": "Product Manager — превращает размытые требования в user stories, acceptance criteria, MoSCoW.",
         "mode": "subagent",
-        "model": "tokenrouter/z-ai/glm-5.3-free",
+        "model": "opencode-go/deepseek-v4.1-flash",
         "temperature": 0.2,
         "permission": {
             "bash": "deny",
@@ -570,7 +570,7 @@
     "skill-surgeon": {
         "description": "Skill Surgeon — ищет, скачивает и создаёт скиллы для любых технологий.",
         "mode": "subagent",
-        "model": "tokenrouter/z-ai/glm-5.3-free",
+        "model": "opencode-go/deepseek-v4.1-flash",
         "temperature": 0.2,
         "permission": {
             "bash": "allow",
@@ -593,7 +593,7 @@
     "smm-strategist": {
         "description": "SMM/Маркетинг стратег — продвижение, ЦА, воронка, контент-стратегия, виральные механики.",
         "mode": "subagent",
-        "model": "tokenrouter/z-ai/glm-5.3-free",
+        "model": "opencode-go/deepseek-v4.1-flash",
         "temperature": 0.3,
         "permission": {
             "bash": "allow",
@@ -617,7 +617,7 @@
     "team-lead-1": {
         "description": "Team Lead (copy 1) — оркестратор для параллельной оркестрации.",
         "mode": "subagent",
-        "model": "tokenrouter/z-ai/glm-5.3-free",
+        "model": "opencode-go/deepseek-v4.1-flash",
         "temperature": 0.1,
         "permission": {
             "bash": "allow",
@@ -641,7 +641,7 @@
     "team-lead-2": {
         "description": "Team Lead (copy 2) — оркестратор для параллельной оркестрации.",
         "mode": "subagent",
-        "model": "tokenrouter/z-ai/glm-5.3-free",
+        "model": "opencode-go/deepseek-v4.1-flash",
         "temperature": 0.1,
         "permission": {
             "bash": "allow",
@@ -665,7 +665,7 @@
     "team-lead-3": {
         "description": "Team Lead (copy 3) — оркестратор для параллельной оркестрации.",
         "mode": "subagent",
-        "model": "tokenrouter/z-ai/glm-5.3-free",
+        "model": "opencode-go/deepseek-v4.1-flash",
         "temperature": 0.1,
         "permission": {
             "bash": "allow",
@@ -689,7 +689,7 @@
     "team-lead": {
         "description": "Team Lead — оркестратор мультиагентной команды. Декомпозирует задачи, назначает агентов, контролирует качество.",
         "mode": "subagent",
-        "model": "tokenrouter/z-ai/glm-5.3-free",
+        "model": "opencode-go/deepseek-v4.1-flash",
         "temperature": 0.1,
         "permission": {
             "bash": "allow",
@@ -713,7 +713,7 @@
     "tech-writer-1": {
         "description": "Tech Writer (copy 1) — README, API docs, changelog, архитектурная документация для параллельной работы.",
         "mode": "subagent",
-        "model": "tokenrouter/z-ai/glm-5.3-free",
+        "model": "opencode-go/deepseek-v4.1-flash",
         "temperature": 0.2,
         "permission": {
             "bash": "deny",
@@ -735,7 +735,7 @@
     "tech-writer": {
         "description": "Tech Writer — генерирует README, API docs, changelog, архитектурную документацию.",
         "mode": "subagent",
-        "model": "tokenrouter/z-ai/glm-5.3-free",
+        "model": "opencode-go/deepseek-v4.1-flash",
         "temperature": 0.2,
         "permission": {
             "bash": "deny",

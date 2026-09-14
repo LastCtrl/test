@@ -1,7 +1,7 @@
 {
     "name":  "devops",
     "description":  "DevOps — Docker, CI/CD, Kubernetes, облака, мониторинг инфраструктуры.",
-    "model":  "tokenrouter/z-ai/glm-5.3-free",
+    "model":  "opencode-go/deepseek-v4.1-flash",
     "mode":  "subagent",
     "temperature":  0.2,
     "permissions":  [

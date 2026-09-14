@@ -1,7 +1,7 @@
 {
     "name":  "backend",
     "description":  "Backend Specialist — REST/GraphQL API, бизнес-логика, middleware, авторизация.",
-    "model":  "tokenrouter/z-ai/glm-5.3-free",
+    "model":  "opencode-go/deepseek-v4.1-flash",
     "mode":  "subagent",
     "temperature":  0.2,
     "permissions":  [

@@ -1,7 +1,7 @@
 {
     "name":  "mobile-dev",
     "description":  "Mobile Dev — React Native/Flutter/Swift/Kotlin, mobile-first UI, offline-first.",
-    "model":  "tokenrouter/z-ai/glm-5.3-free",
+    "model":  "opencode-go/deepseek-v4.1-flash",
     "mode":  "subagent",
     "temperature":  0.2,
     "permissions":  [

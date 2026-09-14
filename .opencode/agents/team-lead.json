@@ -1,7 +1,7 @@
 {
     "name":  "team-lead",
     "description":  "Team Lead — оркестратор мультиагентной команды. Декомпозирует задачи, назначает агентов, контролирует качество.",
-    "model":  "tokenrouter/z-ai/glm-5.3-free",
+    "model":  "opencode-go/deepseek-v4.1-flash",
     "mode":  "subagent",
     "temperature":  0.1,
     "permissions":  [

@@ -1573,3 +1573,30 @@ SKILLS_LOADED: ["evidence-discipline", "windows-safety", "superpowers-implement"
 MCP_USED: ["sequential-thinking"]
 COMPLIANCE: true
 STATUS: resolved
+
+[TIME] qa-engineer-1 -> team-lead:
+TYPE: update | PRIORITY: medium
+Project: agent-hq
+CONTENT: P0-D QA VERDICT: PASS. (1) test-pipeline.ps1: 9/9 PASS, exit 0 — все кейсы a-i включая redaction regex (case i). (2) SHA-pin verification: actions/checkout@11d5960a... = GitHub API SHA 11d5960a... (type: commit, tag v4) — MATCH; actions/upload-artifact@ea165f8d... = GitHub API SHA ea165f8d... (type: commit, tag v4) — MATCH. (3) Regex deep-tests: 15/15 PASS — apiKey=getApiKey() NOT masked; api_key/password/token/secret VALUES masked; sk-/ghp_/JWT/Bearer/PEM/AWS/Slack all masked; idempotent; value-guard (call expressions) works; word-boundary (password_status) not over-redacted. (4) Risk assessment: value-guard (?!...\() prevents masking call-expression results, but real secrets in stdout are VALUES not calls → well-known patterns (sk-, ghp_, JWT, PEM, AWS, Slack) + key=value pattern cover 95%+ real credential shapes; remaining gap: custom-shaped secrets not in key=value format and not well-known → NOT masked (accepted trade-off, documented in redact.ps1:8-9 'best-effort safety net'). (5) CRLF: both files are CRLF (Windows-style), consistent.
+SKILLS_LOADED: ["evidence-discipline", "windows-safety"]
+MCP_USED: []
+COMPLIANCE: true
+STATUS: resolved
+
+================================================================================
+[2026-09-15] team-lead -> bus: *** P0 ЗАКРЫТ ПОЛНОСТЬЮ (A+B+C+D) ***
+TYPE: update | PRIORITY: high
+================================================================================
+Коммиты P0-финал: 9b6bb71, e48365e, 34a78cc.
+P0-A ✅ миграция/agent-hq.json/schema/frontmatter/discovery/уникальность/required_skills
+P0-B ✅ exit code/allowlist/self-recursion/command policy/false-DONE (worktree -> P1)
+P0-C ✅ compliance parser/health/machine-evidence/fake-CLI(intentional rejection)
+P0-D ✅ secret hook/абс.пути/external_directory/redaction/pin deps
+Тесты: vault 8/8, pipeline 9/9, false-done 17/17, discovery 22/0, verify-phase 41/41. Все задачи прошли независимую приёмку qa-engineer-1/senior-reviewer.
+Приёмка P0-D pin+regex: ПРИНЯТО 0 дефектов (SHA сверены с GitHub API).
+Перехожу к P1.
+SKILLS_LOADED: []
+MCP_USED: []
+COMPLIANCE: true
+STATUS: resolved
+================================================================================

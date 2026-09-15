@@ -1,4 +1,4 @@
-param()
+﻿param()
 
 # CI auto-detect: GitHub Actions / generic CI runners have no local runtime artifacts
 $isCI = ($env:GITHUB_ACTIONS -eq "true") -or ($env:CI -eq "true")

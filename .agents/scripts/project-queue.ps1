@@ -1,4 +1,4 @@
-# project-queue.ps1 - CLI task queue management for projects
+﻿# project-queue.ps1 - CLI task queue management for projects
 # US-013 Project Queue
 #
 # Parameters:

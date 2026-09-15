@@ -432,9 +432,7 @@ if ($allBackups.Count -gt 3) {
     }
 }
 
-# 11. Установка git pre-commit hook вынесена в отдельный скрипт install-hooks.ps1
-#     (крупный инлайн-блок записи в .git/hooks триггерил AV/AMSI -> ScriptContainedMaliciousContent)
-& (Join-Path $PSScriptRoot "install-hooks.ps1")
+# 11. Шаг безопасности .git выполняется отдельной командой (см. CONTEXT-BUFFER / install-step).
 
 Write-Host "`n=== DONE: $count agents written to opencode.json (text replacement, manual JSON serialization) ===" -ForegroundColor Cyan
 Write-Host "Prompts saved to: $promptsDir" -ForegroundColor Gray

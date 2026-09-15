@@ -1,4 +1,4 @@
-# Runner for inbox poller - avoids path issues
+﻿# Runner for inbox poller - avoids path issues
 param([switch]$DryRun)
 
 $Base = if ($env:AGENT_HQ_ROOT) { $env:AGENT_HQ_ROOT } else { Split-Path (Split-Path $PSScriptRoot -Parent) -Parent }

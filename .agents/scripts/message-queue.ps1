@@ -1,4 +1,4 @@
-#!/usr/bin/env pwsh
+﻿#!/usr/bin/env pwsh
 # Message Queue System for agent-hq
 # Управление inbox/outbox/dead-letter агентами
 

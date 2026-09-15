@@ -1,4 +1,4 @@
-param()
+﻿param()
 # Installs the canonical pre-commit hook into .git/hooks.
 # Kept as a separate small script: the inline version inside sync-agents.ps1
 # triggered corporate AV (AMSI / ScriptContainedMaliciousContent).

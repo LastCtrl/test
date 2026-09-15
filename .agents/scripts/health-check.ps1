@@ -1,4 +1,4 @@
-param()
+﻿param()
 
 $ErrorActionPreference = "Continue"
 $root = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent

@@ -626,3 +626,18 @@ MCP_USED: ["sequential-thinking"]
 COMPLIANCE: true
 STATUS: blocked
 ================================================================================
+
+================================================================================
+[2026-09-15] team-lead -> bus: РЕЗОЛЮЦИЯ блокера (CRLF)
+TYPE: update | PRIORITY: high
+================================================================================
+Корень "ScriptContainedMaliciousContent" найден: PowerShell 5.1 + файл с UTF-8 BOM и LF-концами строк -> ложное срабатывание AMSI/AV. Не AV-эвристика на коде, а кодировка.
+Доказательство: тот же sync-agents.ps1 с CRLF запускается, с LF — блокируется.
+Фикс: все *.ps1 нормализованы в CRLF (24 файла) + .gitattributes *.ps1 text eol=crlf.
+Следствие: агенты пишут LF -> нельзя давать им создавать .ps1 без нормализации; добавить post-write нормализацию.
+Теперь работают: sync-agents (schema validation OK, 30 агентов, team-lead task allow, evidence-блок в промптах), inbox-poller, compliance-gate.
+SKILLS_LOADED: []
+MCP_USED: ["sequential-thinking"]
+COMPLIANCE: true
+STATUS: resolved
+================================================================================

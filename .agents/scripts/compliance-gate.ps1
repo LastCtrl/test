@@ -1,4 +1,4 @@
-# compliance-gate.ps1 — Валидация enforcement Skills+MCP
+﻿# compliance-gate.ps1 — Валидация enforcement Skills+MCP
 # Проверяет: self-report в CONTEXT-BUFFER.md содержит SKILLS_LOADED и MCP_USED
 
 param(

@@ -1,4 +1,4 @@
-# session-recovery.ps1 — Автовосстановление сессий при lock conflict
+﻿# session-recovery.ps1 — Автовосстановление сессий при lock conflict
 # Запускается в фоне, мониторит .local/share/opencode/snapshot/ на ошибки
 
 param(

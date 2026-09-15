@@ -1,4 +1,4 @@
-# run-daemons.ps1 — Запуск фоновых демонов agent-hq
+﻿# run-daemons.ps1 — Запуск фоновых демонов agent-hq
 # Запускать от имени пользователя (не от администратора)
 
 $ErrorActionPreference = "Continue"

@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
   Generates machine-readable agent cards per A2A Agent Card pattern.
 .DESCRIPTION

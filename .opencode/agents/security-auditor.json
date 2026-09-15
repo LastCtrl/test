@@ -1,7 +1,7 @@
 {
     "name":  "security-auditor",
     "description":  "Security Auditor — OWASP, уязвимости, поиск secrets и утечек. Только чтение.",
-    "model":  "tokenrouter/z-ai/glm-5.3-free",
+    "model":  "aihubmix/gpt-5.5",
     "mode":  "subagent",
     "temperature":  0.0,
     "permissions":  [

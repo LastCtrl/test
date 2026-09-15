@@ -1,7 +1,7 @@
 {
     "name":  "qa-engineer-1",
     "description":  "QA Engineer (copy 1) — тесты, edge cases, баг-репорты, регрессия для параллельной работы.",
-    "model":  "tokenrouter/z-ai/glm-5.3-free",
+    "model":  "aihubmix/gpt-5.5",
     "mode":  "subagent",
     "temperature":  0.2,
     "permissions":  [

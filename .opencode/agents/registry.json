@@ -1,7 +1,7 @@
-{
+﻿{
     "agents":  {
                    "team-lead":  {
-                                     "model":  "tokenrouter/z-ai/glm-5.3-free",
+                                     "model":  "openrouter/nex-agi/nex-n2.5-pro:free",
                                      "role":  "orchestrator",
                                      "permissions":  [
                                                          "edit",
@@ -37,7 +37,7 @@
                                      "description":  "РўРµС…РЅРёС‡РµСЃРєРёР№ Р›РёРґРµСЂ вЂ” РґРµРєРѕРјРїРѕР·РёСЂСѓРµС‚ Р·Р°РґР°С‡Рё, РЅР°Р·РЅР°С‡Р°РµС‚ Р°РіРµРЅС‚РѕРІ, РєРѕРЅС‚СЂРѕР»РёСЂСѓРµС‚ РєР°С‡РµСЃС‚РІРѕ"
                                  },
                    "team-lead-1":  {
-                                       "model":  "tokenrouter/z-ai/glm-5.3-free",
+                                       "model":  "openrouter/nex-agi/nex-n2.5-pro:free",
                                        "role":  "orchestrator",
                                        "permissions":  [
                                                            "edit",
@@ -73,7 +73,7 @@
                                        "description":  "РўРµС…РЅРёС‡РµСЃРєРёР№ Р›РёРґРµСЂ (copy 1) вЂ” РґР»СЏ РїР°СЂР°Р»Р»РµР»СЊРЅРѕР№ РѕСЂРєРµСЃС‚СЂР°С†РёРё"
                                    },
                    "team-lead-2":  {
-                                       "model":  "tokenrouter/z-ai/glm-5.3-free",
+                                       "model":  "openrouter/nex-agi/nex-n2.5-pro:free",
                                        "role":  "orchestrator",
                                        "permissions":  [
                                                            "edit",
@@ -109,7 +109,7 @@
                                        "description":  "РўРµС…РЅРёС‡РµСЃРєРёР№ Р›РёРґРµСЂ (copy 2) вЂ” РґР»СЏ РїР°СЂР°Р»Р»РµР»СЊРЅРѕР№ РѕСЂРєРµСЃС‚СЂР°С†РёРё"
                                    },
                    "team-lead-3":  {
-                                       "model":  "tokenrouter/z-ai/glm-5.3-free",
+                                       "model":  "openrouter/nex-agi/nex-n2.5-pro:free",
                                        "role":  "orchestrator",
                                        "permissions":  [
                                                            "edit",
@@ -145,7 +145,7 @@
                                        "description":  "РўРµС…РЅРёС‡РµСЃРєРёР№ Р›РёРґРµСЂ (copy 3) вЂ” РґР»СЏ РїР°СЂР°Р»Р»РµР»СЊРЅРѕР№ РѕСЂРєРµСЃС‚СЂР°С†РёРё"
                                    },
                    "dev-1":  {
-                                 "model":  "tokenrouter/z-ai/glm-5.3-free",
+                                 "model":  "openrouter/nex-agi/nex-n2.5-pro:free",
                                  "role":  "developer",
                                  "permissions":  [
                                                      "edit",
@@ -180,7 +180,7 @@
                                  "description":  "РЈРЅРёРІРµСЂСЃР°Р»СЊРЅС‹Р№ СЂР°Р·СЂР°Р±РѕС‚С‡РёРє (РѕСЃРЅРѕРІРЅРѕР№)"
                              },
                    "dev-1-1":  {
-                                   "model":  "tokenrouter/z-ai/glm-5.3-free",
+                                   "model":  "openrouter/nex-agi/nex-n2.5-pro:free",
                                    "role":  "developer",
                                    "permissions":  [
                                                        "edit",
@@ -215,7 +215,7 @@
                                    "description":  "РЈРЅРёРІРµСЂСЃР°Р»СЊРЅС‹Р№ СЂР°Р·СЂР°Р±РѕС‚С‡РёРє (РѕСЃРЅРѕРІРЅРѕР№, copy 1)"
                                },
                    "dev-2":  {
-                                 "model":  "tokenrouter/z-ai/glm-5.3-free",
+                                 "model":  "openrouter/nex-agi/nex-n2.5-pro:free",
                                  "role":  "developer",
                                  "permissions":  [
                                                      "edit",
@@ -247,7 +247,7 @@
                                  "description":  "РЈРЅРёРІРµСЂСЃР°Р»СЊРЅС‹Р№ СЂР°Р·СЂР°Р±РѕС‚С‡РёРє (Р±С‹СЃС‚СЂС‹Р№)"
                              },
                    "dev-2-1":  {
-                                   "model":  "tokenrouter/z-ai/glm-5.3-free",
+                                   "model":  "openrouter/nex-agi/nex-n2.5-pro:free",
                                    "role":  "developer",
                                    "permissions":  [
                                                        "edit",
@@ -279,7 +279,7 @@
                                    "description":  "РЈРЅРёРІРµСЂСЃР°Р»СЊРЅС‹Р№ СЂР°Р·СЂР°Р±РѕС‚С‡РёРє (Р±С‹СЃС‚СЂС‹Р№, copy 1)"
                                },
                    "dev-3":  {
-                                 "model":  "tokenrouter/z-ai/glm-5.3-free",
+                                 "model":  "openrouter/nex-agi/nex-n2.5-pro:free",
                                  "role":  "developer",
                                  "permissions":  [
                                                      "edit",
@@ -311,7 +311,7 @@
                                  "description":  "РЈРЅРёРІРµСЂСЃР°Р»СЊРЅС‹Р№ СЂР°Р·СЂР°Р±РѕС‚С‡РёРє (РЅР°РґРµР¶РЅРѕСЃС‚СЊ)"
                              },
                    "dev-3-1":  {
-                                   "model":  "tokenrouter/z-ai/glm-5.3-free",
+                                   "model":  "openrouter/nex-agi/nex-n2.5-pro:free",
                                    "role":  "developer",
                                    "permissions":  [
                                                        "edit",
@@ -343,7 +343,7 @@
                                    "description":  "РЈРЅРёРІРµСЂСЃР°Р»СЊРЅС‹Р№ СЂР°Р·СЂР°Р±РѕС‚С‡РёРє (РЅР°РґРµР¶РЅРѕСЃС‚СЊ, copy 1)"
                                },
                    "frontend":  {
-                                    "model":  "tokenrouter/z-ai/glm-5.3-free",
+                                    "model":  "openrouter/nex-agi/nex-n2.5-pro:free",
                                     "role":  "frontend-dev",
                                     "permissions":  [
                                                         "edit",
@@ -375,7 +375,7 @@
                                     "description":  "Frontend СЃРїРµС†РёР°Р»РёСЃС‚"
                                 },
                    "backend":  {
-                                   "model":  "tokenrouter/z-ai/glm-5.3-free",
+                                   "model":  "openrouter/nex-agi/nex-n2.5-pro:free",
                                    "role":  "backend-dev",
                                    "permissions":  [
                                                        "edit",
@@ -408,7 +408,7 @@
                                    "description":  "Backend СЃРїРµС†РёР°Р»РёСЃС‚"
                                },
                    "backend-1":  {
-                                     "model":  "tokenrouter/z-ai/glm-5.3-free",
+                                     "model":  "openrouter/nex-agi/nex-n2.5-pro:free",
                                      "role":  "backend-dev",
                                      "permissions":  [
                                                          "edit",
@@ -441,7 +441,7 @@
                                      "description":  "Backend СЃРїРµС†РёР°Р»РёСЃС‚ (copy 1)"
                                  },
                    "db-specialist":  {
-                                         "model":  "tokenrouter/z-ai/glm-5.3-free",
+                                         "model":  "openrouter/nex-agi/nex-n2.5-pro:free",
                                          "role":  "db-specialist",
                                          "permissions":  [
                                                              "edit",
@@ -474,7 +474,7 @@
                                          "description":  "SQL/NoSQL СЃРїРµС†РёР°Р»РёСЃС‚"
                                      },
                    "mobile-dev":  {
-                                      "model":  "tokenrouter/z-ai/glm-5.3-free",
+                                      "model":  "openrouter/nex-agi/nex-n2.5-pro:free",
                                       "role":  "mobile-dev",
                                       "permissions":  [
                                                           "edit",
@@ -503,7 +503,7 @@
                                       "description":  "Mobile СЂР°Р·СЂР°Р±РѕС‚С‡РёРє"
                                   },
                    "devops":  {
-                                  "model":  "tokenrouter/z-ai/glm-5.3-free",
+                                  "model":  "openrouter/nex-agi/nex-n2.5-pro:free",
                                   "role":  "devops",
                                   "permissions":  [
                                                       "edit",
@@ -534,7 +534,7 @@
                                   "description":  "DevOps РёРЅР¶РµРЅРµСЂ"
                               },
                    "integration-specialist":  {
-                                                  "model":  "tokenrouter/z-ai/glm-5.3-free",
+                                                  "model":  "openrouter/nex-agi/nex-n2.5-pro:free",
                                                   "role":  "integration-specialist",
                                                   "permissions":  [
                                                                       "edit",
@@ -566,7 +566,7 @@
                                                   "description":  "Integration specialist"
                                               },
                    "data-engineer":  {
-                                         "model":  "tokenrouter/z-ai/glm-5.3-free",
+                                         "model":  "openrouter/nex-agi/nex-n2.5-pro:free",
                                          "role":  "data-engineer",
                                          "permissions":  [
                                                              "edit",
@@ -599,7 +599,7 @@
                                          "description":  "Data engineer"
                                      },
                    "qa-engineer":  {
-                                       "model":  "tokenrouter/z-ai/glm-5.3-free",
+                                       "model":  "openrouter/nex-agi/nex-n2.5-pro:free",
                                        "role":  "qa-engineer",
                                        "permissions":  [
                                                            "read",
@@ -628,7 +628,7 @@
                                        "description":  "QA Engineer"
                                    },
                    "qa-engineer-1":  {
-                                         "model":  "tokenrouter/z-ai/glm-5.3-free",
+                                         "model":  "openrouter/nex-agi/nex-n2.5-pro:free",
                                          "role":  "qa-engineer",
                                          "permissions":  [
                                                              "read",
@@ -657,7 +657,7 @@
                                          "description":  "QA Engineer (copy 1)"
                                      },
                    "security-auditor":  {
-                                            "model":  "tokenrouter/z-ai/glm-5.3-free",
+                                            "model":  "openrouter/nex-agi/nex-n2.5-pro:free",
                                             "role":  "security-auditor",
                                             "permissions":  [
                                                                 "read",
@@ -683,7 +683,7 @@
                                             "description":  "Security Auditor"
                                         },
                    "security-auditor-1":  {
-                                              "model":  "tokenrouter/z-ai/glm-5.3-free",
+                                              "model":  "openrouter/nex-agi/nex-n2.5-pro:free",
                                               "role":  "security-auditor",
                                               "permissions":  [
                                                                   "read",
@@ -709,7 +709,7 @@
                                               "description":  "Security Auditor (copy 1)"
                                           },
                    "code-reviewer":  {
-                                         "model":  "tokenrouter/z-ai/glm-5.3-free",
+                                         "model":  "openrouter/nex-agi/nex-n2.5-pro:free",
                                          "role":  "code-reviewer",
                                          "permissions":  [
                                                              "read",
@@ -736,7 +736,7 @@
                                          "description":  "Code Reviewer"
                                      },
                    "code-reviewer-1":  {
-                                           "model":  "tokenrouter/z-ai/glm-5.3-free",
+                                           "model":  "openrouter/nex-agi/nex-n2.5-pro:free",
                                            "role":  "code-reviewer",
                                            "permissions":  [
                                                                "read",
@@ -763,7 +763,7 @@
                                            "description":  "Code Reviewer (copy 1)"
                                        },
                    "product-manager":  {
-                                           "model":  "tokenrouter/z-ai/glm-5.3-free",
+                                           "model":  "openrouter/nex-agi/nex-n2.5-pro:free",
                                            "role":  "product-manager",
                                            "permissions":  [
                                                                "read",
@@ -790,7 +790,7 @@
                                            "description":  "Product Manager"
                                        },
                    "tech-writer":  {
-                                       "model":  "tokenrouter/z-ai/glm-5.3-free",
+                                       "model":  "openrouter/nex-agi/nex-n2.5-pro:free",
                                        "role":  "tech-writer",
                                        "permissions":  [
                                                            "read",
@@ -816,7 +816,7 @@
                                        "description":  "Tech Writer"
                                    },
                    "tech-writer-1":  {
-                                         "model":  "tokenrouter/z-ai/glm-5.3-free",
+                                         "model":  "openrouter/nex-agi/nex-n2.5-pro:free",
                                          "role":  "tech-writer",
                                          "permissions":  [
                                                              "read",
@@ -842,7 +842,7 @@
                                          "description":  "Tech Writer (copy 1)"
                                      },
                    "skill-surgeon":  {
-                                         "model":  "tokenrouter/z-ai/glm-5.3-free",
+                                         "model":  "openrouter/nex-agi/nex-n2.5-pro:free",
                                          "role":  "skill-surgeon",
                                          "permissions":  [
                                                              "edit",
@@ -883,7 +883,7 @@
                                          "description":  "РС‰РµС‚, СЃРєР°С‡РёРІР°РµС‚, СЃРѕР·РґР°С‘С‚ СЃРєРёР»Р»С‹ РїРѕРґ Р»СЋР±СѓСЋ С‚РµС…РЅРѕР»РѕРіРёСЋ"
                                      },
                    "legal-advisor":  {
-                                         "model":  "tokenrouter/z-ai/glm-5.3-free",
+                                         "model":  "openrouter/nex-agi/nex-n2.5-pro:free",
                                          "role":  "legal-advisor",
                                          "permissions":  [
                                                              "read",
@@ -912,7 +912,7 @@
                                          "description":  "Legal Advisor"
                                      },
                    "smm-strategist":  {
-                                          "model":  "tokenrouter/z-ai/glm-5.3-free",
+                                          "model":  "openrouter/nex-agi/nex-n2.5-pro:free",
                                           "role":  "smm-strategist",
                                           "permissions":  [
                                                               "read",

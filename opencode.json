@@ -1031,7 +1031,7 @@
     "qa-engineer": {
         "description": "QA Engineer — тесты, edge cases, баг-репорты, регрессия.",
         "mode": "subagent",
-        "model": "opencode/big-pickle",
+        "model": "opencode-go/qwen3.8-flash",
         "temperature": 0.2,
         "permission": {
             "bash": {

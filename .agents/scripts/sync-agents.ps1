@@ -73,6 +73,58 @@ function ConvertTo-JsonString {
 }
 
 # ============================================================
+# P0-B: разбор metadata.task_allow — allowlist агентов, которым
+# ДАННЫЙ агент может делегировать через task (deny-by-default).
+# Fail-safe: нестроковые/небезопасные элементы ОТБРАСЫВАЮТСЯ с warning,
+# а не роняют sync. Инвариант anti-fork-bomb: ни сам агент, ни другой
+# оркестратор (team-lead*) не попадают в allow-список.
+# ============================================================
+function Get-TaskAllowList {
+    param(
+        [string]$AgentName,
+        $TaskAllow
+    )
+
+    $result = [System.Collections.ArrayList]::new()
+
+    if ($null -eq $TaskAllow) { return $result.ToArray() }
+
+    foreach ($item in @($TaskAllow)) {
+        if ($null -eq $item) {
+            Write-Warning "task_allow: null entry ignored for '$AgentName'"
+            continue
+        }
+        if (-not ($item -is [System.String])) {
+            Write-Warning "task_allow: non-string entry ignored for '$AgentName'"
+            continue
+        }
+
+        $candidate = $item.Trim()
+        if ($candidate.Length -eq 0) {
+            Write-Warning "task_allow: empty entry ignored for '$AgentName'"
+            continue
+        }
+        if ($candidate -notmatch '^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$') {
+            Write-Warning "task_allow: unsafe agent name '$candidate' ignored for '$AgentName'"
+            continue
+        }
+        if ($candidate -eq $AgentName) {
+            Write-Warning "task_allow: self-reference ('$candidate') ignored for '$AgentName' (anti-fork-bomb)"
+            continue
+        }
+        if ($candidate -match $script:TaskOrchestratorPattern) {
+            Write-Warning "task_allow: orchestrator '$candidate' ignored for '$AgentName' (anti-fork-bomb)"
+            continue
+        }
+        if (-not $result.Contains($candidate)) {
+            [void]$result.Add($candidate)
+        }
+    }
+
+    return $result.ToArray()
+}
+
+# ============================================================
 # Ручная сериализация одного агента в JSON (без ConvertTo-Json)
 # ============================================================
 function ConvertTo-AgentJson {
@@ -111,7 +163,10 @@ function ConvertTo-AgentJson {
         if ($v -is [System.Collections.IDictionary]) {
             # nested dict (external_directory patterns) — ручная сериализация
             [void]$sb.AppendLine('            ' + (ConvertTo-JsonString $k) + ': {')
-            $subKeys = @($v.Keys | Sort-Object)
+            # P0-B: порядок вложенных правил ВАЖЕН — opencode применяет
+            # ПОСЛЕДНЕЕ совпавшее правило. Сортировку НЕ применяем,
+            # порядок вставки сохраняется (широкое "*" задаётся первым).
+            $subKeys = @($v.Keys)
             for ($j = 0; $j -lt $subKeys.Count; $j++) {
                 $sk = $subKeys[$j]
                 $sv = $v[$sk]
@@ -375,8 +430,15 @@ if (-not (Test-Path $promptsDir)) {
     New-Item -ItemType Directory -Path $promptsDir -Force | Out-Null
 }
 
-$allowKeys = @("read", "edit", "bash", "glob", "grep", "skill", "question", "webfetch", "websearch", "task", "list")
-$denyIfMissing = @("edit", "bash", "task")
+# P0-B: "task" СОЗНАТЕЛЬНО исключён из allowKeys/denyIfMissing — он
+# вычисляется отдельно из metadata.task_allow (allowlist, deny-by-default).
+# Непустой task_allow -> permission.task = { "*": "deny", "<agent>": "allow", ... }
+# Пусто/отсутствует  -> permission.task = "deny"
+$allowKeys = @("read", "edit", "bash", "glob", "grep", "skill", "question", "webfetch", "websearch", "list")
+$denyIfMissing = @("edit", "bash")
+
+# Агенты-оркестраторы: не могут быть целью делегирования (anti-fork-bomb).
+$script:TaskOrchestratorPattern = '^team-lead(-\d+)?$'
 
 # ============================================================
 # Блок evidence-discipline, добавляемый в начало КАЖДОГО промпта
@@ -456,6 +518,25 @@ foreach ($file in $jsonFiles) {
             $perm[$key] = "deny"
         }
     }
+
+    # P0-B: task — allowlist с deny-by-default.
+    # Правило "*" обязано идти ПЕРВЫМ (opencode применяет последнее
+    # совпавшее правило), поэтому [ordered] с "*" в начале, allow после.
+    $taskAllow = @(Get-TaskAllowList -AgentName $name -TaskAllow $data.task_allow)
+    if ($taskAllow.Count -gt 0) {
+        $taskPerm = [ordered]@{ "*" = "deny" }
+        foreach ($target in $taskAllow) {
+            $taskPerm[$target] = "allow"
+        }
+        $perm["task"] = $taskPerm
+        Write-Host "      task: allowlist ($($taskAllow.Count) targets) + '*' deny" -ForegroundColor DarkCyan
+    } else {
+        $perm["task"] = "deny"
+        if ($data.permissions -contains "task") {
+            Write-Warning "  $name has 'task' in permissions but no non-empty task_allow — task set to 'deny' (deny-by-default)"
+        }
+    }
+
     # external_directory: ТОЛЬКО корень репо (worktrees — внутри репо).
     # Конфиг/креды opencode и прочие пути C: агентам недоступны.
     $perm["external_directory"] = [ordered]@{

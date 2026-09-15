@@ -1063,3 +1063,98 @@ MCP_USED: []
 COMPLIANCE: true
 STATUS: resolved
 ================================================================================
+
+[2026-09-15 13:10] dev-1 -> team-lead:
+TYPE: update | PRIORITY: medium
+Project: news-bot
+CONTENT: Правки кода по ревью фильтра свежести — 5/5 пунктов.
+1) services/news_search.py:384-391 — фильтр теперь по ПОЛНОМУ merged (не merged[:limit]); если fresh пуст — не return, а fall-through (merged_partial = merged).
+2) services/news_search.py:422-424 — убран `return merged[:limit]` (ветка direct+serper+google): при пустом fresh — fall-through на Tavily/DDG. services/news_search.py:452-454 — убран `return merged[:limit]` (ветка tavily/ddg): пусто → финальный return [] (news_search.py:456). Старьё старше MAX_AGE_DAYS больше не воскрешается ни в одной ветке.
+3) services/analyzer.py:761-772 — вызов _get_provider_config обёрнут в try/except KeyError: неизвестная модель (рассинхрон MODELS/MODEL_PROVIDER) логируется logger.warning и пропускается через continue, analyze_news не падает.
+4) services/scheduler.py — добавлен хелпер _truncate_html_safe (:55-71): обрезка по безопасной границе, отбрасывает хвост от последнего незакрытого '<' и добавляет «…» вне тега. Применён в _split_html_text (:95) и в ретрае _deliver_topic (:565) вместо block[:limit-1] + "…".
+5) services/analyzer.py:81 — комментарий исправлен «115с» → «130с» (фактический scheduler._topic_timeout = 130).
+ТЕСТЫ: обновлён tests/test_freshness.py::test_search_news_survives_all_old_articles (энкодил старое поведение: ожидал возврат старых статей → теперь ожидает [] и мокает tavily/ddg); добавлены test_freshness_filter_uses_full_merged_not_slice (свежий 6-й при limit=5 попадает), test_no_stale_from_direct_serper_branch, test_no_stale_from_tavily_ddg_branch; tests/test_digest.py: test_unsplittable_trim_does_not_split_html_tag, test_truncate_html_safe_keeps_complete_tag. Адаптированы даты в tests/test_final.py (SAMPLE_ARTICLES/mock_results: жёсткие «2026-07-14» → RECENT_DATE = now-6h) — эти 2 теста падали на новой логике (ждали воскрешения старых дат), теперь проверяют формат/unicodе по свежим данным.
+ВЕРИФИКАЦИЯ: py -3 -m pytest tests -q --tb=short → 305 passed, 1 skipped, 0 failed, 1 warning (pytest-asyncio deprecation), 52.11s.
+Временных файлов не создавал.
+SKILLS_LOADED: ["superpowers-implement", "evidence-discipline"]
+MCP_USED: ["sequential-thinking"]
+COMPLIANCE: true
+STATUS: resolved
+================================================================================
+
+[2026-09-15 12:57] dev-3 -> team-lead:
+TYPE: update | PRIORITY: medium
+Project: news-bot
+CONTENT: |
+  ## Implementation — переиспользуемый E2E smoke
+
+  ### Task
+  Создать scripts/e2e_smoke.py — ручная/CI E2E-проверка news-bot на живых данных без Telegram.
+
+  ### Files Changed
+  - created: D:\Тест\news-bot\scripts\e2e_smoke.py (14 369 байт, 3 шага)
+  - created: D:\Тест\news-bot\scripts\ (каталог отсутствовал)
+  - created (runtime output): scripts/e2e_last_report.txt (полный UTF-8 отчёт), scripts/e2e_smoke.log (лог)
+
+  ### Что делает
+  1. search_news(query, limit=6): >=1 результат; нет материалов старше MAX_AGE_DAYS=30 (parse_date_flexible); сортировка DESC (first>=last, undated пропускаются). 2 попытки на сетевой флап.
+  2. analyze_news(query, results, level=2): непустой и без маркера 'ИИ-анализ временно недоступен'.
+  3. texts.format_digest([query], {query: results}): без исключения, длина < 4096, иначе проверка _split_html_text (<=4096).
+  Консоль ASCII-safe (_ascii через encode('ascii','replace')), полный UTF-8 отчёт в файл, логирование только в файл (cp1251 не падает). Bootstrap sys.path + os.chdir(project root). DB init через database.init_db(cfg.DATABASE_URL) (non-fatal) — устранено предупреждение 'Database not connected' при проверке квоты Serper. Секреты не хардкодятся (config.load_config/.env), в консоль только флаги set/empty.
+
+  ### Прогоны (реальные)
+  - `py -3 scripts/e2e_smoke.py` (query по умолчанию): OK=3 / FAIL=0 / SKIP=0 -> exit 0.
+  - `py -3 scripts/e2e_smoke.py "новости минск"`: search OK (6 результатов, dated=6, MAX_AGE OK, sort DESC OK), analyze FAIL (реальная деградация моделей: big-pickle/mimo 429, ling 503, nemotron timeout -> fallback) -> exit 1. FAIL-путь и код возврата подтверждены.
+  - Offline edge-cases: _evaluate_search([], ...) -> FAIL; stale (2020-01-01) -> FAIL; хорошие даты -> OK; _ascii('привет 😀') -> ASCII-safe.
+
+  ### Notes
+  - Зависимости только проектные (aiohttp/httpx/feedparser уже установлены), новых нет.
+  - Запуск: `py -3 scripts/e2e_smoke.py [query]` из D:\Тест\news-bot.
+  - MCP context7 недоступен в сессии (fetch failed) — работал без него.
+  - Код возврата: 0 — все шаги OK; 1 — есть FAIL.
+SKILLS_LOADED: ["superpowers-implement", "evidence-discipline"]
+MCP_USED: ["sequential-thinking", "context7: offline (fetch failed)"]
+COMPLIANCE: true
+STATUS: resolved
+
+[2026-09-15T10:00:00] qa-engineer -> team-lead:
+TYPE: update | PRIORITY: medium
+Project: news-bot
+CONTENT: |
+  ## Re-review: dev-1 fixes (diff only)
+  
+  Verdict: **PASS** (8/8 checks green)
+  
+  1. news_search.py:384-391 — filter_by_freshness on full merged ✓; empty fresh → merged_partial=merged (fall-through to Google) ✓
+  2. news_search.py:422-425, :452-455 — `return merged[:limit]` removed; stale never resurrected; final `return []` at :458 ✓
+  3. analyzer.py:761-772 — KeyError from _get_provider_config caught, logged, model skipped ✓
+  4. scheduler.py:55-71 — _truncate_html_safe cuts incomplete tags; used in :95 and :565 ✓
+  5. analyzer.py:81 — comment updated to 130с ✓
+  6. pytest: 305 passed, 0 failed, 1 skipped (45.5s) ✓
+  7. Tests not weakened: `survives_all_old_articles` asserts []; RECENT_DATE in test_final.py makes tests time-independent; 3 new freshness tests cover all branches ✓
+  8. Stale > MAX_AGE_DAYS never returned: all 3 search_news branches end with `return []` if fresh empty; freshness.py:364-379 hard cap enforced ✓
+  
+  Grade: 9 (clean PASS, no bugs found)
+SKILLS_LOADED: ["superpowers-test", "evidence-discipline"]
+MCP_USED: ["sequential-thinking"]
+COMPLIANCE: true
+STATUS: resolved
+
+[2026-09-15 12:55] team-lead ->
+Project: news-bot
+TYPE: update | PRIORITY: high
+CONTENT: ИТОГ сессии news-bot. (1) МОДЕЛИ: цепочка = opencode Zen free [big-pickle, ling-3.0-flash-fin-free, mimo-v2.5-free, nemotron-3.5-lightning-free] + z-ai/glm-5.3-free(tokenrouter) резерв; OPENCODE_BASE_URL=zen/v1. (2) СВЕЖЕСТЬ: services/freshness.py, окна 3/14/30 дней, жёсткий потолок 30д (древность не возвращается НИГДЕ — фикс обхода в news_search по ревью), приоритет новых + бонус официальным источникам, when:2d. (3) ДАЙДЖЕСТ: сплит >4096 с HTML-safe обрезкой (_truncate_html_safe), per-topic try/except, preload 8мин. (4) РЕВЬЮЕРЫ(8): после рестарта opencode 7/8 работают (code-reviewer на aihubmix free-квота исчерпана — конфиг переведён на opencode/big-pickle, применится после след. рестарта). (5) ХАРНЕСС: scripts/e2e_smoke.py (search+analyze+digest, exit 0/1). Итог: 305 passed / 0 failed; E2E OK=3 FAIL=0; бот pid 23120.
+РИСК: free-модели opencode упираются в FreeUsageLimitError/503/timeout (аккаунтный free-лимит) — в такие окна дайджест уходит в degraded; openrouter free = 50 req/сут. Решение за пользователем (пополнить OpenRouter  → 1000/сут, либо смириться с периодическим degraded).
+SKILLS_LOADED: ["model-router","superpowers-implement","superpowers-test"]
+MCP_USED: ["sequential-thinking"]
+COMPLIANCE: true
+STATUS: resolved
+
+[TIME] dev-1-1 -> team-lead:
+TYPE: update | PRIORITY: medium
+Project: agent-hq
+CONTENT: P0-C "machine-generated evidence" реализован. ФАЙЛЫ: (1) created .agents/scripts/evidence-writer.ps1 (130 строк) — Get-TextSha256 (hex lowercase sha256 UTF-8), Get-FileSha256 (sha256 файла или $null), Get-GitInfo (git_head=rev-parse HEAD, git_diff_sha256=sha256(git diff); без git / не-репо → ""), Write-EvidenceRecord (append в .memory/evidence/<task_id>.json как {task_id, attempts:[...]}, атомарно: tmp + Move-Item -Force, UTF-8 no BOM) + Get-EvidenceRelativePath/Initialize-EvidenceDir; base = $env:AGENT_HQ_ROOT или derive от PSScriptRoot. (2) modified .agents/scripts/inbox-poller.ps1 — dot-source helper (guard: нет файла → evidence disabled); Invoke-OpencodeAttempt обёрнут Add-AttemptTiming (startedAt/finishedAt ISO 8601 + durationMs, включая timeout-ветку); функции New-EvidenceRecord/Write-AttemptEvidence; запись после КАЖДОГО attempt (и success, и failed). Поля записи: task_id, attempt_id ("attempt-1"/"attempt-2"), agent, command ("<opencode> run --agent <agent>"), exit_code, stdout_sha256, stdout_length, stderr_sha256, stderr_length, started_at, finished_at, duration_ms, status ("success"|"failed"), reason, git_head, git_diff_sha256, host ($env:COMPUTERNAME), pid. (3) Complete-InboxFile + Send-DeadLetter получили поле evidence = относительный путь ".memory/evidence/<task_id>.json" (success → outbox, failure → dead-letter). (4) modified tests/test-pipeline.ps1 — новые ассерты: кейс a — evidence-файл существует, есть success-attempt с exit_code=0 и 64-hex stdout_sha256, outbox.evidence указывает на файл; кейсы b-g — failed-attempt с непустым reason, dead-letter.evidence присутствует, git_head/git_diff_sha256 — строки; кейс c — exit_code=1. РЕЗУЛЬТАТ ТЕСТОВ: & tests/test-pipeline.ps1 → SUMMARY passed=7 failed=0 total=7, EXIT=0 (все 7 старых кейсов зелёные + новые ассерты). ПРАВКИ/ВЕРИФИКАЦИЯ: PSParser::Tokenize(ReadAllText) — 0 ошибок у всех 3 файлов; CRLF везде (loneLF=0); inbox-poller.ps1 сохранён с UTF-8 BOM (EF BB BF, как в HEAD — иначе PS 5.1 декодирует эмодзи как ANSI и скрипт не парсится, проверено и исправлено), evidence-writer.ps1 и test-pipeline.ps1 — без BOM; нет &&/||; Get-GitInfo на реальном репо: git_head=c51bd6c008e264f73dce81004e43423b8da338c4, git_diff_sha256=64-hex; секреты не логируются (только пути и хэши). НЕ коммичено (по ТЗ). Temp-файлы/каталоги удалены. Другие скрипты не тронуты.
+SKILLS_LOADED: ["evidence-discipline", "windows-safety", "superpowers-implement"]
+MCP_USED: ["sequential-thinking"]
+COMPLIANCE: true
+STATUS: resolved

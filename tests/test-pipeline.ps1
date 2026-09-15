@@ -118,6 +118,10 @@ function Test-CaseSuccess {
         $msg = Read-JsonFile $outboxFile
         $all = (Write-Check "outbox status = done" ($msg.status -eq "done")) -and $all
         $all = (Write-Check "outbox id matches inbox id" ($msg.id -eq $id)) -and $all
+        $evField = [string]$msg.evidence
+        $evExpected = ".memory/evidence/" + $id + ".json"
+        $evFieldOk = ($evField -eq $evExpected -and (Test-PathLeaf (Join-Path $Root ($evField -replace '/', '\'))))
+        $all = (Write-Check "outbox evidence points at evidence file" $evFieldOk) -and $all
     }
 
     $archiveCount = Get-JsonFileCount (Join-Path $Root ".memory\archive")
@@ -125,6 +129,27 @@ function Test-CaseSuccess {
 
     $dlCount = Get-JsonFileCount (Join-Path $Root ".memory\dead-letter")
     $all = (Write-Check "dead-letter is empty" ($dlCount -eq 0)) -and $all
+
+    # P0-C: machine-generated evidence assertions
+    $evidenceFile = Join-Path $Root (".memory\evidence\" + $id + ".json")
+    $evExists = Test-PathLeaf $evidenceFile
+    $all = (Write-Check ("evidence\" + $id + ".json created") $evExists) -and $all
+    if ($evExists) {
+        $ev = Read-JsonFile $evidenceFile
+        $attempts = @($ev.attempts)
+        $all = (Write-Check "evidence task_id matches" ($ev.task_id -eq $id)) -and $all
+        $successList = @($attempts | Where-Object { $_.status -eq "success" })
+        $all = (Write-Check "evidence has a success attempt" ($successList.Count -ge 1)) -and $all
+        if ($successList.Count -ge 1) {
+            $sa = $successList[0]
+            $all = (Write-Check "success attempt exit_code = 0" ($sa.exit_code -eq 0)) -and $all
+            $all = (Write-Check "success attempt stdout_sha256 is 64-hex" ($sa.stdout_sha256 -match '^[0-9a-f]{64}$')) -and $all
+            $all = (Write-Check "success attempt stdout_length > 0" ($sa.stdout_length -gt 0)) -and $all
+        }
+        $firstAttempt = @($attempts)[0]
+        $all = (Write-Check "evidence git_head is a string" ($null -ne $firstAttempt.git_head -and $firstAttempt.git_head -is [string])) -and $all
+        $all = (Write-Check "evidence git_diff_sha256 is a string" ($null -ne $firstAttempt.git_diff_sha256 -and $firstAttempt.git_diff_sha256 -is [string])) -and $all
+    }
 
     return $all
 }
@@ -148,6 +173,31 @@ function Test-FailureCase {
         $all = (Write-Check "dead-letter status = failed" ($msg.status -eq "failed")) -and $all
         $reasonOk = ([string]$msg.response -match $ReasonPattern)
         $all = (Write-Check ("reason matches /" + $ReasonPattern + "/") $reasonOk) -and $all
+        $all = (Write-Check "dead-letter evidence field present" (-not [string]::IsNullOrWhiteSpace([string]$msg.evidence))) -and $all
+    }
+
+    # P0-C: machine-generated evidence assertions
+    $evidenceFile = Join-Path $Root (".memory\evidence\" + $id + ".json")
+    $evExists = Test-PathLeaf $evidenceFile
+    $all = (Write-Check ("evidence\" + $id + ".json created") $evExists) -and $all
+    $failedAttempt = $null
+    if ($evExists) {
+        $ev = Read-JsonFile $evidenceFile
+        $attempts = @($ev.attempts)
+        $all = (Write-Check "evidence task_id matches" ($ev.task_id -eq $id)) -and $all
+        $failedList = @($attempts | Where-Object { $_.status -eq "failed" })
+        $all = (Write-Check "evidence has a failed attempt" ($failedList.Count -ge 1)) -and $all
+        if ($failedList.Count -ge 1) { $failedAttempt = $failedList[0] }
+        if ($null -ne $failedAttempt) {
+            $all = (Write-Check "failed attempt has a reason" (-not [string]::IsNullOrWhiteSpace([string]$failedAttempt.reason))) -and $all
+        }
+        $firstAttempt = @($attempts)[0]
+        $all = (Write-Check "evidence git_head is a string" ($null -ne $firstAttempt.git_head -and $firstAttempt.git_head -is [string])) -and $all
+        $all = (Write-Check "evidence git_diff_sha256 is a string" ($null -ne $firstAttempt.git_diff_sha256 -and $firstAttempt.git_diff_sha256 -is [string])) -and $all
+    }
+
+    if ($null -ne $failedAttempt -and $Mode -eq "exit1") {
+        $all = (Write-Check "exit1 failed attempt exit_code = 1" ($failedAttempt.exit_code -eq 1)) -and $all
     }
 
     return $all

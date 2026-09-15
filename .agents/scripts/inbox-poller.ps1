@@ -42,6 +42,17 @@ function Write-Log {
     }
 }
 
+# --- Machine-generated evidence (P0-C): dot-source the runtime evidence writer.
+# The poller (not the model under test) records exit codes/hashes/timing here.
+$script:EvidenceAvailable = $false
+$evidenceWriterPath = Join-Path $PSScriptRoot "evidence-writer.ps1"
+if (Test-Path -LiteralPath $evidenceWriterPath) {
+    . $evidenceWriterPath
+    $script:EvidenceAvailable = $true
+} else {
+    Write-Log "⚠️ evidence-writer.ps1 not found at $evidenceWriterPath — evidence records disabled"
+}
+
 # Global mutex to prevent concurrent execution
 $mutexName = "agent-hq-poller-mutex"
 $mutex = New-Object System.Threading.Mutex($false, $mutexName)
@@ -112,7 +123,8 @@ function Send-DeadLetter {
         [string]$payload,
         [string]$startedAt,
         [string]$response,
-        [string]$filePath
+        [string]$filePath,
+        [string]$evidence = ""
     )
     $dlFinishedAt = Format-DateTime
     $dlMsg = @{
@@ -126,6 +138,7 @@ function Send-DeadLetter {
         startedAt = $startedAt
         finishedAt = $dlFinishedAt
         response = $response
+        evidence = $evidence
     }
     $jsonDL = $dlMsg | ConvertTo-Json -Depth 4
     [System.IO.File]::WriteAllText((Join-Path $DeadLetter "$($messageId).json"), $jsonDL, $script:Utf8NoBom)
@@ -150,7 +163,8 @@ function Complete-InboxFile {
         [string]$startedAt,
         [string]$response,
         [string]$filePath,
-        [string]$fullFileName
+        [string]$fullFileName,
+        [string]$evidence = ""
     )
     # Truncate overly long responses
     if ($response.Length -gt $maxResponseLength) {
@@ -168,6 +182,7 @@ function Complete-InboxFile {
         startedAt = $startedAt
         finishedAt = Format-DateTime
         response = $response
+        evidence = $evidence
     }
 
     $jsonOut = $outboxMsg | ConvertTo-Json -Depth 4
@@ -197,10 +212,25 @@ if ($env:AGENT_HQ_JOB_TIMEOUT) {
     }
 }
 
+# Attach wall-clock timing to an attempt object (ISO 8601 boundaries + duration).
+function Add-AttemptTiming {
+    param($attempt, [datetime]$startedAt, [datetime]$finishedAt)
+    if ($null -eq $attempt) {
+        $attempt = [PSCustomObject]@{ stdout = ""; stderr = ""; exitCode = 1 }
+    }
+    if ($attempt -is [array]) { $attempt = $attempt[-1] }
+    $attempt | Add-Member -NotePropertyName startedAt -NotePropertyValue $startedAt.ToString("o") -Force
+    $attempt | Add-Member -NotePropertyName finishedAt -NotePropertyValue $finishedAt.ToString("o") -Force
+    $attempt | Add-Member -NotePropertyName durationMs -NotePropertyValue ([int]($finishedAt - $startedAt).TotalMilliseconds) -Force
+    return $attempt
+}
+
 # Run opencode in a background job, capturing stdout/stderr separately and the REAL exit code.
-# Returns: [PSCustomObject]@{ stdout; stderr; exitCode }  (never a bare string)
+# Returns: [PSCustomObject]@{ stdout; stderr; exitCode; startedAt; finishedAt; durationMs }  (never a bare string)
 function Invoke-OpencodeAttempt {
     param([string]$targetAgent, [string]$taskPrompt)
+
+    $startedAt = Get-Date
 
     $job = Start-Job -ScriptBlock {
         param($agent, $taskPrompt)
@@ -228,20 +258,23 @@ function Invoke-OpencodeAttempt {
     if ($completed) {
         $res = Receive-Job -Job $job
         Remove-Job -Job $job -Force -ErrorAction SilentlyContinue
+        $finishedAt = Get-Date
         if ($null -eq $res) {
-            return [PSCustomObject]@{ stdout = ""; stderr = "Job produced no result object"; exitCode = 1 }
+            $res = [PSCustomObject]@{ stdout = ""; stderr = "Job produced no result object"; exitCode = 1 }
         }
-        return $res
+        return (Add-AttemptTiming -attempt $res -startedAt $startedAt -finishedAt $finishedAt)
     }
 
     Stop-Job -Job $job
     Remove-Job -Job $job -Force -ErrorAction SilentlyContinue
+    $finishedAt = Get-Date
     Write-Log "⏱️ TIMEOUT $($script:JobTimeoutSeconds)s: agent '$targetAgent' hung — job killed"
-    return [PSCustomObject]@{
+    $timeoutResult = [PSCustomObject]@{
         stdout   = "TIMEOUT: agent '$targetAgent' did not respond in $($script:JobTimeoutSeconds) seconds"
         stderr   = ""
         exitCode = 124
     }
+    return (Add-AttemptTiming -attempt $timeoutResult -startedAt $startedAt -finishedAt $finishedAt)
 }
 
 # Success ONLY when: exit code == 0 AND stdout has the explicit success marker AND stderr has no error markers.
@@ -292,6 +325,73 @@ function Format-AttemptReport {
         "--- STDERR ---",
         (Limit-Text $attempt.stderr)
     ) -join "`n"
+}
+
+# Build ONE machine evidence record from an attempt object. Called by the poller
+# runtime only — the agent under test never contributes to these fields.
+function New-EvidenceRecord {
+    param(
+        $attempt,
+        [string]$taskId,
+        [string]$attemptId,
+        [string]$agent,
+        [string]$command,
+        [string]$status,
+        [string]$reason
+    )
+    $stdoutText = if ($null -ne $attempt) { [string]$attempt.stdout } else { "" }
+    $stderrText = if ($null -ne $attempt) { [string]$attempt.stderr } else { "" }
+    $exitCode = if ($null -ne $attempt -and $null -ne $attempt.exitCode) { [int]$attempt.exitCode } else { -1 }
+    $startedAt = if ($null -ne $attempt -and $attempt.startedAt) { [string]$attempt.startedAt } else { "" }
+    $finishedAt = if ($null -ne $attempt -and $attempt.finishedAt) { [string]$attempt.finishedAt } else { "" }
+    $durationMs = if ($null -ne $attempt -and $null -ne $attempt.durationMs) { [int]$attempt.durationMs } else { 0 }
+    $git = Get-GitInfo
+
+    return [ordered]@{
+        task_id         = $taskId
+        attempt_id      = $attemptId
+        agent           = $agent
+        command         = $command
+        exit_code       = $exitCode
+        stdout_sha256   = Get-TextSha256 $stdoutText
+        stdout_length   = $stdoutText.Length
+        stderr_sha256   = Get-TextSha256 $stderrText
+        stderr_length   = $stderrText.Length
+        started_at      = $startedAt
+        finished_at     = $finishedAt
+        duration_ms     = $durationMs
+        status          = $status
+        reason          = $reason
+        git_head        = $git.git_head
+        git_diff_sha256 = $git.git_diff_sha256
+        host            = $env:COMPUTERNAME
+        pid             = $PID
+    }
+}
+
+# Persist one attempt record and return its relative evidence path ("" on failure).
+function Write-AttemptEvidence {
+    param(
+        $attempt,
+        [string]$taskId,
+        [string]$attemptId,
+        [string]$agent,
+        [string]$command,
+        [string]$status,
+        [string]$reason
+    )
+    $relative = ""
+    if ($script:EvidenceAvailable) {
+        try {
+            $record = New-EvidenceRecord -attempt $attempt -taskId $taskId -attemptId $attemptId `
+                -agent $agent -command $command -status $status -reason $reason
+            $relative = Write-EvidenceRecord -TaskId $taskId -Record $record
+        } catch {
+            Write-Log "⚠️ Failed to write evidence record ($taskId/$attemptId): $($_.Exception.Message)"
+            $relative = ""
+        }
+    }
+    return $relative
 }
 
 # Process a single inbox file
@@ -356,34 +456,49 @@ function Process-InboxFile {
 
     # Call opencode run --agent <name> "<prompt>" with 15-min hard timeout
     # (prevents a hung agent from blocking the whole poller cycle forever)
+    # Machine-generated evidence (P0-C): the command string is recorded by the runtime.
+    $evidenceCommand = "$($script:OpencodeCmd) run --agent $targetAgent"
+
     Write-Log "🚀 Calling opencode run for agent: $targetAgent (timeout: $($script:JobTimeoutSeconds)s)"
     $attempt1 = Invoke-OpencodeAttempt -targetAgent $targetAgent -taskPrompt $prompt
+    $success1 = Test-OpencodeSuccess $attempt1
+    $reason1 = if ($success1) { "" } else { Get-AttemptFailureReason $attempt1 }
+    $status1 = if ($success1) { "success" } else { "failed" }
+    $evidencePath = Write-AttemptEvidence -attempt $attempt1 -taskId $messageId -attemptId "attempt-1" `
+        -agent $targetAgent -command $evidenceCommand -status $status1 -reason $reason1
+    Write-Log "🧾 Evidence ($messageId/attempt-1): status=$status1, exit=$($attempt1.exitCode)"
 
-    if (Test-OpencodeSuccess $attempt1) {
+    if ($success1) {
         # Success — write to outbox and archive
         Complete-InboxFile -messageId $messageId -from $from -targetAgent $targetAgent `
             -priority $priority -payload $payload -startedAt $startedAt `
-            -response $attempt1.stdout -filePath $filePath -fullFileName $fullFileName
+            -response $attempt1.stdout -filePath $filePath -fullFileName $fullFileName -evidence $evidencePath
     } else {
         # Failed — 1 retry (also with timeout)
-        Write-Log "❌ First attempt failed ($(Get-AttemptFailureReason $attempt1)), retrying..."
+        Write-Log "❌ First attempt failed ($reason1), retrying..."
         $attempt2 = Invoke-OpencodeAttempt -targetAgent $targetAgent -taskPrompt $prompt
+        $success2 = Test-OpencodeSuccess $attempt2
+        $reason2 = if ($success2) { "" } else { Get-AttemptFailureReason $attempt2 }
+        $status2 = if ($success2) { "success" } else { "failed" }
+        $evidencePath = Write-AttemptEvidence -attempt $attempt2 -taskId $messageId -attemptId "attempt-2" `
+            -agent $targetAgent -command $evidenceCommand -status $status2 -reason $reason2
+        Write-Log "🧾 Evidence ($messageId/attempt-2): status=$status2, exit=$($attempt2.exitCode)"
 
-        if (Test-OpencodeSuccess $attempt2) {
+        if ($success2) {
             Complete-InboxFile -messageId $messageId -from $from -targetAgent $targetAgent `
                 -priority $priority -payload $payload -startedAt $startedAt `
-                -response $attempt2.stdout -filePath $filePath -fullFileName $fullFileName
+                -response $attempt2.stdout -filePath $filePath -fullFileName $fullFileName -evidence $evidencePath
         } else {
             # Failed after retry → dead-letter with full stdout+stderr and reasons
             Write-Log "❌ Failed after 2 attempts — dead-letter: $messageId"
             $dlResponse = @(
-                (Format-AttemptReport -reason "First attempt failed: $(Get-AttemptFailureReason $attempt1)" -attempt $attempt1),
+                (Format-AttemptReport -reason "First attempt failed: $reason1" -attempt $attempt1),
                 "",
-                (Format-AttemptReport -reason "Retry failed: $(Get-AttemptFailureReason $attempt2)" -attempt $attempt2)
+                (Format-AttemptReport -reason "Retry failed: $reason2" -attempt $attempt2)
             ) -join "`n"
             Send-DeadLetter -messageId $messageId -from $from -targetAgent $targetAgent `
                 -priority $priority -payload $payload -startedAt $startedAt `
-                -response $dlResponse -filePath $filePath
+                -response $dlResponse -filePath $filePath -evidence $evidencePath
         }
     }
 }

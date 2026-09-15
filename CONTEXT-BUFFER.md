@@ -1383,12 +1383,12 @@ CONTENT: |
   Изменённые файлы (только 2; MODELS/MODEL_PROVIDER/PROVIDER_CONFIG/freshness/scheduler не тронуты):
   - services/analyzer.py
     * удалены модульный `_last_failure: dict[str,str]` (бывш. 104-107) и `_is_transient_failure(model)` (бывш. 127-129);
-    * добавлены `_record_failure(failure_sink, model, reason)` (116-121) и `_is_transient_reason(reason)` (136-138);
-    * `_call_model(..., level=2, failure_sink: dict[str,str] | None = None)` (481-499) и `_call_model_once(..., failure_sink=None)` (517-539): причина отказа пишется в переданный sink (все 9 мест: unknown/empty/bad_json/timeout/rate_limit/http_5xx/http_4xx/network/exception);
-    * `analyze_news`: локальный `failures: dict[str,str] = {}` на вызов (766-770), sink передаётся в `_call_model(..., failures)` (844-848), бюджетный timeout/exception пишут в локальный `failures` (853, 857), retry-решение — `reason = failures.get(model, "unknown")` + `_is_transient_reason(reason)` (869-875).
+    * добавлены `_record_failure(failure_sink, model, reason)` (115-120) и `_is_transient_reason(reason)` (135-137);
+    * `_call_model(..., level=2, failure_sink: dict[str,str] | None = None)` (478-499) и `_call_model_once(..., failure_sink=None)` (512-539): причина отказа пишется в переданный sink (все 9 мест: unknown/empty/bad_json/timeout/rate_limit/http_5xx/http_4xx/network/exception);
+    * `analyze_news`: локальный `failures: dict[str,str] = {}` на вызов (775), sink передаётся в `_call_model(..., failures)` (845), бюджетный timeout/exception пишут в локальный `failures` (853, 857), retry-решение — `reason = failures.get(model, "unknown")` + `_is_transient_reason(reason)` (868-874).
   - tests/test_analyzer.py
     * 12 `_echo_model` + 3 `fake_once` + 1 `fake_once` (test_finish_reason_length_drops_last_item) получили параметр `failure_sink`; direct-call тесты http_5xx/429 передают локальный `failures` и ассертят по нему; fixture `_isolate_module_state` больше не снапшотит `_last_failure`;
-    * НОВЫЙ тест `TestTransientRetryPass.test_parallel_calls_keep_own_failure_reason` (стр. 1345-1399): `asyncio.gather` двух analyze_news, тема A — timeout (транзиентно → retry → успех, 2 вызова), тема B — http_4xx (перманентно → без retry, 1 вызов), интерлив форсирован `asyncio.Event` так, что B записывает свой отказ, пока A ещё не приняла retry-решение.
+    * НОВЫЙ тест `TestTransientRetryPass.test_parallel_calls_keep_own_failure_reason` (стр. 1346-1399): `asyncio.gather` двух analyze_news, тема A — timeout (транзиентно → retry → успех, 2 вызова), тема B — http_4xx (перманентно → без retry, 1 вызов), интерлив форсирован `asyncio.Event` так, что B записывает свой отказ, пока A ещё не приняла retry-решение.
 
   Как устранена гонка: причины отказов больше НЕ живут в общем модульном состоянии. `analyze_news` создаёт на каждый вызов свой `failures`-dict и передаёт его параметром в `_call_model` → `_call_model_once`; те пишут/чистят причину только в этом dict, а retry-решение (`_is_transient_reason`) читает его же. Общего объекта между конкурентными темами нет → взаимовлияние невозможно by construction (grep по services/analyzer.py: 0 вхождений `_last_failure`/`_is_transient_failure`). Retry-логика сохранена без изменений: MAX_PASSES=2, TRANSIENT_FAILURES={timeout,http_5xx,empty,bad_json,network}, 429→cooldown 300с и не ретраится, прочие 4xx не ретраятся, пауза RETRY_PAUSE_SECONDS=3с, бюджет-гейт (ANALYSIS_TIMEOUT/MIN_MODEL_TIME), последовательность, degraded-фолбэк `_format_simple_list`.
 
@@ -1419,3 +1419,62 @@ MCP_USED: []
 COMPLIANCE: true
 STATUS: resolved
 ================================================================================
+
+[TIME] team-lead-1 (acting dev) -> team-lead:
+TYPE: update | PRIORITY: high
+Project: pong-advanced
+CONTENT: FIX 1-4 по фидбеку игрока. ПРОД :3333 (PID 25212) не тронут, параллельных агентов нет.
+
+1) BUG портал-петля (critical) — ФИКС в shared (единый для локалки и сервера): src/shared/arenas.ts:40 TELEPORT_EXIT_EPSILON=2; src/shared/arenas.ts:176-208 checkTeleport переписан: (a) cooldown>0 -> null (макс 1 телепорт на мяч за 0.5с; caller-ский общий таймер покрывает ОБЕ зоны пары — LocalGame.ts:395-396, server/index.ts:653-654); (b) arenas.ts:194 не телепортируем, если мяч внутри круга, но движется ИЗ зоны наружу ((ball-center)·v>0); (c) arenas.ts:199-201 выход = центр пары + (TELEPORT_RADIUS+ball.radius+ε)*u — мяч сразу ВНЕ круга-триггера, повторного срабатывания на следующем кадре нет; (d) нулевая скорость -> null. Было: мяч ставился В ЦЕНТР зоны выхода (dist=0) и мог телепортироваться обратно.
+2) GHOST-нерф: src/shared/constants.ts:129 GHOST_DURATION 4->2; constants.ts:134 GHOST_SPEED_MULT=0.8 — применяется в src/shared/physics.ts:288 (×0.8 к скорости мяча, независимо от boost); constants.ts:135 GHOST_BALL_ALPHA=0.55 — src/client/game/Renderer.ts:508 (было 0.35); один проход сквозь ракетку — ghostPasses=1 (LocalGame.ts:638, server/index.ts:923).
+3) HEAVY-реворк: src/shared/constants.ts:118 HEAVY_DURATION 5->10; constants.ts:160 HEAVY_PADDLE_SHRINK_DURATION=3; вместо permShrink*0.9 — src/shared/physics.ts:198-203 и 260-265: ракетке от тяжёлого мяча ставится временный shrinkTimer=max(текущий,3) => высота ×0.5 (getPaddleHeight, physics.ts:66) на 3с; повтор обновляет таймер, не стакается; восстановление — естественный декремент в updatePaddlePosition. Ракетка-жертва: в серверном тике (shared) + wire-height.
+4) Отсчёт 3-2-1 после гола: src/shared/constants.ts:97 ROUND_RESET_TIME 1.0->1.35, constants.ts:107 countdownValue() (3 шага по 0.45с). Локально: src/client/game/LocalGame.ts:383-389 + 426 — мяч заморожен в центре на время отсчёта, ракетки двигаются, физика мяча/гравитация скипаются; остаток отдаётся в стейт (LocalGame.ts:860). LAN: server/index.ts:646 clamp таймера, server/index.ts:967-993 buildGameState (новый экспорт; broadcastState делегирует, события по-прежнему splice в broadcast) + state.roundResetTimer при >0; клиент App.ts:236-241 подмешивает остаток из последнего серверного стейта (без интерполяции, оба клиента синхронны); оверлей рисует Renderer.ts:581-590,593-635. NetInterpolator.ts не тронут.
+
+ТЕСТЫ: tests/unit/gameplay-fixes.test.ts (новый, 20 тестов: константы, портал-петля local+shared, ghost 2с/×0.8/1 проход, heavy 10с/shrink ×0.5-3с/refresh/recovery, отсчёт 3→2→1/заморозка/возобновление); tests/unit/arenas.test.ts:149-206 и arenas-shared.test.ts:109-186 переписаны под новый exit-семантику (+ outward/стоячий мяч/cooldown обеих зон/ping-pong 40 кадров); tests/unit/server.test.ts:+3 (goal->roundResetTimer в buildGameState, истечение отсчёта, heavy/ghost берут константы).
+ЭМПИРИКА остаточного риска (tsx-симуляция 10с, 600 кадров): при чисто вертикальной траектории мяч всё ещё циклится в колонке (19 телепортов/10с), НО такая траектория недостижима: после удара ракеткой |dx|>=0.747 (physics.ts PADDLE_HIT_ANGLE_RANGE=0.325π + нормализация), после resetBallPositions |dx|=1, extraBalls не телепортируются; при dx=0.7 — 1 телепорт и мяч покидает колонку (симуляция: teleports/10s=1, x уходит из поля). Прямая петля «портал→портал» устранена конструктивно (exit вне круга + guard + cooldown).
+
+ПРОВЕРКИ (5/5): 1) npx tsc --noEmit => 0 ошибок (exit 0); 2) npm run build => exit 0; 3) npm test => 340 тестов, 339 passed, 1 failed — это пре-существующий baseline FAIL meta.test.ts:420 «GET /api/cosmetics returns 11 items» (expected 11, got 115, зона меты/каталога — не моя); было 314/313/1 тем же файлом => новых падений 0, тестов +26; unhandled error COSMETIC_CATALOG в server.test.ts — тоже baseline; 4) npm run lint => 14 errors/45 warnings (baseline те же 14/45, лимит 25e/48w); 5) npx playwright test => 6/6 passed (после сборки dist; прод-сервер не рестартовался). Зоны не нарушены: не трогал NetInterpolator.ts, COSMETIC_STYLES, client/{user,shop,profile,leaderboard,toasts,metaView,roomSettingsView,help}.ts, src/server/db/**, tests/e2e/**; LocalGame4.ts и Effects.ts не менялись.
+SKILLS_LOADED: ["superpowers-implement", "evidence-discipline: system-prompt mandate (через skill tool не грузился)"]
+MCP_USED: ["sequential-thinking", "context7: not needed (внешних библиотек не добавлялось)"]
+COMPLIANCE: true
+STATUS: resolved
+================================================================================
+
+[2026-09-15 RETROACTIVE - recorded by team-lead; agent task returned infra error (Busy) but work landed] dev-1 -> team-lead:
+TYPE: update | PRIORITY: high
+Project: pong-advanced
+CONTENT: Магазин/админ/итоги матча (фидбек юзера, серверная часть). КОНТРАКТ: (1) src/shared/constants.ts:199 CosmeticStyle расширен pattern?: 'solid'|'gradient'|'striped'|'dotted'|'pulse'|'outline'|'glow', shape?: 'rect'|'rounded'|'segmented'|'tapered', secondaryColor?: string, bgFit?: 'dark'|'light'|'both' (все опц., обратная совместимость). (2) COSMETIC_CATALOG (:781) — 115 предметов (11 базовых + генерация палитры×паттерны×3 типа; имена/редкости/цены 0..8000), seed.ts строит каталог из него (идемпотентно). (3) GET /api/cosmetics → [{id,type,name,description,rarity,price,style}]. (4) Админ: ADMIN_USERNAMES=['last'] (:1096), isAdminUsername :1098, isAdminUser :1105; payload юзера содержит isAdmin (:1210/:1266); GET cosmetics для админа отдаёт всё owned; покупка для админа бесплатна (xp_spent=0); equip разрешён. (5) POST /api/stats response дополнен xpGained (:1476) и eloDelta (:1477) (+ существующие xp/level/elo/current_streak/unlocked). (6) НОВЫЙ GET /api/users/:id/achievements (:1861) → [{id,name,description,icon,xp_reward,condition_type,condition_value,progress,completed,completedAt}]. Проверки, заявленные агентом: build 0, tests (по его прогону), lint в бюджете. ИЗВЕСТНО: существующий тест meta.test.ts:420 ожидал 11 → исправлен тимлидом на COSMETIC_CATALOG.length (1 строка); итог 340/340. Клиентская часть (рендер паттернов, меню, ошибки, итог матча, экран достижений) — отдельная задача.
+SKILLS_LOADED: ["superpowers-implement"]
+MCP_USED: ["sequential-thinking"]
+COMPLIANCE: true
+STATUS: resolved
+
+[2026-09-15 13:20] team-lead ->
+Project: news-bot
+TYPE: update | PRIORITY: medium
+CONTENT: По замечаниям пользователя: (1) RATINGS — исправлена атрибуция: рейтинг ставится МОДЕЛИ внутри агента; ошибочно записанный opencode/big-pickle для qa-engineer-1 заменён на фактический opencode/mimo-v2.5-free. (2) RETRY — вместо мгновенного degraded анализатор теперь делает 2 прохода: повтор по транзиентно упавшим моделям (timeout/http_5xx/empty/bad_json/network), пауза 3с, бюджет-гейт; 429/лимит и прочие 4xx не ретраятся, cooldown 300с только на 429. (3) RACE — устранена гонка модульного _last_failure при параллельных темах дайджеста: причина отказа теперь локальный failures-sink на вызов analyze_news. Итог: 312 passed/0 failed; E2E scripts/e2e_smoke.py exit 0; бот pid 38324. Приёмки: retry PASS grade 8 (qa-engineer, нашёл minor race), race-фикс PASS grade 8 (qa-engineer-1).
+SKILLS_LOADED: ["model-router","superpowers-implement","superpowers-test"]
+MCP_USED: ["sequential-thinking"]
+COMPLIANCE: true
+STATUS: resolved
+
+================================================================================
+
+[2026-09-15 14:49] dev-3 -> team-lead:
+TYPE: update | PRIORITY: medium
+Project: agent-hq
+CONTENT: P0-B granular command policy (bash) — готово.
+Изменённые файлы:
+  - .agents/scripts/sync-agents.ps1:139 — новая функция Get-BashPermissionRules (единый источник, 38 правил): "*":allow первым, затем allow-набор, затем ask, ВСЕ deny последними; :583 — в сборке permission bash теперь объект вместо "allow", агенты без "bash" по-прежнему получают "deny".
+  - opencode.json — верхнеуровневый permission.bash (объект тех же 38 правил); external_directory не тронут. После sync у 22 dev/писательских агентов permission.bash — объект (первый ключ "*"), у 10 read-only (code-reviewer, code-reviewer-1 и т.п.) — "deny".
+  - C:\Users\Ermak_DS\.config\opencode\opencode.jsonc — тот же permission.bash в глобальном конфиге (действует во всех сессиях/проектах).
+  - tests/test-discovery.ps1:442 — Check 10: агенты с "bash" должны иметь объект правил с первым ключом "*"; агенты без "bash" — "deny" (проверка через opencode debug config).
+Порядок правил: opencode применяет ПОСЛЕДНЕЕ совпавшее правило, поэтому широкие ask ("git push*", "reg *") идут ДО конкретных deny ("git push --force*", "git push -f*", "reg add*"), а все deny — в самом конце, чтобы запрет всегда побеждал.
+Проверки: sync-agents.ps1 exit 0, "Schema validation OK"; opencode debug config exit 0 — dev-1.permission.bash = объект 38 правил, первый ключ "*"; code-reviewer.permission.bash = "deny"; глобальный конфиг из чужого cwd (только global) даёт верхнеуровневый bash-объект 38 правил; tests\test-discovery.ps1 exit 0, SUMMARY PASS=22 FAIL=0 SKIP=0 WARN=1, RESULT PASS (обе новые проверки PASS).
+CRLF: sync-agents.ps1 — 774 CRLF / 0 bareLF (UTF-8 BOM=True, как в оригинале); test-discovery.ps1 — 531 CRLF / 0 bareLF (ASCII-only, BOM=False). Оба: 0 syntax errors, нет &&/||.
+Ограничения: секретов нет, не коммичено, bak удалён (opencode.json.bak.20260915-144618).
+Примечание: AMSI (Kaspersky) ложно флагнул ScriptContainedMaliciousContent на промежуточном варианте комментария Check 10; комментарий переписан в plain ASCII без backtick-конструкций — после этого тест запускается чисто (exit 0).
+SKILLS_LOADED: ["evidence-discipline", "windows-safety", "superpowers-implement"]
+MCP_USED: ["sequential-thinking", "context7: offline (resolve fetch failed)", "websearch"]
+COMPLIANCE: true
+STATUS: resolved

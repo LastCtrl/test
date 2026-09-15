@@ -125,6 +125,70 @@ function Get-TaskAllowList {
 }
 
 # ============================================================
+# P0-B: granular bash command policy — ЕДИНЫЙ ИСТОЧНИК правил.
+# opencode применяет ПОСЛЕДНЕЕ совпавшее правило (opencode.ai/docs/permissions),
+# поэтому порядок ключей критичен: сначала широкий catch-all "*", затем
+# allow, затем ask, а ВСЕ deny — В КОНЦЕ. Так запрет гарантированно побеждает
+# более широкие allow/ask: например "git push*": ask не должен перекрывать
+# "git push --force*": deny и "reg *": ask — не должен перекрывать "reg add*": deny.
+# Правила соответствуют целевому набору P0-B (allow/deny/ask), отличается
+# только порядок группировки — wide->specific, deny-last.
+# Возвращаем НОВЫЙ [ordered] на каждый вызов (не общий мутабельный объект),
+# чтобы агенты не делили одно состояние.
+# ============================================================
+function Get-BashPermissionRules {
+    $rules = [ordered]@{}
+
+    # --- catch-all: широкая политика идёт ПЕРВОЙ (иначе deny-правила ниже) ---
+    $rules['*'] = 'allow'
+
+    # --- allow (молча): безопасные read-only / сборка ---
+    $rules['git status*'] = 'allow'
+    $rules['git diff*'] = 'allow'
+    $rules['git log*'] = 'allow'
+    $rules['git show*'] = 'allow'
+    $rules['git add*'] = 'allow'
+    $rules['git commit*'] = 'allow'
+    $rules['Get-ChildItem*'] = 'allow'
+    $rules['Get-Content*'] = 'allow'
+    $rules['Select-String*'] = 'allow'
+    $rules['Test-Path*'] = 'allow'
+    $rules['Get-FileHash*'] = 'allow'
+    $rules['pwsh*'] = 'allow'
+    $rules['powershell*'] = 'allow'
+    $rules['node *'] = 'allow'
+    $rules['npm *'] = 'allow'
+    $rules['python*'] = 'allow'
+    $rules['dotnet *'] = 'allow'
+    $rules['opencode *'] = 'allow'
+
+    # --- ask: широкие команды, требующие подтверждения ---
+    $rules['git push*'] = 'ask'
+    $rules['reg *'] = 'ask'
+    $rules['schtasks*'] = 'ask'
+    $rules['Set-ItemProperty HKCU*'] = 'ask'
+
+    # --- deny: необратимые/опасные/системные — ПОСЛЕДНИМИ (всегда побеждают) ---
+    $rules['rm -rf*'] = 'deny'
+    $rules['rm -r *'] = 'deny'
+    $rules['Remove-Item*-Recurse*'] = 'deny'
+    $rules['git push --force*'] = 'deny'
+    $rules['git push -f*'] = 'deny'
+    $rules['git reset --hard*'] = 'deny'
+    $rules['git clean*'] = 'deny'
+    $rules['reg add*'] = 'deny'
+    $rules['*HKLM:*'] = 'deny'
+    $rules['secedit*'] = 'deny'
+    $rules['gpedit*'] = 'deny'
+    $rules['shutdown*'] = 'deny'
+    $rules['Stop-Computer*'] = 'deny'
+    $rules['Restart-Computer*'] = 'deny'
+    $rules['format*'] = 'deny'
+
+    return $rules
+}
+
+# ============================================================
 # Ручная сериализация одного агента в JSON (без ConvertTo-Json)
 # ============================================================
 function ConvertTo-AgentJson {
@@ -513,8 +577,15 @@ foreach ($file in $jsonFiles) {
     $perm = [ordered]@{}
     foreach ($key in $allowKeys) {
         if ($data.permissions -contains $key) {
-            $perm[$key] = "allow"
+            if ($key -eq "bash") {
+                # P0-B: bash — не "allow", а гранулярный объект правил
+                # (единый источник — Get-BashPermissionRules).
+                $perm[$key] = Get-BashPermissionRules
+            } else {
+                $perm[$key] = "allow"
+            }
         } elseif ($denyIfMissing -contains $key) {
+            # Агенты без "bash" в permissions получают bash: "deny" (не меняем).
             $perm[$key] = "deny"
         }
     }

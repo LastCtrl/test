@@ -439,6 +439,85 @@ if ($references.Count -eq 0) {
     Add-Result "required_skills references found" "PASS" ($references.Count.ToString() + " reference(s) in " + (($references | ForEach-Object { $_.File } | Sort-Object -Unique) -join ", "))
 }
 
+Write-Host "-- Check 10: granular bash permissions (P0-B) --"
+# Expected: a source agent that declares "bash" in permissions must resolve in
+# the runtime to a granular rule object (not the string "allow"), with the
+# catch-all "*" key first; an agent without "bash" must keep bash "deny".
+# Runtime values come from opencode debug config, path agent.NAME.permission.bash.
+$bashExpected = New-Object System.Collections.ArrayList
+foreach ($sourceAgent in $sourceAgents) {
+    $sourcePath = Join-Path $AgentsDir $sourceAgent.File
+    $sourceJson = $null
+    try {
+        $sourceJson = Get-Content -LiteralPath $sourcePath -Raw -Encoding UTF8 | ConvertFrom-Json
+    } catch {
+        continue
+    }
+    $hasBash = $false
+    if ($null -ne $sourceJson.permissions) {
+        $hasBash = @($sourceJson.permissions) -contains "bash"
+    }
+    [void]$bashExpected.Add([pscustomobject]@{ Name = $sourceAgent.Name; HasBash = $hasBash })
+}
+
+function Get-RuntimeBashValue {
+    param($ConfigAgentTable, [string]$AgentName)
+    if ($null -eq $ConfigAgentTable) { return $null }
+    $prop = $ConfigAgentTable.PSObject.Properties[$AgentName]
+    if ($null -eq $prop) { return $null }
+    $perm = $prop.Value.permission
+    if ($null -eq $perm) { return $null }
+    return $perm.bash
+}
+
+$bashObjectFail = New-Object System.Collections.ArrayList
+$bashObjectOrdered = New-Object System.Collections.ArrayList
+$bashRuleCounts = New-Object System.Collections.ArrayList
+foreach ($entry in @($bashExpected | Where-Object { $_.HasBash })) {
+    $bashValue = Get-RuntimeBashValue -ConfigAgentTable $agentTable -AgentName $entry.Name
+    if ($null -eq $bashValue) {
+        [void]$bashObjectFail.Add($entry.Name + " (bash missing in runtime)")
+        continue
+    }
+    if ($bashValue -is [string]) {
+        [void]$bashObjectFail.Add($entry.Name + " (bash is a string '" + $bashValue + "', expected object)")
+        continue
+    }
+    $ruleProps = @($bashValue.PSObject.Properties)
+    if ($ruleProps.Count -eq 0) {
+        [void]$bashObjectFail.Add($entry.Name + " (bash object is empty)")
+        continue
+    }
+    [void]$bashRuleCounts.Add($entry.Name + "=" + $ruleProps.Count)
+    if ($ruleProps[0].Name -ne "*") {
+        [void]$bashObjectFail.Add($entry.Name + " (first key '" + $ruleProps[0].Name + "', expected '*')")
+    } else {
+        [void]$bashObjectOrdered.Add($entry.Name)
+    }
+}
+if ($bashObjectFail.Count -eq 0) {
+    Add-Result "agents with bash permission get a granular rule object (first key '*')" "PASS" ($bashObjectOrdered.Count.ToString() + " agent(s); rules: " + ($bashRuleCounts -join ", "))
+} else {
+    Add-Result "agents with bash permission get a granular rule object (first key '*')" "FAIL" ($bashObjectFail -join "; ")
+}
+
+$bashDenyFail = New-Object System.Collections.ArrayList
+$bashDenyCount = 0
+foreach ($entry in @($bashExpected | Where-Object { -not $_.HasBash })) {
+    $bashValue = Get-RuntimeBashValue -ConfigAgentTable $agentTable -AgentName $entry.Name
+    if ($bashValue -eq "deny") {
+        $bashDenyCount++
+    } else {
+        [void]$bashDenyFail.Add($entry.Name + " (bash='" + [string]$bashValue + "', expected 'deny')")
+    }
+}
+if ($bashDenyFail.Count -eq 0) {
+    Add-Result "agents without bash permission keep bash 'deny'" "PASS" ($bashDenyCount.ToString() + " agent(s) deny")
+} else {
+    Add-Result "agents without bash permission keep bash 'deny'" "FAIL" ($bashDenyFail -join "; ")
+}
+Write-Host ""
+
 Write-Host ""
 Write-Host "=================================================="
 Write-Host ("SUMMARY: PASS=" + $script:CountPass + " FAIL=" + $script:CountFail + " SKIP=" + $script:CountSkip + " WARN=" + $script:CountWarn)

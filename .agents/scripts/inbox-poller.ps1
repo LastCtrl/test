@@ -234,7 +234,7 @@ function Invoke-OpencodeAttempt {
         return $res
     }
 
-    Stop-Job -Job $job -Force
+    Stop-Job -Job $job
     Remove-Job -Job $job -Force -ErrorAction SilentlyContinue
     Write-Log "⏱️ TIMEOUT $($script:JobTimeoutSeconds)s: agent '$targetAgent' hung — job killed"
     return [PSCustomObject]@{

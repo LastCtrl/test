@@ -950,3 +950,30 @@ MCP_USED: []
 COMPLIANCE: true
 STATUS: resolved
 ================================================================================
+
+[2026-09-15 11:46] team-lead ->
+Project: news-bot
+TYPE: update | PRIORITY: high
+CONTENT: LLM-цепочка бота переведена на opencode Zen free по выбору пользователя: MODELS = [big-pickle, ling-3.0-flash-fin-free, mimo-v2.5-free, nemotron-3.5-lightning-free, z-ai/glm-5.3-free(резерв)]. OPENCODE_BASE_URL переключён на https://opencode.ai/zen/v1 (там доступны free-модели; go/v1 отдавал 401). Провайдер openrouter добавлен в config/PROVIDER_CONFIG, но из активной цепочки исключён. Живой статус: ling-3.0-flash-fin-free — 200 OK (отработал смоук: валидный свежий JSON, отсеял нерелевантное), big-pickle и mimo-v2.5-free — 429 FreeUsageLimitError (лимит аккаунта, сбросится), nemotron-3.5-lightning-free — медленный reasoning. Свежесть: добавлен жёсткий потолок MAX_AGE_DAYS=30 (древние 2016/2019 больше не протаскиваются), приоритет новых + бонус официальным источникам, «сегодня»=текущая дата. Тесты: 300 passed / 0 failed. Бот перезапущен (pid 28708). По пути исправлен BOM в .env (ломал BOT_TOKEN после перезаписи).
+БЛОКЕР: субагенты по-прежнему требуют рестарта opencode (кэш конфига агентов с мёртвой z-ai/glm-5.3-free); конфиги уже исправлены на openrouter/nex-agi/nex-n2.5-pro:free.
+SKILLS_LOADED: ["model-router"]
+MCP_USED: ["sequential-thinking"]
+COMPLIANCE: true
+STATUS: resolved
+
+[2026-09-11 RETROACTIVE - recorded by team-lead; reviewer session had no write tool] code-reviewer -> team-lead:
+TYPE: update | PRIORITY: medium
+Project: pong-advanced
+CONTENT: Review P3-D. VERDICT: REQUEST_CHANGES. MAJOR-1 (XSS): src/client/App.ts:593-605 room-list рендерит ${room.hostName}/${compact}/${room.code} через innerHTML; server принимает hostName как z.string().optional() без ограничений (src/server/index.ts:214), кладёт в room.settings :351 и отдаёт клиентам :976-985 -> произвольный клиент через create-game может внедрить HTML/скрипт в чужие списки комнат. Фикс: textContent/DOM API либо строгая валидация+экранирование. MAJOR-2 (атомарность покупки): src/server/index.ts:1568-1575 покупка косметики списывает XP (UPDATE) и отдельно INSERT владения без транзакции/rollback -> при ошибке INSERT XP теряется без покупки. Фикс: sql.js transaction/rollback или единая атомарная запись. MINOR: stats numeric без верхних лимитов (накрутка, accepted-risk вместе с доверенным client-репортом); levelFromXp дублирован client metaView.ts:102-106 / server meta.ts:9-12 (риск расхождения). БЕЗОПАСНОСТЬ: profile/shop/leaderboard/toasts рендерят API name/avatar через textContent/DOM API (чисто); SQL - параметризация через ? (конкатенаций нет); name/avatar/cosmetic_id валидируются; PRAGMA table_info только по статическому COLUMN_MIGRATIONS. ШОВ App.ts 2a->2b: конфликтов нет (META_SCREENS/openMetaScreen, onUserChange один, loadCosmetics boot/start/rematch/onUserChange, matchReport guard reportSent до await, beginMatch сброс). Прочее: миграции идемпотентны, shutdown сохраняет БД, unlocked не дублируется, draw не сбрасывает streak, equip снимает прежний. Найден старый UX-риск: LAN-rematch делает joinRoom для ended-комнаты -> сервер отвечает 'Game already ended'. Замечание: ревьюер был без bash/write — команды не прогонял, self-report не записал (NOT ENOUGH EVIDENCE по git/test-run).
+SKILLS_LOADED: ["evidence-discipline", "superpowers-test"]
+MCP_USED: ["sequential-thinking"]
+COMPLIANCE: true
+STATUS: resolved
+
+[2026-09-15 11:53] dev-2 -> team-lead:
+TYPE: update | PRIORITY: medium
+CONTENT: P0-C "fake CLI tests" DONE. Created tests/test-pipeline.ps1 - independent PS 5.1 test harness (no Pester, CRLF). 7 isolated cases (a-g), each in its own temp root (AGENT_HQ_ROOT) driving .agents/scripts/inbox-poller.ps1 with tests/fake-opencode.ps1 as the CLI: a) success -> outbox <id>.json status=done + archive file, dead-letter empty; b) nomarker -> dead-letter "missing success marker"; c) exit1 -> dead-letter "exit code 1"; d) empty -> dead-letter "empty stdout"; e) stderr-only -> dead-letter "empty stdout"; f) errormarker -> dead-letter "error marker"; g) timeout (AGENT_HQ_JOB_TIMEOUT=3) -> dead-letter reason 124/TIMEOUT. Actual run: SUMMARY passed=7 failed=0 total=7, exit 0. The suite found a REAL defect: .agents/scripts/inbox-poller.ps1:237 used `Stop-Job -Job $job -Force`, but PS 5.1 Stop-Job has no -Force parameter -> the TIMEOUT branch threw and the poller crashed instead of dead-lettering. Fixed by removing -Force (Stop-Job already force-stops); that single line is the only change outside the new test file. Both .ps1 verified CRLF (lone LF = 0). Temp roots + shared temp base removed.
+SKILLS_LOADED: ["evidence-discipline", "windows-safety", "superpowers-test"]
+MCP_USED: ["sequential-thinking"]
+COMPLIANCE: true
+STATUS: resolved

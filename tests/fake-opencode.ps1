@@ -1,4 +1,4 @@
-# fake-opencode.ps1 - deterministic stand-in for `opencode run ...` used by pipeline tests.
+﻿# fake-opencode.ps1 - deterministic stand-in for `opencode run ...` used by pipeline tests.
 # The behaviour is selected by the FAKE_OPENCODE_MODE environment variable; every CLI
 # argument (e.g. `run --agent <name> <prompt>`) is accepted and ignored on purpose.
 #

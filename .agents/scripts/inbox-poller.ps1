@@ -176,6 +176,105 @@ function Complete-InboxFile {
     Write-Log "✅ Done: $messageId -> archived by $targetAgent"
 }
 
+# --- Result definition (DRY): success = real exit code 0 + explicit marker + clean stderr ---
+$script:SuccessMarker = '(?i)STATUS:\s*(resolved|done|completed)'
+$script:ErrorMarker = '(?i)(not found|permission denied|auto-rejecting|rejected permission|Error:)'
+$script:JobTimeoutSeconds = 900
+
+# Run opencode in a background job, capturing stdout/stderr separately and the REAL exit code.
+# Returns: [PSCustomObject]@{ stdout; stderr; exitCode }  (never a bare string)
+function Invoke-OpencodeAttempt {
+    param([string]$targetAgent, [string]$taskPrompt)
+
+    $job = Start-Job -ScriptBlock {
+        param($agent, $taskPrompt)
+        $errFile = [System.IO.Path]::GetTempFileName()
+        try {
+            $stdout = & opencode run --agent $agent $taskPrompt 2>$errFile
+            $exitCode = $LASTEXITCODE
+            $stderr = ""
+            if (Test-Path $errFile) {
+                $stderr = [System.IO.File]::ReadAllText($errFile)
+            }
+            [PSCustomObject]@{
+                stdout   = (@($stdout) -join "`n")
+                stderr   = $stderr
+                exitCode = $exitCode
+            }
+        } finally {
+            Remove-Item $errFile -Force -ErrorAction SilentlyContinue
+        }
+    } -ArgumentList $targetAgent, $taskPrompt
+
+    $completed = Wait-Job -Job $job -Timeout $script:JobTimeoutSeconds
+    if ($completed) {
+        $res = Receive-Job -Job $job
+        Remove-Job -Job $job -Force -ErrorAction SilentlyContinue
+        if ($null -eq $res) {
+            return [PSCustomObject]@{ stdout = ""; stderr = "Job produced no result object"; exitCode = 1 }
+        }
+        return $res
+    }
+
+    Stop-Job -Job $job -Force
+    Remove-Job -Job $job -Force -ErrorAction SilentlyContinue
+    Write-Log "⏱️ TIMEOUT $($script:JobTimeoutSeconds)s: agent '$targetAgent' hung — job killed"
+    return [PSCustomObject]@{
+        stdout   = "TIMEOUT: agent '$targetAgent' did not respond in $($script:JobTimeoutSeconds) seconds"
+        stderr   = ""
+        exitCode = 124
+    }
+}
+
+# Success ONLY when: exit code == 0 AND stdout has the explicit success marker AND stderr has no error markers.
+# A non-empty error text (stderr) or unmatched stdout is NOT success.
+function Test-OpencodeSuccess {
+    param($attempt)
+    if ($null -eq $attempt) { return $false }
+    if ($attempt.exitCode -ne 0) { return $false }
+    if ([string]::IsNullOrWhiteSpace($attempt.stdout)) { return $false }
+    if ($attempt.stderr -match $script:ErrorMarker) { return $false }
+    if ($attempt.stdout -notmatch $script:SuccessMarker) { return $false }
+    return $true
+}
+
+function Get-AttemptFailureReason {
+    param($attempt)
+    if ($null -eq $attempt) { return "no result object" }
+    if ($attempt.exitCode -ne 0) { return "exit code $($attempt.exitCode)" }
+    if ([string]::IsNullOrWhiteSpace($attempt.stdout)) { return "empty stdout" }
+    if ($attempt.stderr -match $script:ErrorMarker) { return "stderr error: '$($matches[0])'" }
+    if ($attempt.stdout -notmatch $script:SuccessMarker) { return "missing success marker '$($script:SuccessMarker)'" }
+    return "unknown reason"
+}
+
+# Truncate long text for dead-letter payload (max 4000 chars + explicit omission note)
+function Limit-Text {
+    param([string]$text, [int]$max = $maxResponseLength)
+    if ($null -eq $text) { return "" }
+    if ($text.Length -gt $max) {
+        $omitted = $text.Length - $max
+        return $text.Substring(0, $max) + "`n…[truncated $omitted chars]"
+    }
+    return $text
+}
+
+# Full stdout+stderr+reason record for dead-letter (stdout/stderr each truncated to $maxResponseLength)
+function Format-AttemptReport {
+    param([string]$reason, $attempt)
+    if ($null -eq $attempt) {
+        return "REASON: $reason`nEXIT CODE: n/a"
+    }
+    return @(
+        "REASON: $reason",
+        "EXIT CODE: $($attempt.exitCode)",
+        "--- STDOUT ---",
+        (Limit-Text $attempt.stdout),
+        "--- STDERR ---",
+        (Limit-Text $attempt.stderr)
+    ) -join "`n"
+}
+
 # Process a single inbox file
 function Process-InboxFile {
     param($filePath, $agentName)
@@ -228,7 +327,7 @@ function Process-InboxFile {
 
     # Generate prompt (FIX: hardcoded path replaced with Join-Path)
     $contextBufferPath = Join-Path $Base "CONTEXT-BUFFER.md"
-    $prompt = "You received a task from agent-hq bus. Read the last 30 lines of $contextBufferPath (iron rules protocol), execute the task, result write to CONTEXT-BUFFER.md, answer briefly. TASK: $payload"
+    $prompt = "You received a task from agent-hq bus. Read the last 30 lines of $contextBufferPath (iron rules protocol), execute the task, result write to CONTEXT-BUFFER.md, answer briefly. CRITICAL: end your final answer with a line containing exactly 'STATUS: resolved' (or 'STATUS: done' if completed) in stdout, otherwise the run is treated as failed. TASK: $payload"
 
     if ($DryRun) {
         Write-Log "🔍 Dry run: would process with agent '$targetAgent'"
@@ -238,63 +337,34 @@ function Process-InboxFile {
 
     # Call opencode run --agent <name> "<prompt>" with 15-min hard timeout
     # (prevents a hung agent from blocking the whole poller cycle forever)
-    Write-Log "🚀 Calling opencode run for agent: $targetAgent (timeout: 900s)"
-    $result = $null
-    $job = Start-Job -ScriptBlock {
-        param($agent, $taskPrompt)
-        & opencode run --agent $agent $taskPrompt 2>&1
-    } -ArgumentList $targetAgent, $prompt
-    $completed = Wait-Job -Job $job -Timeout 900
-    if ($completed) {
-        $result = Receive-Job -Job $job
-        $exitCode = 0
-        if (-not $result) { $exitCode = 1 }
-    } else {
-        Stop-Job -Job $job -Force
-        Write-Log "⏱️ TIMEOUT 900s: agent '$targetAgent' hung — job killed"
-        $result = "TIMEOUT: agent '$targetAgent' did not respond in 900 seconds"
-        $exitCode = 124
-    }
-    Remove-Job -Job $job -Force -ErrorAction SilentlyContinue
+    Write-Log "🚀 Calling opencode run for agent: $targetAgent (timeout: $($script:JobTimeoutSeconds)s)"
+    $attempt1 = Invoke-OpencodeAttempt -targetAgent $targetAgent -taskPrompt $prompt
 
-    $finishedAt = Format-DateTime
-
-    if ($exitCode -eq 0 -and $result) {
+    if (Test-OpencodeSuccess $attempt1) {
         # Success — write to outbox and archive
         Complete-InboxFile -messageId $messageId -from $from -targetAgent $targetAgent `
             -priority $priority -payload $payload -startedAt $startedAt `
-            -response $result -filePath $filePath -fullFileName $fullFileName
+            -response $attempt1.stdout -filePath $filePath -fullFileName $fullFileName
     } else {
         # Failed — 1 retry (also with timeout)
-        Write-Log "❌ First attempt failed (exit code: $exitCode), retrying..."
-        $result2 = $null
-        $job2 = Start-Job -ScriptBlock {
-            param($agent, $taskPrompt)
-            & opencode run --agent $agent $taskPrompt 2>&1
-        } -ArgumentList $targetAgent, $prompt
-        $completed2 = Wait-Job -Job $job2 -Timeout 900
-        if ($completed2) {
-            $result2 = Receive-Job -Job $job2
-            $exitCode2 = 0
-            if (-not $result2) { $exitCode2 = 1 }
-        } else {
-            Stop-Job -Job $job2 -Force
-            Write-Log "⏱️ TIMEOUT 900s on retry: agent '$targetAgent' hung — job killed"
-            $result2 = "TIMEOUT: retry of agent '$targetAgent' did not respond in 900 seconds"
-            $exitCode2 = 124
-        }
-        Remove-Job -Job $job2 -Force -ErrorAction SilentlyContinue
+        Write-Log "❌ First attempt failed ($(Get-AttemptFailureReason $attempt1)), retrying..."
+        $attempt2 = Invoke-OpencodeAttempt -targetAgent $targetAgent -taskPrompt $prompt
 
-        if ($exitCode2 -eq 0 -and $result2) {
+        if (Test-OpencodeSuccess $attempt2) {
             Complete-InboxFile -messageId $messageId -from $from -targetAgent $targetAgent `
                 -priority $priority -payload $payload -startedAt $startedAt `
-                -response $result2 -filePath $filePath -fullFileName $fullFileName
+                -response $attempt2.stdout -filePath $filePath -fullFileName $fullFileName
         } else {
-            # Failed after retry → dead-letter
+            # Failed after retry → dead-letter with full stdout+stderr and reasons
             Write-Log "❌ Failed after 2 attempts — dead-letter: $messageId"
+            $dlResponse = @(
+                (Format-AttemptReport -reason "First attempt failed: $(Get-AttemptFailureReason $attempt1)" -attempt $attempt1),
+                "",
+                (Format-AttemptReport -reason "Retry failed: $(Get-AttemptFailureReason $attempt2)" -attempt $attempt2)
+            ) -join "`n"
             Send-DeadLetter -messageId $messageId -from $from -targetAgent $targetAgent `
                 -priority $priority -payload $payload -startedAt $startedAt `
-                -response "Opencode failed after 2 attempts" -filePath $filePath
+                -response $dlResponse -filePath $filePath
         }
     }
 }

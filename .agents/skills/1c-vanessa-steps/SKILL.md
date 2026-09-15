@@ -1,3 +1,8 @@
+---
+name: 1c-vanessa-steps
+description: "Реестр 1569 шагов Vanessa Automation с описаниями и типами. Применять при написании и проверке BDD-сценариев .feature, чтобы не использовать несуществующие шаги."
+---
+
 # 1C:Enterprise — Шаги Vanessa Automation (BDD-тестирование)
 
 ## Описание

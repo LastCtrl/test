@@ -1,3 +1,8 @@
+---
+name: superpowers-implement
+description: "Фаза implementation методологии Superpowers (obra) для SDLC: TDD, clean code, YAGNI, соответствие плану. Применять при написании кода по готовому плану."
+---
+
 # Superpowers Implement — Implementation Phase
 
 ## Описание

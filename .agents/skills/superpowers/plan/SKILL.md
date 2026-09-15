@@ -1,3 +1,8 @@
+---
+name: superpowers-plan
+description: "Фаза planning методологии Superpowers (obra) для SDLC: декомпозиция requirements на архитектуру, задачи и timeline. Применять для технического планирования SDLC-задач."
+---
+
 # Superpowers Plan — Planning Phase
 
 ## Описание

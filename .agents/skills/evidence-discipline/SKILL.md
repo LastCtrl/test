@@ -1,6 +1,6 @@
 ---
 name: evidence-discipline
-description: Mandatory anti-hallucination rules for every agent. Use before reporting results, claiming that a file/command/API/skill exists, or writing DONE/PARTIAL status. Prevents fabricated files, commands, APIs and false DONE reports.
+description: "Mandatory anti-hallucination rules for every agent. Use before reporting results, claiming that a file/command/API/skill exists, or writing DONE/PARTIAL status. Prevents fabricated files, commands, APIs and false DONE reports."
 ---
 
 # Evidence-Discipline (анти-галлюцинации)

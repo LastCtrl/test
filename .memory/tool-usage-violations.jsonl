@@ -64,3 +64,33 @@
     "missing":  "MCP_USED empty",
     "severity":  "warning"
 }
+{
+    "date":  "2026-09-14T18:13:29",
+    "agent":  "qa-engineer",
+    "missing":  "SKILLS_LOADED empty",
+    "severity":  "warning"
+}
+{
+    "date":  "2026-09-14T18:13:29",
+    "agent":  "team-lead-1 (acting code-reviewer)",
+    "missing":  "SKILLS_LOADED empty",
+    "severity":  "warning"
+}
+{
+    "date":  "2026-09-14T18:13:29",
+    "agent":  "team-lead-1 (acting code-reviewer)",
+    "missing":  "SKILLS_LOADED empty",
+    "severity":  "warning"
+}
+{
+    "date":  "2026-09-14T18:13:29",
+    "agent":  "qa-engineer",
+    "missing":  "SKILLS_LOADED empty",
+    "severity":  "warning"
+}
+{
+    "date":  "2026-09-14T18:13:29",
+    "agent":  "code-reviewer",
+    "missing":  "SKILLS_LOADED empty",
+    "severity":  "warning"
+}

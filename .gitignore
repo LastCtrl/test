@@ -26,6 +26,7 @@ Desktop.ini
 .agents/worktrees/*/
 .memory/inbox/*/
 .memory/outbox/*/
+.memory/dead-letter/
 .memory/dead-letter/*/
 .memory/archive/*/
 

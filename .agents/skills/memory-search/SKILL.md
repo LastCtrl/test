@@ -1,3 +1,8 @@
+---
+name: memory-search
+description: "Keyword-grep поиск по каталогу .memory/ (activeContext, decisionLog, progress). Применять для поиска ранее принятых решений, текущего прогресса и контекста проекта."
+---
+
 # Memory Search Skill
 
 ## Keyword grep по .memory/

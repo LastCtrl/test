@@ -1496,3 +1496,47 @@ MCP_USED: []
 COMPLIANCE: true
 STATUS: resolved
 ================================================================================
+
+================================================================================
+[15:08] dev-1 -> team-lead:
+TYPE: update | PRIORITY: medium
+CONTENT: P0-B "устранить False DONE на terminal paths" — АУДИТ + ФИКС + ТЕСТЫ.
+
+ЛОКУСЫ false-DONE (до):
+1. message-queue.ps1:34 — синтаксическая ошибка PS 5.1 `(Get-Date).yyyy-MM-ddTHH:mm:ss` (PSParser: 6 errors): скрипт вообще не выполнялся, что скрывало всю оптимистичную логику ниже.
+2. message-queue.ps1:42-44 (Send-Message) — запись в outbox через Out-File без проверки каталога/результата, затем безусловное "Сообщение отправлено". Подтверждено эмпирически: Out-File в несуществующий каталог — non-terminating, скрипт продолжался с exit 0.
+3. message-queue.ps1:84 — `Send-Message $Payload` передавал строку вместо объекта сообщения ($msg.id/$msg.to = null) → файл ".json" + отчёт "отправлено".
+4. message-queue.ps1:73-77 (Archive-Old) — нет Test-Path outbox, ошибки Remove-Item игнорировались, безусловное "Архивирование завершена"; без -Days (AddDays(0)) удалялось всё.
+5. message-queue.ps1:97 — `if ($Actions.Count -eq 0)`: переменная $Actions не определена (null.Count=0) → авто-скан выполнялся даже после действия; :108 безусловно печатал "уже отправлено".
+6. message-queue.ps1:49-59,88 — нет проверок путей inbox/dead-letter, ConvertFrom-Json без обработки; во всём файле не было exit code (всегда 0).
+7. run-poller.ps1:18 — синтаксическая ошибка PS 5.1 `(Get-Date).HH:mm:ss` (скрипт не выполнялся).
+8. run-poller.ps1:8 — многоаргументный `Join-Path $Memory 'traces' 'poller.log'` невалиден в PS 5.1 (PositionalParameterNotFound): logPath = '' — латентный баг, всплыл после устранения синтаксической ошибки.
+9. run-poller.ps1:24,42 — всегда "Dry run mode" (флаг -DryRun не использовался) и хардкод "Dry Run Complete: 0 messages processed" независимо от реального числа сообщений; exit всегда 0.
+10. run-poller.ps1:21 — ошибки записи лога игнорировались.
+11. agent-registry.ps1:47-60 (Load-Registry) — Write-Error + `return $null`: при $ErrorActionPreference="Stop" return недостижим (недетерминированная обработка); List-Agents:168-171 при null делал `return`, а main 516-519 → exit 0 = потенциальный false-success; не проверялось наличие секции `agents`.
+12. agent-registry.ps1:72-78, 143-145, 155-157 — молчаливые catch: отказ создания .bak, пропуск битых строк ratings.jsonl, ошибка чтения ratings → Acquire мог объявить успех на частичных данных.
+13. project-queue.ps1:130-137 — молчаливое проглатывание отказа создания .bak.
+14. project-queue.ps1:476-480 (StaleCheck) — catch-continue на нечитаемом started_at: задача навсегда остаётся in_progress, а отчёт "No stale tasks found" + exit 0.
+15. project-queue.ps1:356-368 (Complete-Task) — $LASTEXITCODE вызова agent-registry -Release НЕ проверялся; задача помечалась done + exit 0, агент оставался busy.
+
+ФИКСЫ:
+- message-queue.ps1:34 → .ToString("yyyy-MM-ddTHH:mm:ss") (0 parser errors).
+- message-queue.ps1 Send-Message: валидация $msg.id/$msg.to; ensure outbox + post-create Test-Path; запись [IO.File]::WriteAllText UTF-8 no BOM в try/catch; пост-проверка Test-Path Leaf + ConvertFrom-Json; успех только после проверки, иначе Write-Fail + return $false.
+- message-queue.ps1 Receive/List: проверки inbox и агентского каталога, подсчёт, невалидный JSON → FAILED + exit!=0, итог "прочитано N из M".
+- message-queue.ps1 Archive-Old: обязательный -Days (int>=1), Test-Path outbox, подсчёт removed/failed, честный отчёт, exit!=0 при ошибке/неполном удалении.
+- message-queue.ps1 Show-DeadLetter/Invoke-Scan/dispatch: проверки путей, реальные счётчики (без "уже отправлено"), убран неопределённый $Actions, `if ([string]::IsNullOrWhiteSpace($Action))`, unknown action → FAILED; финальный `if ($ok) { exit 0 } else { exit 1 }`.
+- run-poller.ps1:9 → `Join-Path (Join-Path $Memory 'traces') 'poller.log'`; :18 → .ToString('HH:mm:ss'); ensure traces-dir/log с явным FAILED+exit 1; Write-Log в try/catch → LogFailed → exit 1; Test-Path Inbox → exit 1; реальный счётчик сообщений; убран хардкод "0 messages processed"; exit 0 только при успешном скане.
+- agent-registry.ps1 Load-Registry: детерминированный $null (Write-Warning вместо Write-Error) + проверка секции `agents`; List-Agents при null → Write-Error + exit 1; Release/SetStatus при null → явная ошибка; Init-Registry отказывается переинициализировать нечитаемый реестр (не теряет daily_load) — exit 1; молчаливые catch (backup, ratings) → Write-Warning.
+- project-queue.ps1: catch создания .bak → Write-Warning; StaleCheck считает invalid started_at → WARNING + exit 1 вместо ложного "No stale tasks found"; Complete-Task проверяет $LASTEXITCODE релиза агента и при неудаче завершается exit 1 (задача всё равно сохраняется done).
+
+Контракты не сломаны: agent-registry -List → exit 0, -Acquire без кандидатов → exit 2; project-queue Add/Next/Complete цикл → exit 0; пустой -Next по-прежнему exit 0 (документированный контракт, не менял).
+
+ТЕСТЫ — новый tests\test-false-done.ps1 (PS 5.1, ASCII-only, CRLF, exit 1 при FAIL): 17 checks, все PASS, exit 0.
+mq-send-ok, mq-send-blocked, mq-send-no-recipient, mq-receive-bad-json, mq-archive-no-days, mq-unknown-action, mq-scan-missing-inbox, rp-missing-inbox, rp-honest-count, reg-init, reg-list-ok, reg-acquire-none(exit2), reg-list-corrupt(exit1), pq-cycle, pq-complete-missing, pq-release-fail, pq-stalecheck-bad-started-at.
+РЕГРЕСС (все exit 0): test-vault 8/8 PASS; test-pipeline 8/8 PASS; test-discovery PASS=22 FAIL=0 SKIP=0 WARN=1 (RESULT PASS); verify-phase F5/F6/F7 PASS.
+NOT EVIDENCE (pre-existing, не мой регресс): verify-phase показывает 39/41 — 2 FAIL в Phase B2 "opencode.json has agents section", т.к. verify-phase.ps1:108/111 читает `$oc.agents`, а после P0-A ключ переименован в `agent`. Мои 4 файла и opencode.json не трогались.
+CRLF: message-queue 267, agent-registry 587, project-queue 632, run-poller 76, test-false-done 343 — CRLF, 0 lone LF, UTF-8 BOM сохранён. Parser errors = 0 у всех. Секретов нет, не коммитил, temp (p0b-*, agent-hq-tests-falsedone, queue.json.bak моего прогона) удалён.
+SKILLS_LOADED: ["evidence-discipline", "windows-safety", "superpowers-implement"]
+MCP_USED: ["sequential-thinking", "context7: offline (resolve fetch failed)"]
+COMPLIANCE: true
+STATUS: resolved

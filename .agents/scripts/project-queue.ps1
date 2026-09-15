@@ -132,7 +132,9 @@ function Save-Queue {
         try {
             Copy-Item -Path $queuePath -Destination $bakPath -Force -ErrorAction Stop
         } catch {
-            # Backup creation failure is not fatal; proceed to write
+            # Backup creation failure is not fatal, but must not be silent:
+            # without a .bak the post-write validation cannot restore the file.
+            Write-Warning "Failed to create queue backup '$bakPath': $($_.Exception.Message)"
         }
     }
 
@@ -345,6 +347,9 @@ function Complete-Task {
         [string]$TaskId
     )
 
+    $releaseFailed = $false
+    $releaseFailedAgent = $null
+
     $queue = Load-Queue -ProjectName $ProjectName
     if (-not $queue) { exit 1 }
 
@@ -354,17 +359,27 @@ function Complete-Task {
             $t.status = "done"
             $t.completed_at = Get-Now
 
-            # Release agent if one was assigned
+            # Release agent if one was assigned. The release result MUST be checked:
+            # ignoring it would report the task as done while the agent stays busy.
             if ($t.assigned_agent) {
                 $agentRegistryPath = Join-Path $scriptDir "agent-registry.ps1"
                 if (Test-Path $agentRegistryPath) {
                     try {
-                        & $agentRegistryPath -Release -Agent $t.assigned_agent
+                        $null = & $agentRegistryPath -Release -Agent $t.assigned_agent
+                        if ($LASTEXITCODE -ne 0) {
+                            Write-Warning "Failed to release agent '$($t.assigned_agent)' (agent-registry exit $LASTEXITCODE)"
+                            $releaseFailed = $true
+                            $releaseFailedAgent = $t.assigned_agent
+                        }
                     } catch {
                         Write-Warning "Failed to release agent '$($t.assigned_agent)': $_"
+                        $releaseFailed = $true
+                        $releaseFailedAgent = $t.assigned_agent
                     }
                 } else {
                     Write-Warning "agent-registry.ps1 not found at $agentRegistryPath, skipping agent release"
+                    $releaseFailed = $true
+                    $releaseFailedAgent = $t.assigned_agent
                 }
             }
 
@@ -380,6 +395,13 @@ function Complete-Task {
 
     if (-not (Save-Queue -ProjectName $ProjectName -Data $queue)) {
         Write-Error "Failed to save queue after completing task"
+        exit 1
+    }
+
+    if ($releaseFailed) {
+        # Задача помечена done и сохранена, но агент не освобождён: не выдаём
+        # чистый успех (exit 0) — иначе оркестратор сочтёт assignment закрытым.
+        Write-Error -ErrorAction Continue "Task '$TaskId' marked as done in project '$ProjectName', but agent '$releaseFailedAgent' was NOT released (stays busy)"
         exit 1
     }
 
@@ -468,6 +490,7 @@ function Invoke-StaleCheck {
     $now = Get-Date
     $staleThreshold = New-TimeSpan -Minutes 15
     $changed = 0
+    $invalidStart = 0
 
     foreach ($t in $queue.tasks) {
         if ($t.status -ne "in_progress") { continue }
@@ -476,6 +499,10 @@ function Invoke-StaleCheck {
         try {
             $startedAt = [DateTime]::Parse($t.started_at)
         } catch {
+            # Нельзя молча пропускать: задача с нечитаемым started_at останется
+            # in_progress навсегда, а отчёт скажет «No stale tasks found».
+            Write-Warning "StaleCheck: task '$($t.id)' has unparseable started_at '$($t.started_at)' — skipped"
+            $invalidStart++
             continue
         }
 
@@ -501,6 +528,10 @@ function Invoke-StaleCheck {
     }
 
     if ($changed -eq 0) {
+        if ($invalidStart -gt 0) {
+            Write-Output "No stale tasks found in project '$ProjectName', but $invalidStart task(s) had unparseable started_at and were skipped"
+            exit 1
+        }
         Write-Output "No stale tasks found in project '$ProjectName'"
         return
     }
@@ -510,7 +541,8 @@ function Invoke-StaleCheck {
         exit 1
     }
 
-    Write-Output "Stale check complete: $changed task(s) processed in project '$ProjectName'"
+    Write-Output "Stale check complete: $changed task(s) processed in project '$ProjectName' (skipped invalid: $invalidStart)"
+    if ($invalidStart -gt 0) { exit 1 }
 }
 
 # --------------------------------------------------

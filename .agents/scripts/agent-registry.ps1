@@ -45,16 +45,24 @@ $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
 # Helper: Load registry JSON
 # --------------------------------------------------
 function Load-Registry {
+    # Возвращает $null при любой ошибке чтения/парсинга. НЕ использует Write-Error:
+    # при $ErrorActionPreference="Stop" Write-Error был бы terminating-ошибкой и
+    # делал бы `return $null` недостижимым, а вызывающий код — неспособным отличить
+    # «пусто» от «сломано». Каждый вызывающий ОБЯЗАН обработать $null как failure.
     if (-not (Test-Path $RegistryPath)) {
-        Write-Error "Registry file not found: $RegistryPath"
+        Write-Warning "Registry file not found: $RegistryPath"
         return $null
     }
     try {
         $content = [System.IO.File]::ReadAllText($RegistryPath, $utf8NoBom)
         $registry = $content | ConvertFrom-Json
+        if ($null -eq $registry -or -not $registry.agents) {
+            Write-Warning "Registry '$RegistryPath' has no 'agents' section (empty or malformed)"
+            return $null
+        }
         return $registry
     } catch {
-        Write-Error "Failed to parse registry JSON: $_"
+        Write-Warning "Failed to parse registry JSON '$RegistryPath': $($_.Exception.Message)"
         return $null
     }
 }
@@ -73,7 +81,9 @@ function Save-Registry {
         try {
             Copy-Item -Path $RegistryPath -Destination $BackupPath -Force -ErrorAction Stop
         } catch {
-            # Backup creation failure is not fatal; proceed to write
+            # Backup creation failure is not fatal, but must not be silent:
+            # without a .bak the post-write validation cannot restore the file.
+            Write-Warning "Failed to create registry backup '$BackupPath': $($_.Exception.Message)"
         }
     }
 
@@ -141,7 +151,9 @@ function Get-AgentRatings {
                     $agentGrades[$agentName] += $grade
                 }
             } catch {
-                # Skip malformed lines
+                # Malformed line is skipped, but silently dropping rating data
+                # would let Acquire report success on incomplete input.
+                Write-Warning "ratings: skipping malformed line in '$RatingsPath': $($_.Exception.Message)"
             }
         }
 
@@ -153,7 +165,9 @@ function Get-AgentRatings {
             $ratings[$agentName] = $sum / $grades.Count
         }
     } catch {
-        # File read error; return empty ratings
+        # File read error: ratings default to 5.0 in Acquire, so the degradation
+        # must be visible instead of silently ignored.
+        Write-Warning "ratings: failed to read '$RatingsPath': $($_.Exception.Message)"
     }
 
     return $ratings
@@ -167,7 +181,9 @@ function List-Agents {
 
     $registry = Load-Registry
     if (-not $registry) {
-        return
+        # Нельзя вернуть «успех» (exit 0) при нечитаемом реестре: это false DONE.
+        Write-Error "Could not load registry: $RegistryPath"
+        exit 1
     }
 
     $agents = @()
@@ -243,6 +259,7 @@ function Release-Agent {
 
     $registry = Load-Registry
     if (-not $registry) {
+        Write-Error "Could not load registry: $RegistryPath"
         exit 1
     }
 
@@ -280,6 +297,7 @@ function Set-Status-Agent {
 
     $registry = Load-Registry
     if (-not $registry) {
+        Write-Error "Could not load registry: $RegistryPath"
         exit 1
     }
 
@@ -316,10 +334,14 @@ function Init-Registry {
     $existingAgents = @{}
     if (Test-Path $RegistryPath) {
         $existingRegistry = Load-Registry
-        if ($existingRegistry -and $existingRegistry.agents) {
-            foreach ($name in $existingRegistry.agents.PSObject.Properties.Name) {
-                $existingAgents[$name] = $existingRegistry.agents.$name
-            }
+        if (-not $existingRegistry) {
+            # Reinitializing over an unreadable registry would silently reset
+            # daily_load/last_assignment -> refuse instead of producing a false 'OK'.
+            Write-Error "Existing registry is unreadable; refusing to reinitialize and lose daily_load: $RegistryPath"
+            exit 1
+        }
+        foreach ($name in $existingRegistry.agents.PSObject.Properties.Name) {
+            $existingAgents[$name] = $existingRegistry.agents.$name
         }
     }
 

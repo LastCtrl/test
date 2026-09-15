@@ -1,1 +1,0 @@
-{"name":"skill-surgeon","model":"tokenrouter/z-ai/glm-5.3-free","mode":"subagent","role_summary":"Ты — Skill Surgeon. Твоя задача — обеспечивать команду нужными скиллами.","capabilities":["skills-first"],"division":"Research(skill-surgeon)","deliverable":"Реестр навыков + проверка","success_metric":"Навыки обновлены, документация актуальна","generated_at":"2026-09-09T13:26:36Z"}

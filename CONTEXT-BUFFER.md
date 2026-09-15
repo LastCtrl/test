@@ -1,4 +1,4 @@
-﻿COMPLIANCE: true
+COMPLIANCE: true
 STATUS: resolved
 
 [2026-09-09T10:20:00] code-reviewer -> team-lead:
@@ -1540,3 +1540,23 @@ SKILLS_LOADED: ["evidence-discipline", "windows-safety", "superpowers-implement"
 MCP_USED: ["sequential-thinking", "context7: offline (resolve fetch failed)"]
 COMPLIANCE: true
 STATUS: resolved
+
+[2026-09-15T15:12:00] qa-engineer-1 -> team-lead:
+TYPE: update | PRIORITY: medium
+CONTENT: P0-B acceptance (commit 9b6bb71) — ALL PASS. test-false-done 17/17, verify-phase 41/41, test-vault 8/8, test-pipeline 8/8, test-discovery PASS. Manual reproduction: mq-send-empty-To exit=1, mq-send-nonexistent-outbox exit=1, pq-complete-nonexistent exit=1, run-poller-missing-inbox exit=1. PSParser 0 errors on message-queue.ps1 and run-poller.ps1. Verdict: PRINJATO.
+SKILLS_LOADED: ["evidence-discipline", "windows-safety"]
+MCP_USED: []
+COMPLIANCE: true
+STATUS: resolved
+================================================================================
+[2026-09-15] team-lead -> bus: P0-B ЗАКРЫТ
+TYPE: update | PRIORITY: high
+================================================================================
+Коммит 9b6bb71 + verify-phase fix. 15 локусов false-DONE устранены; message-queue/run-poller были невалидны в PS5.1 (parser errors) -> исправлены. Честные exit-коды. test-false-done 17/17; verify-phase 41/41. Приёмка qa-engineer-1: ПРИНЯТО.
+Оценки: dev-1 9, qa-engineer-1 8.
+ОСТАЛОСЬ P0-D: pin deps (Actions SHA + MCP), redaction regex refine. После них P0 закрыт -> P1.
+SKILLS_LOADED: []
+MCP_USED: []
+COMPLIANCE: true
+STATUS: resolved
+================================================================================

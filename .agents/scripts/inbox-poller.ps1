@@ -51,8 +51,16 @@ if (-not $bCreated) {
     exit 1
 }
 
-# Guard: check opencode in PATH
-if (-not (Get-Command opencode -ErrorAction SilentlyContinue)) {
+# Resolve the CLI to invoke: env override (used by tests) or plain `opencode` from PATH.
+$script:OpencodeCmd = if ($env:AGENT_HQ_OPENCODE) { $env:AGENT_HQ_OPENCODE } else { "opencode" }
+
+# Guard: check the RESOLVED command is available
+if ($env:AGENT_HQ_OPENCODE) {
+    if (-not (Test-Path -LiteralPath $script:OpencodeCmd)) {
+        Write-Log "❌ AGENT_HQ_OPENCODE is set but path not found: $script:OpencodeCmd. Exit 1."
+        exit 1
+    }
+} elseif (-not (Get-Command opencode -ErrorAction SilentlyContinue)) {
     Write-Log "❌ opencode not found in PATH. Install opencode or add to PATH. Exit 1."
     exit 1
 }
@@ -180,6 +188,14 @@ function Complete-InboxFile {
 $script:SuccessMarker = '(?i)STATUS:\s*(resolved|done|completed)'
 $script:ErrorMarker = '(?i)(not found|permission denied|auto-rejecting|rejected permission|Error:)'
 $script:JobTimeoutSeconds = 900
+if ($env:AGENT_HQ_JOB_TIMEOUT) {
+    $envTimeout = 0
+    if ([int]::TryParse($env:AGENT_HQ_JOB_TIMEOUT, [ref]$envTimeout) -and $envTimeout -gt 0) {
+        $script:JobTimeoutSeconds = $envTimeout
+    } else {
+        Write-Log "⚠️ Ignoring invalid AGENT_HQ_JOB_TIMEOUT='$env:AGENT_HQ_JOB_TIMEOUT' (expected positive integer seconds)"
+    }
+}
 
 # Run opencode in a background job, capturing stdout/stderr separately and the REAL exit code.
 # Returns: [PSCustomObject]@{ stdout; stderr; exitCode }  (never a bare string)
@@ -188,9 +204,11 @@ function Invoke-OpencodeAttempt {
 
     $job = Start-Job -ScriptBlock {
         param($agent, $taskPrompt)
+        # Resolve the CLI inside the job: the Start-Job child process inherits env vars.
+        $opencodeCmd = if ($env:AGENT_HQ_OPENCODE) { $env:AGENT_HQ_OPENCODE } else { "opencode" }
         $errFile = [System.IO.Path]::GetTempFileName()
         try {
-            $stdout = & opencode run --agent $agent $taskPrompt 2>$errFile
+            $stdout = & $opencodeCmd run --agent $agent $taskPrompt 2>$errFile
             $exitCode = $LASTEXITCODE
             $stderr = ""
             if (Test-Path $errFile) {
@@ -233,7 +251,8 @@ function Test-OpencodeSuccess {
     if ($null -eq $attempt) { return $false }
     if ($attempt.exitCode -ne 0) { return $false }
     if ([string]::IsNullOrWhiteSpace($attempt.stdout)) { return $false }
-    if ($attempt.stderr -match $script:ErrorMarker) { return $false }
+    # Error markers anywhere in the captured output (stdout or stderr) mean failure.
+    if (("$($attempt.stdout)`n$($attempt.stderr)") -match $script:ErrorMarker) { return $false }
     if ($attempt.stdout -notmatch $script:SuccessMarker) { return $false }
     return $true
 }
@@ -243,7 +262,7 @@ function Get-AttemptFailureReason {
     if ($null -eq $attempt) { return "no result object" }
     if ($attempt.exitCode -ne 0) { return "exit code $($attempt.exitCode)" }
     if ([string]::IsNullOrWhiteSpace($attempt.stdout)) { return "empty stdout" }
-    if ($attempt.stderr -match $script:ErrorMarker) { return "stderr error: '$($matches[0])'" }
+    if (("$($attempt.stdout)`n$($attempt.stderr)") -match $script:ErrorMarker) { return "error marker in output: '$($matches[0])'" }
     if ($attempt.stdout -notmatch $script:SuccessMarker) { return "missing success marker '$($script:SuccessMarker)'" }
     return "unknown reason"
 }

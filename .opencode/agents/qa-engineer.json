@@ -1,7 +1,7 @@
 {
     "name":  "qa-engineer",
     "description":  "QA Engineer — тесты, edge cases, баг-репорты, регрессия.",
-    "model":  "aihubmix/coding-glm-5.1-free",
+    "model":  "opencode/mimo-v2.5-free",
     "mode":  "subagent",
     "temperature":  0.2,
     "permissions":  [

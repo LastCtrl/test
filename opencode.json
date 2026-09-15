@@ -878,7 +878,9 @@
   },
   "permission": {
     "external_directory": {
-      "D:\\Тест\\agent-hq\\**": "allow"
+      "*": "ask",
+      "D:\\Тест\\**": "allow",
+      "~/**": "allow"
     }
   }
 }

@@ -1284,7 +1284,8 @@ MCP_USED: []
 COMPLIANCE: true
 STATUS: resolved
 ================================================================================
-[2026-09-15T13:38:02] dev-2-1 -> team-lead:TYPE: update | PRIORITY: medium
+[2026-09-15T13:38:02] dev-2-1 -> team-lead:
+TYPE: update | PRIORITY: medium
 Project: news-bot
 CONTENT: Retry/fallback "анализ почти всегда получается" — реализован. Изменённые файлы: services/analyzer.py (828 -> 898 строк), tests/test_analyzer.py (+275 строк, 6 новых тестов).
 (1) КЛАССИФИКАЦИЯ ОТКАЗОВ: добавлен _last_failure[model] (analyzer.py:100-129) — код причины заполняется в _call_model_once на каждом пути: unknown/timeout/http_5xx/http_4xx/rate_limit/empty/bad_json/network/exception; на успехе сбрасывается (analyzer.py:596). TRANSIENT_FAILURES={timeout,http_5xx,empty,bad_json,network} — только они ретраятся; 429 и прочие 4xx перманентны.
@@ -1297,6 +1298,19 @@ CONTENT: Retry/fallback "анализ почти всегда получаетс
 (8) Временных файлов не создавал; откат не требуется (изменения закоммичены не были, git в D:\Тест\news-bot не инициализирован — корень репо D:\Тест без коммитов).
 SKILLS_LOADED: ["superpowers-implement", "evidence-discipline"]
 MCP_USED: ["sequential-thinking", "context7: offline"]
+COMPLIANCE: true
+STATUS: resolved
+================================================================================
+================================================================================
+[2026-09-15] team-lead -> bus: снижение permission-промптов
+TYPE: update | PRIORITY: medium
+================================================================================
+Причина: opencode default external_directory=ask; проектный конфиг разрешал только D:\Тест\agent-hq\**, сессии вне agent-hq (в D:\Тест) вообще без проектного конфига.
+Фикс: глобальный ~/.config/opencode/opencode.jsonc + проектный opencode.json -> permission.external_directory { "*":"ask", "D:\\Тест\\**":"allow", "~/**":"allow" }. sync не затирает; debug config exit 0.
+Побочка P0-D (ограничение external_directory) ослаблена намеренно по запросу пользователя. Пер-агентный external_directory (subagent) оставлен = D:\Тест\agent-hq\**.
+В плане отдельного пункта не было; добавлено как config-fix.
+SKILLS_LOADED: []
+MCP_USED: []
 COMPLIANCE: true
 STATUS: resolved
 ================================================================================

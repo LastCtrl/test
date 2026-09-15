@@ -203,6 +203,36 @@ function Test-FailureCase {
     return $all
 }
 
+# P0-D: agent output containing secrets must be redacted before it reaches the bus.
+function Test-RedactionCase {
+    param([string]$Root)
+    Set-CaseEnv -Root $Root -Mode "leak"
+    $id = New-InboxMessage -Root $Root
+    Invoke-PollerOnce
+
+    $all = $true
+
+    $outboxCount = Get-JsonFileCount (Join-Path $Root ".memory\outbox")
+    $all = (Write-Check "outbox contains no done result" ($outboxCount -eq 0)) -and $all
+
+    $dlFile = Join-Path $Root (".memory\dead-letter\" + $id + ".json")
+    $dlExists = Test-PathLeaf $dlFile
+    $all = (Write-Check ("dead-letter\" + $id + ".json created") $dlExists) -and $all
+    if ($dlExists) {
+        $raw = Get-Content -LiteralPath $dlFile -Raw -Encoding UTF8
+        # Expected raw values are rebuilt at runtime (no literal secret in this file).
+        $fakeToken = "dummy" + "_token_" + "ABCDEFGHIJKLMNOP"
+        $fakeSk    = "s" + "k-" + "ABCDEFGHIJKLMNOPQRSTUVWX"
+        $all = (Write-Check "dead-letter has no raw key=value secret" (-not ($raw.Contains($fakeToken)))) -and $all
+        $all = (Write-Check "dead-letter has no raw sk- key" (-not ($raw.Contains($fakeSk)))) -and $all
+        $all = (Write-Check "dead-letter contains [REDACTED]" ($raw.Contains("[REDACTED]"))) -and $all
+        $msg = Read-JsonFile $dlFile
+        $all = (Write-Check "dead-letter status = failed" ($msg.status -eq "failed")) -and $all
+    }
+
+    return $all
+}
+
 # --- runner ----------------------------------------------------------------
 
 function Invoke-Case {
@@ -257,6 +287,7 @@ Invoke-Case "d) empty -> dead-letter (empty stdout)"                 { param($r)
 Invoke-Case "e) stderr-only -> dead-letter (empty stdout)"           { param($r) Test-FailureCase -Root $r -Mode "stderr-only" -ReasonPattern "empty stdout" }
 Invoke-Case "f) errormarker -> dead-letter (error marker)"           { param($r) Test-FailureCase -Root $r -Mode "errormarker" -ReasonPattern "error marker" }
 Invoke-Case "g) timeout -> dead-letter (timeout/124)"                { param($r) Test-FailureCase -Root $r -Mode "timeout"     -ReasonPattern "124|TIMEOUT" -JobTimeout "3" }
+Invoke-Case "h) leak -> redacted in dead-letter"                     { param($r) Test-RedactionCase -Root $r }
 
 $total = $script:CasePass + $script:CaseFail
 Write-Host ""

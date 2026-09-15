@@ -10,6 +10,7 @@
 #   stderr-only  -> stderr only, no stdout, exit 0
 #   nomarker     -> stdout without a success marker, exit 0
 #   errormarker  -> stdout with an error marker, exit 0
+#   leak         -> stdout with fake secrets but no success marker, exit 0 (must be redacted in dead-letter)
 
 $mode = $env:FAKE_OPENCODE_MODE
 
@@ -39,6 +40,17 @@ switch ($mode) {
     }
     "errormarker" {
         Write-Output "STATUS: resolved`nError: something broke"
+        exit 0
+    }
+    "leak" {
+        # No success marker on purpose -> the poller must route this to dead-letter.
+        # The poller must redact both values before persisting the response.
+        # Values are concatenated at runtime so this fixture contains no literal
+        # secret-like string (the repo secret scanner must not block its own tests).
+        $fakeToken = "dummy" + "_token_" + "ABCDEFGHIJKLMNOP"
+        $fakeSk    = "s" + "k-" + "ABCDEFGHIJKLMNOPQRSTUVWX"
+        Write-Output ("token=" + $fakeToken)
+        Write-Output $fakeSk
         exit 0
     }
     default {

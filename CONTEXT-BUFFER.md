@@ -1,4 +1,4 @@
-COMPLIANCE: true
+﻿COMPLIANCE: true
 STATUS: resolved
 
 [2026-09-09T10:20:00] code-reviewer -> team-lead:
@@ -1311,6 +1311,64 @@ TYPE: update | PRIORITY: medium
 В плане отдельного пункта не было; добавлено как config-fix.
 SKILLS_LOADED: []
 MCP_USED: []
+COMPLIANCE: true
+STATUS: resolved
+================================================================================
+
+[2026-09-15] qa-engineer -> team-lead:
+TYPE: update | PRIORITY: medium
+Project: news-bot
+CONTENT: |
+  QA-приёмка retry/fallback (services/analyzer.py + tests/test_analyzer.py::TestTransientRetryPass).
+  Вердикт: PASS, grade 8.
+  Тесты: py -3 -m pytest tests -q --tb=short => 311 passed, 1 skipped (предсуществующий integration, live API), 0 failed.
+  Проверено по коду:
+  - 429 -> rate_limit, НЕ в TRANSIENT_FAILURES, cooldown 300с только для 429 (analyzer.py:605-612, 110-112);
+  - 5xx/network/empty/bad_json/timeout -> транзиентные, cooldown НЕ ставят (analyzer.py:613-632);
+  - проход 2 только по retry_candidates, пауза 3с, level-1 (analyzer.py:761-791);
+  - бюджет-гейт: remaining - pause < MIN_MODEL_TIME -> retry не стартует (770-780); per-model remaining < MIN_MODEL_TIME -> break (795-802); wait_for capping (825-831);
+  - последовательность внутри analyze_news: один for, без gather (761-860);
+  - _call_model = ровно 1 HTTP-вызов (470-499);
+  - прежние гарантии: MODELS/MODEL_PROVIDER/PROVIDER_CONFIG не тронуты (34-52), scheduler/freshness не тронуты, degraded-фолбэк сохранён (862-871).
+  Тесты реальные, без тавтологий: timeout->retry успех (порядок вызовов + level 2->1), 5xx транзиентный без cooldown, 429 cooldown+не транзиентный, все 429 -> 1 вызов/модель + degraded, все транзиентные -> 2 прохода + degraded, retry вне бюджета не стартует (sleep не вызван).
+  Замечание (minor): _last_failure — модульный глобал; scheduler гоняет темы через asyncio.gather (scheduler.py:375), при параллельных analyze_news возможна гонка чтения _last_failure между темами (неверное решение о retry). Ограничено: не краш, не потеря данных; зафиксировано в комментарии кода (analyzer.py:104-107). Рекомендация: возвращать причину отказа из _call_model_once, а не через глобал.
+SKILLS_LOADED: ["superpowers-test", "evidence-discipline"]
+MCP_USED: ["sequential-thinking"]
+COMPLIANCE: true
+STATUS: resolved
+================================================================================
+[2026-09-15] dev-2 -> team-lead:
+TYPE: update | PRIORITY: medium
+Project: agent-hq
+CONTENT: P0-D "redact payload/stdout/stderr/secrets" - реализовано.
+(1) NEW .agents/scripts/redact.ps1: функция Redact-Secrets([string]) -> [REDACTED] по паттернам sk-* , ghp_* , github_pat_* , xox[baprs]- , AKIA* , JWT (eyJ...) , Bearer <token> (схема сохраняется) , key=value (password|passwd|pwd|secret|token|api[_-]?key - имя и разделитель сохраняются) , PEM private key. null/пусто -> "" (не падает). Идемпотентна, PS 5.1.
+(2) .agents/scripts/inbox-poller.ps1: dot-source redact.ps1 (логированный no-op fallback при отсутствии файла); Send-DeadLetter: payload и response через Redact-Secrets; Complete-InboxFile: payload + response редактируются ДО truncation (safeResponse); New-EvidenceRecord: reason редактируется, sha256 остаются по RAW stdout/stderr (tamper-evidence сохранён).
+(3) tests/fake-opencode.ps1: режим "leak" печатает token=dummy_token (built in fixture) и sk-fake (built in fixture) без success-маркера (уходит в dead-letter).
+(4) tests/test-pipeline.ps1: кейс h) leak -> redacted in dead-letter (нет сырых секретов, есть [REDACTED], status=failed).
+ТЕСТЫ: tests/test-pipeline.ps1 => passed=8 failed=0 total=8, exit 0 (7 старых + h). Доп. end-to-end payload-check: "password=[REDACTED] and [REDACTED]".
+CRLF: redact.ps1 / inbox-poller.ps1 / test-pipeline.ps1 / fake-opencode.ps1 = CRLF, loneLF=0; BOM сохранён (poller+fake UTF8-BOM, остальные no-BOM). Temp удалён. Не коммитил.
+SKILLS_LOADED: ["evidence-discipline", "windows-safety", "superpowers-implement"]
+MCP_USED: ["sequential-thinking", "context7: n/a (нет внешней библиотеки, только нативный PS 5.1 regex)"]
+COMPLIANCE: true
+STATUS: resolved
+================================================================================
+
+================================================================================
+[2026-09-15] qa-engineer-1 -> team-lead:
+TYPE: update | PRIORITY: medium
+Project: agent-hq
+CONTENT: |
+  QA-приёмка P0-D "redaction секретов в поллере". Вердикт: ПРИНЯТО (1 minor defect).
+  Прогоны:
+  (1) test-pipeline.ps1 => 8/8 PASS, exit 0 (a-h все кейсы пройдены).
+  (2) Redact-Secrets hand-tested на 7 паттернах: token=dummy_token (built in fixture) -> token=[REDACTED], sk-fake (built in fixture) -> [REDACTED], ghp_<fake> -> [REDACTED], AKIA<fake> -> [REDACTED], JWT eyJ... -> [REDACTED], Bearer abcdefghijklmnop1234 -> Bearer [REDACTED], PEM block -> [REDACTED]. Все 7 паттернов отредактированы корректно.
+  (3) False positive check: "the token count is high" -> без изменений (OK), "password policy documents" -> без изменений (OK), "const apiKey = getApiKey();" -> const apiKey = [REDACTED] (MINOR false positive, паттерн api[_-]?key матчит apiKey), "This is a normal sentence" -> без изменений (OK), "updateToken method returns void" -> без изменений (OK). 1 false positive из 5 кейсов.
+  (4) SHA256 tamper-evidence: raw hash a3bae118... != redacted hash b6b8eea0... — hashes differ, tamper-evidence preserved. Evidence-writer хэширует raw stdout до任何形式 редактирования (inbox-poller.ps1:377).
+  (5) Idempotency: Redact(Redact(x)) == Redact(x) для всех 7 кейсов (True).
+  (6) CRLF: все 4 файла CRLF, loneLF=0. BOM: inbox-poller.ps1 и fake-opencode.ps1 = UTF-8 BOM, redact.ps1 и test-pipeline.ps1 = no-BOM (ожидаемо).
+  Defect: MINOR — false positive на piKey = getApiKey() (паттерн pi[_-]?key матчит piKey, значение маскируется). Known trade-off: safety net для agent stdout, агенты не должны писать секреты; false positive на коде нежелателен, но не критичен. Рекомендация: уточнить паттерн на pi[_-]?key\s*[:=] + кириллица/латиница border, либо принять как есть.
+SKILLS_LOADED: ["evidence-discipline", "windows-safety"]
+MCP_USED: ["context7: offline (нет внешней библиотеки, только PS 5.1 regex)"]
 COMPLIANCE: true
 STATUS: resolved
 ================================================================================

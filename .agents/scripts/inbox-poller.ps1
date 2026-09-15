@@ -42,6 +42,17 @@ function Write-Log {
     }
 }
 
+# --- Secret redaction (P0-D): dot-source the helper that masks credentials before
+# ANY agent output or message payload is persisted to outbox/dead-letter.
+# A missing helper degrades to a logged no-op instead of crashing the poller.
+$redactHelperPath = Join-Path $PSScriptRoot "redact.ps1"
+if (Test-Path -LiteralPath $redactHelperPath) {
+    . $redactHelperPath
+} else {
+    Write-Log "⚠️ redact.ps1 not found at $redactHelperPath — secret redaction DISABLED"
+    function Redact-Secrets { param([string]$Text) return $Text }
+}
+
 # --- Machine-generated evidence (P0-C): dot-source the runtime evidence writer.
 # The poller (not the model under test) records exit codes/hashes/timing here.
 $script:EvidenceAvailable = $false
@@ -127,17 +138,18 @@ function Send-DeadLetter {
         [string]$evidence = ""
     )
     $dlFinishedAt = Format-DateTime
+    # P0-D: never persist plaintext credentials into the dead-letter bus.
     $dlMsg = @{
         id = $messageId
         from = $from
         to = $targetAgent
         type = "failed"
         priority = $priority
-        payload = $payload
+        payload = (Redact-Secrets $payload)
         status = "failed"
         startedAt = $startedAt
         finishedAt = $dlFinishedAt
-        response = $response
+        response = (Redact-Secrets $response)
         evidence = $evidence
     }
     $jsonDL = $dlMsg | ConvertTo-Json -Depth 4
@@ -166,9 +178,11 @@ function Complete-InboxFile {
         [string]$fullFileName,
         [string]$evidence = ""
     )
-    # Truncate overly long responses
-    if ($response.Length -gt $maxResponseLength) {
-        $response = $response.Substring(0, $maxResponseLength)
+    # P0-D: redact BEFORE truncation so a credential cut at the boundary cannot
+    # survive as a partial token that no longer matches a full-length pattern.
+    $safeResponse = Redact-Secrets $response
+    if ($safeResponse.Length -gt $maxResponseLength) {
+        $safeResponse = $safeResponse.Substring(0, $maxResponseLength)
     }
 
     $outboxMsg = @{
@@ -177,11 +191,11 @@ function Complete-InboxFile {
         to = $targetAgent
         type = "result"
         priority = $priority
-        payload = $payload
+        payload = (Redact-Secrets $payload)
         status = "done"
         startedAt = $startedAt
         finishedAt = Format-DateTime
-        response = $response
+        response = $safeResponse
         evidence = $evidence
     }
 
@@ -345,6 +359,13 @@ function New-EvidenceRecord {
     $startedAt = if ($null -ne $attempt -and $attempt.startedAt) { [string]$attempt.startedAt } else { "" }
     $finishedAt = if ($null -ne $attempt -and $attempt.finishedAt) { [string]$attempt.finishedAt } else { "" }
     $durationMs = if ($null -ne $attempt -and $null -ne $attempt.durationMs) { [int]$attempt.durationMs } else { 0 }
+    # P0-D: reason is human-readable and may quote agent output; redact it.
+    # The sha256 fields above stay computed over RAW stdout/stderr so that
+    # tamper-evidence is preserved (never hash a redacted body).
+    $reasonText = if ($null -ne $reason) { [string]$reason } else { "" }
+    if (Get-Command Redact-Secrets -ErrorAction SilentlyContinue) {
+        $reasonText = Redact-Secrets $reasonText
+    }
     $git = Get-GitInfo
 
     return [ordered]@{
@@ -361,7 +382,7 @@ function New-EvidenceRecord {
         finished_at     = $finishedAt
         duration_ms     = $durationMs
         status          = $status
-        reason          = $reason
+        reason          = $reasonText
         git_head        = $git.git_head
         git_diff_sha256 = $git.git_diff_sha256
         host            = $env:COMPUTERNAME

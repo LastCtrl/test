@@ -718,7 +718,7 @@
   },
   "provider": {
     "tokenrouter": {
-      "sdk": "@ai-sdk/openai-compatible",
+      "npm": "@ai-sdk/openai-compatible",
       "options": {
         "baseURL": "https://api.tokenrouter.com/v1",
         "apiKey": "{env:TOKENROUTER_API_KEY}"

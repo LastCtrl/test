@@ -137,8 +137,184 @@ function ConvertTo-AgentJson {
 }
 
 # ============================================================
-# Валидация: top-level ключи opencode.json ⊆ $defs.Config.properties
-# схемы schemas/opencode.config.schema.json. Неизвестный ключ → ошибка.
+# Разрешение локальных $ref схемы (#/$defs/...). Внешние ссылки
+# (https://...) не разрешаются -> $null (узел пропускается, данных нет).
+# ============================================================
+function Resolve-JsonSchemaRef {
+    param(
+        $Schema,
+        [string]$Ref
+    )
+
+    if ([string]::IsNullOrWhiteSpace($Ref)) { return $null }
+    if (-not $Ref.StartsWith('#/')) { return $null }
+
+    $pointer = $Ref.Substring(2)
+    $node = $Schema
+    foreach ($rawSegment in ($pointer -split '/')) {
+        $segment = $rawSegment.Replace('~1', '/').Replace('~0', '~')
+        if ($null -eq $node) { return $null }
+        $prop = $node.PSObject.Properties[$segment]
+        if ($null -eq $prop) { return $null }
+        $node = $prop.Value
+    }
+    return $node
+}
+
+# ============================================================
+# Совместим ли узел схемы с фактическим значением (по ключу "type").
+# Нужно для ветвления anyOf/oneOf: неприменимую ветвь не считаем "пройденной".
+# ============================================================
+function Test-SchemaNodeApplicable {
+    param(
+        $Schema,
+        $SchemaNode,
+        $ConfigValue,
+        [int]$Depth = 0
+    )
+
+    if ($null -eq $SchemaNode) { return $false }
+    if ($Depth -gt 16) { return $true }
+
+    $refProp = $SchemaNode.PSObject.Properties['$ref']
+    if ($null -ne $refProp) {
+        $resolved = Resolve-JsonSchemaRef -Schema $Schema -Ref ([string]$refProp.Value)
+        if ($null -eq $resolved) { return $true }  # неразрешимая ссылка -> не исключаем ветвь
+        return (Test-SchemaNodeApplicable -Schema $Schema -SchemaNode $resolved -ConfigValue $ConfigValue -Depth ($Depth + 1))
+    }
+
+    $typeProp = $SchemaNode.PSObject.Properties['type']
+    if ($null -eq $typeProp) { return $true }
+
+    switch ([string]$typeProp.Value) {
+        'object'  { return ($ConfigValue -is [System.Management.Automation.PSCustomObject]) }
+        'array'   { return ($ConfigValue -is [System.Array]) }
+        'string'  { return ($ConfigValue -is [System.String]) }
+        'boolean' { return ($ConfigValue -is [System.Boolean]) }
+        'integer' { return ($ConfigValue -is [System.Int64] -or $ConfigValue -is [System.Int32] -or $ConfigValue -is [System.Double] -or $ConfigValue -is [System.Decimal]) }
+        'number'  { return ($ConfigValue -is [System.Int64] -or $ConfigValue -is [System.Int32] -or $ConfigValue -is [System.Double] -or $ConfigValue -is [System.Decimal]) }
+        'null'    { return ($null -eq $ConfigValue) }
+        default   { return $true }
+    }
+}
+
+# ============================================================
+# РЕКУРСИВНАЯ проверка структуры конфига по JSON-схеме.
+# Падает (throw) на неизвестный ключ в узле, где схема объявляет
+# additionalProperties: false. Обходит properties, $ref,
+# additionalProperties (как схему), anyOf/oneOf/allOf и items.
+# ============================================================
+$script:SchemaNodesChecked = 0
+
+function Assert-ConfigSchemaNode {
+    param(
+        $Schema,
+        $SchemaNode,
+        $ConfigValue,
+        [string]$Path,
+        [int]$Depth = 0
+    )
+
+    if ($null -eq $SchemaNode) { return }
+    if ($Depth -gt 64) {
+        throw "Schema recursion depth exceeded at '$Path' (possible `$ref cycle)."
+    }
+
+    # 1. $ref: локальные разворачиваем; внешние пропускаем (нет данных для сверки).
+    $refProp = $SchemaNode.PSObject.Properties['$ref']
+    if ($null -ne $refProp) {
+        $resolved = Resolve-JsonSchemaRef -Schema $Schema -Ref ([string]$refProp.Value)
+        if ($null -eq $resolved) { return }
+        Assert-ConfigSchemaNode -Schema $Schema -SchemaNode $resolved -ConfigValue $ConfigValue -Path $Path -Depth ($Depth + 1)
+        return
+    }
+
+    # 2. anyOf / oneOf: значение обязано удовлетворять хотя бы одной применимой ветви.
+    foreach ($combiner in @('anyOf', 'oneOf')) {
+        $combinerProp = $SchemaNode.PSObject.Properties[$combiner]
+        if ($null -ne $combinerProp) {
+            $branches = @($combinerProp.Value)
+            $applicable = @($branches | Where-Object { Test-SchemaNodeApplicable -Schema $Schema -SchemaNode $_ -ConfigValue $ConfigValue })
+            if ($applicable.Count -eq 0) { $applicable = $branches }  # тип не определить -> судим по всем
+
+            $branchErrors = @()
+            $branchOk = $false
+            foreach ($branch in $applicable) {
+                try {
+                    Assert-ConfigSchemaNode -Schema $Schema -SchemaNode $branch -ConfigValue $ConfigValue -Path $Path -Depth ($Depth + 1)
+                    $branchOk = $true
+                    break
+                }
+                catch {
+                    $branchErrors += $_.Exception.Message
+                }
+            }
+            if (-not $branchOk) {
+                $firstError = if ($branchErrors.Count -gt 0) { $branchErrors[0] } else { 'no branch matched' }
+                throw "Config node '$Path' violates schema ${combiner}: $firstError"
+            }
+            return
+        }
+    }
+
+    # 3. allOf: проверяем все ветви, затем продолжаем обход прочих ключевых слов.
+    $allOfProp = $SchemaNode.PSObject.Properties['allOf']
+    if ($null -ne $allOfProp) {
+        foreach ($branch in @($allOfProp.Value)) {
+            Assert-ConfigSchemaNode -Schema $Schema -SchemaNode $branch -ConfigValue $ConfigValue -Path $Path -Depth ($Depth + 1)
+        }
+    }
+
+    # 4. Массивы: элементы проверяем по items.
+    if ($ConfigValue -is [System.Array]) {
+        $itemsProp = $SchemaNode.PSObject.Properties['items']
+        if ($null -ne $itemsProp) {
+            for ($i = 0; $i -lt $ConfigValue.Count; $i++) {
+                Assert-ConfigSchemaNode -Schema $Schema -SchemaNode $itemsProp.Value -ConfigValue $ConfigValue[$i] -Path ("{0}[{1}]" -f $Path, $i) -Depth ($Depth + 1)
+            }
+        }
+        return
+    }
+
+    # 5. Объекты: контроль неизвестных ключей там, где additionalProperties: false.
+    if (-not ($ConfigValue -is [System.Management.Automation.PSCustomObject])) { return }
+    $script:SchemaNodesChecked++
+
+    $propertiesProp = $SchemaNode.PSObject.Properties['properties']
+    $declaredProps = if ($null -ne $propertiesProp) { $propertiesProp.Value } else { $null }
+
+    $addlProp = $SchemaNode.PSObject.Properties['additionalProperties']
+    $addlValue = if ($null -ne $addlProp) { $addlProp.Value } else { $null }
+    $addlIsFalse = ($null -ne $addlProp) -and ($addlValue -is [System.Boolean]) -and ($addlValue -eq $false)
+
+    foreach ($member in @($ConfigValue.PSObject.Properties)) {
+        $key = $member.Name
+        $childPath = if ($Path.Length -gt 0) { "$Path.$key" } else { $key }
+
+        $declared = $null
+        if ($null -ne $declaredProps) {
+            $declared = $declaredProps.PSObject.Properties[$key]
+        }
+
+        if ($null -ne $declared) {
+            Assert-ConfigSchemaNode -Schema $Schema -SchemaNode $declared.Value -ConfigValue $member.Value -Path $childPath -Depth ($Depth + 1)
+        }
+        elseif ($addlIsFalse) {
+            throw "Unknown key '$key' at config path '$childPath' — not allowed by schema (additionalProperties: false)."
+        }
+        elseif ($null -ne $addlProp) {
+            # additionalProperties задана схемой -> валидируем значение как запись map.
+            Assert-ConfigSchemaNode -Schema $Schema -SchemaNode $addlValue -ConfigValue $member.Value -Path $childPath -Depth ($Depth + 1)
+        }
+    }
+}
+
+# ============================================================
+# Валидация opencode.json против схемы schemas/opencode.config.schema.json:
+#   1) top-level ключи ⊆ $defs.Config.properties;
+#   2) РЕКУРСИВНО — неизвестные ключи во ВСЕХ вложенных узлах, где схема
+#      объявляет additionalProperties: false (properties/$ref/anyOf/items/map).
+# Неизвестный ключ → throw (fail-closed).
 # ============================================================
 function Assert-ConfigSchemaKeys {
     param(
@@ -147,7 +323,7 @@ function Assert-ConfigSchemaKeys {
     )
 
     if (-not (Test-Path -LiteralPath $SchemaPath)) {
-        throw "Schema not found: $SchemaPath — top-level key validation cannot run (fail-closed)."
+        throw "Schema not found: $SchemaPath — schema validation cannot run (fail-closed)."
     }
 
     try {
@@ -176,10 +352,20 @@ function Assert-ConfigSchemaKeys {
         throw "Unknown top-level key(s) in opencode.json not present in schema `$defs.Config.properties: $($unknown -join ', ')"
     }
 
-    Write-Host "Schema validation OK: all top-level keys are known." -ForegroundColor Green
+    # Рекурсивный обход вложенной структуры.
+    $script:SchemaNodesChecked = 0
+    Assert-ConfigSchemaNode -Schema $schema -SchemaNode $configDef -ConfigValue $config -Path '' -Depth 0
+
+    Write-Host "Schema validation OK (recursive, fail-closed): $($actual.Count) top-level keys, $($script:SchemaNodesChecked) object node(s) checked; unknown keys rejected where additionalProperties=false." -ForegroundColor Green
 }
 
-$root = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
+# Portability: предпочитаем явный AGENT_HQ_ROOT, иначе выводим корень из расположения скрипта.
+$root = if ($env:AGENT_HQ_ROOT) { $env:AGENT_HQ_ROOT } else { Split-Path (Split-Path $PSScriptRoot -Parent) -Parent }
+# Нормализация: убрать завершающий разделитель (кроме корня диска "X:\"),
+# иначе шаблон "{0}\**" даст двойной слэш.
+if ($root.Length -gt 3 -and ($root.EndsWith('\') -or $root.EndsWith('/'))) {
+    $root = $root.Substring(0, $root.Length - 1)
+}
 $agentsDir = Join-Path $root ".opencode\agents"
 $promptsDir = Join-Path $agentsDir "prompts"
 $configPath = Join-Path $root "opencode.json"
@@ -273,7 +459,7 @@ foreach ($file in $jsonFiles) {
     # external_directory: ТОЛЬКО корень репо (worktrees — внутри репо).
     # Конфиг/креды opencode и прочие пути C: агентам недоступны.
     $perm["external_directory"] = [ordered]@{
-        "D:\Тест\agent-hq\**" = "allow"
+        ("{0}\**" -f $root) = "allow"
     }
 
     # Собираем entry как хэштаблицу (не PSCustomObject — для ручной сериализации)

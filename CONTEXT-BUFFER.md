@@ -884,3 +884,69 @@ MCP_USED: []
 COMPLIANCE: true
 STATUS: resolved
 ================================================================================
+[TIME] qa-engineer -> team-lead:
+TYPE: update | PRIORITY: medium
+CONTENT: |
+  ## P0 Batch Acceptance - VERDICT: PASS
+  All 8 checks PASSED, 0 defects found.
+  1) CRLF: 0 .ps1 files with LF (all CRLF).
+  2) sync-agents.ps1: 32 files found, Schema validation OK, Git hook installed.
+  3) Assert-ConfigSchemaKeys: throw (not Write-Warning+return) in all 3 error paths.
+  4) Evidence-discipline: 32 prompt files contain EVIDENCE-DISCIPLINE block.
+  5) compliance-gate.ps1: regex matches ->, →, >>.
+  6) inbox-poller.ps1: dead-letter + real exit codes (exit 1, exit 124).
+  7) opencode.json: key="agent" (not "agents"), 32 agents.
+  8) Hook hashes match: C2C1ACCA25D02CE6ECF0206FA05CAA27E6B168CCB1F2E20A850E756DD4450888.
+  Bak files cleaned up (0 remaining).
+SKILLS_LOADED: ["evidence-discipline", "windows-safety", "superpowers-test"]
+MCP_USED: []
+COMPLIANCE: true
+STATUS: resolved
+
+================================================================================
+[2026-09-15] team-lead -> bus: вердикты приёмки P0 (расхождение)
+TYPE: update | PRIORITY: high
+================================================================================
+qa-engineer (opencode/ling-3.0-flash-fin-free): ПРИНЯТО, 0 дефектов. 8/8 проверок OK
+  (CRLF; sync 32 агента; fail-closed throw; evidence-инъекция 32; compliance-gate стрелки;
+   inbox-poller dead-letter+exit; ключ agent=32; хеш хука совпал).
+code-reviewer (aihubmix/gpt-5.5-free): ВОЗВРАТЬ, 2 major:
+  1) Portability: sync-agents.ps1:182 root не из AGENT_HQ_ROOT; :275-276 external_directory хардкод D:\Тест\agent-hq\**.
+  2) Fail-open: Assert-ConfigSchemaKeys (:166-177) валидирует только top-level ключи; вложенные нарушения схемы (additionalProperties:false) проходят молча.
+Итог: ВОЗВРАТЬ → фикс у dev-3.
+Примечание: code-reviewer read-only (нет write) -> self-report записан team-lead'ом.
+SKILLS_LOADED: []
+MCP_USED: []
+COMPLIANCE: true
+STATUS: resolved
+================================================================================
+
+[TIME] dev-3 -> team-lead:
+TYPE: update | PRIORITY: medium
+Project: agent-hq
+CONTENT: Починены 2 major-дефекта в .agents/scripts/sync-agents.ps1 (branch feature/skills-mcp-enforcement).
+- ДЕФЕКТ 1 Portability: :362-368 root = $env:AGENT_HQ_ROOT, иначе derive от $PSScriptRoot + нормализация хвостового разделителя; :461-463 external_directory = ("{0}\**" -f $root) вместо хардкода "D:\Тест\agent-hq\**". Проверено: agent.<x>.permission.external_directory[0] и top-level permission.external_directory == "D:\Тест\agent-hq\**" (ConvertFrom-Json, совпадает с прежним генератом).
+- ДЕФЕКТ 2 Fail-open: добавлены Resolve-JsonSchemaRef (:143, локальные #/$defs refs, ~0/~1, внешние -> skip), Test-SchemaNodeApplicable (:168, фильтр применимости ветвей anyOf по type), Assert-ConfigSchemaNode (:209, рекурсия properties/$ref/anyOf/oneOf/allOf/items/additionalProperties, depth-лимит 64), Assert-ConfigSchemaKeys (:319) — top-level проверка сохранена, затем рекурсивный обход $defs.Config. Success-сообщение отражает реальный охват: "Schema validation OK (recursive, fail-closed): 8 top-level keys, 129 object node(s) checked; unknown keys rejected where additionalProperties=false."
+- ПРОВЕРКИ: sync-agents.ps1 -> "32 files found", "Schema validation OK (recursive, fail-closed)...129...", "Git hook installed", DONE. Backups opencode.json.bak.* удалены (0 non-pre-migration). CRLF: lone LF=0, CRLF=622, BOM=True (PS 5.1 + кириллица OK). 32 агента, 32 промпта с EVIDENCE-DISCIPLINE, hook sha256=C2C1ACCA25D02CE6ECF0206FA05CAA27E6B168CCB1F2E20A850E756DD4450888.
+- ДОКАЗАТЕЛЬСТВО ловли вложенной ошибки: temp-root (AGENT_HQ_ROOT), в command.new-project добавлен bogus_nested_key -> throw "Unknown key 'bogus_nested_key' at config path 'command.new-project.bogus_nested_key' — not allowed by schema (additionalProperties: false)." + rollback; реальный opencode.json не изменён (bogus отсутствует), temp удалён.
+- ДОПОЛНИТЕЛЬНО (вне исходного ТЗ; необходимо для зелёного прогона): новый fail-closed валидатор выявил реальный невалидный ключ opencode.json:721 provider.tokenrouter.sdk (в схеме ProviderConfig и в авторитетной opencode.ai/config.json поля sdk НЕТ; docs/omnirout-setup.md:196 использует "npm"). Исправлено sdk->npm (значение то же "@ai-sdk/openai-compatible" = opencode default => поведение не меняется). Прошу reviewer/team-lead учесть это 3-е изменение. НЕ коммитил.
+SKILLS_LOADED: ["evidence-discipline", "windows-safety"]
+MCP_USED: ["sequential-thinking", "context7: offline"]
+COMPLIANCE: true
+STATUS: resolved
+
+================================================================================
+[2026-09-15] team-lead -> bus: приёмка P0 закрыта
+TYPE: update | PRIORITY: high
+================================================================================
+РЕ-РЕВЬЮ фикса (code-reviewer, aihubmix/gpt-5.5-free): ПРИНЯТО, 0 дефектов.
+Устранено: (1) portability sync-agents.ps1:362-368 ( + normalize), :459-463 external_directory из root; (2) рекурсивный fail-closed валидатор (Resolve-JsonSchemaRef/Assert-ConfigSchemaNode, /anyOf/oneOf/allOf/items/additionalProperties, depth 64, 129 узлов).
+Бонус: найден и исправлен невалидный ключ opencode.json provider.tokenrouter.sdk -> npm (schema-verified).
+CRLF team-lead-verified: lone LF=0, CRLF=622, BOM=True.
+ИТОГ P0: qa-engineer ПРИНЯТО (8/8) + code-reviewer ПРИНЯТО (ре-ревью) = ПРИНЯТО.
+Оценки: code-reviewer 8, qa-engineer 7 (пропустил 2 major), dev-3 8.
+SKILLS_LOADED: []
+MCP_USED: []
+COMPLIANCE: true
+STATUS: resolved
+================================================================================

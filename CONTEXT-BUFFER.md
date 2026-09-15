@@ -734,3 +734,153 @@ MCP_USED: ["sequential-thinking"]
 COMPLIANCE: true
 STATUS: blocked
 ================================================================================
+
+[2026-09-15 10:27] team-lead-1 (acting dev) -> team-lead:
+TYPE: update | PRIORITY: medium
+Project: pong-advanced
+CONTENT: P3-D сервер (D1-D5 бэкенд) ГОТОВ. Схема+миграции, stats-хук матча (xp/elo/level/streak), cosmetics equipped+style, leaderboard по elo, 6 достижений (в т.ч. новый condition_type current_streak), тесты 23 шт. Клиент :3333 (PID 30144) НЕ тронут; dist пересобран — для применения новый код нужен рестарт сервера лидом.
+
+== КОНТРАКТ (wire, snake_case; всё в src/shared/types.ts) ==
+1. POST /api/users {device_id} -> 201 {id, device_id, name, xp:0, level:1, avatar:'эмодзи-по-умолчанию', elo:1000, created_at}; повтор того же device_id -> 200 тот же объект; 400 без device_id. [index.ts:1106]
+2. GET /api/users/:id -> {id, device_id, name, avatar, xp, level, elo, created_at}; 404 'User not found'. [1166]
+3. PUT /api/users/:id {name?, avatar?} -> 200 {ok:true, name, avatar}; name: 1-32, [a-zA-Z0-9_\- ]; avatar: 1-8 кодпоинтов (эмодзи ок), trim; 400 если ни одного поля / невалид; 404. [1192]
+4. POST /api/stats {user_id, wins?, losses?, draws?, goals_for?, goals_against?, max_combo?, powerups_collected?, perfect_games?, playtime_ms?, opponent_elo?} -> 200 {ok:true, xp, level, elo, current_streak, unlocked:[{id,name,description,icon,xp_reward,condition_type,condition_value}]}; 400 без user_id; 404 неизвестный. [1261]
+   XP: win +100, draw +30, loss +10 (+xp_reward за каждое новое достижение). Elo K=32, expected=1/(1+10^((opp-elo)/400)), opp по умолчанию 1000, actual 1/0.5/0, округление до целого (1000 vs 1000 win = 1016). streak: wins>0 -> +1; losses>0 -> 0; draw -> без изменений; best_streak = MAX. user_stats: max_combo=MAX, powerups_collected+=, perfect_games+=, total_playtime+=, matches_played += w+l+draws.
+   level = levelFromXp(xp) = floor(sqrt(xp/100))+1; инвариант: users.level ВСЕГДА равен levelFromXp(users.xp) (пересчитывается и после покупки косметики -> уровень может понизиться при трате xp). unlocked = ТОЛЬКО новые за этот вызов (повторный матч не дублирует).
+5. GET /api/stats/:userId -> {userId, xp, level, elo, total_matches, total_wins, total_losses, total_goals_for, total_goals_against, win_rate, current_streak, best_streak, max_combo, perfect_games, powerups_collected, total_playtime}; неизвестный -> нули + elo 1000. Старые ключи сохранены. [1380]
+6. GET /api/leaderboard -> [{user_id, name, avatar, elo, total_wins, total_games, win_rate}] ORDER BY elo DESC, matches_won DESC, WHERE matches_played>=1, LIMIT 20. [1447]
+7. GET /api/cosmetics -> [{id, type, name, description, rarity, price, style}] (style = COSMETIC_STYLES[id] ?? {}). [1476]
+8. GET /api/users/:id/cosmetics (НОВЫЙ) -> {owned:[{cosmeticId, equipped:boolean, acquiredAt}], equipped:{paddle_skin, ball_skin, ball_trail}}; equipped из user_cosmetics.equipped=1 (по одному на тип), дефолты paddle_classic/ball_classic/trail_classic; 404. [1502]
+9. POST /api/users/:id/cosmetics {cosmetic_id} -> 200 {ok, xp_spent, xp, level}; XP списывается (было и раньше, добавлены level-пересчёт и остаток); 400 {error:'Insufficient XP', required, available} при нехватке; 409 {error:'Already owned'} (было 400) на повторную покупку; 404 user/cosmetic. [1540]
+10. PUT /api/users/:id/cosmetics/:cid/equip -> 200 {ok, type, equipped}; снимает equipped с того же типа; 404 'Cosmetic not owned'. [1602]
+11. GET /api/achievements — без изменений: 6 шт, [{id,name,description,icon,xp_reward,condition_type,condition_value}]. [1637]
+12. POST /api/users/:id/achievements/check -> {unlocked: AchievementUnlock[]} (ИЗМЕНЕНИЕ: было {unlocked: string[]}; клиент этот эндпоинт не использовал) + поддержка current_streak. [1660]
+13. GET /api/health, /api/rooms, /api/server-info — без изменений.
+condition_type: matches_won | perfect_games | max_combo | powerups_collected | tournament_wins | current_streak. streak_5 переведён с matches_won=5 на current_streak=5 + идемпотентный UPDATE для существующих БД (seed.ts:181-190).
+COSMETIC_STYLES (constants.ts:164) Record<CosmeticId, {paddleColor?, ballColor?, trailColor?, glow?}>: paddle_classic #e8eef7 | paddle_neon #39ff14 glow | paddle_fire #ff5722 glow | paddle_ice #7ec8ff | paddle_plasma #c77dff glow | ball_classic #ffffff | ball_heavy #8d99ae | ball_neon #39ff14 glow | trail_classic #8899aa | trail_fire #ff5722 glow | trail_neon #39ff14 glow. COSMETIC_IDS (constants.ts:142) — 11 id.
+Типы (types.ts): UserPublic, AchievementUnlock, StatsReport, StatsResponse, UserStatsResponse, OwnedCosmetic, EquippedCosmetics, UserCosmeticsResponse, LeaderboardEntry, CosmeticStyle (re-export из constants); UserStats += currentStreak/bestStreak. ВАЖНО: существующий Achievement (camelCase) остался моделью; wire-объект достижений = AchievementUnlock (snake_case).
+
+== ФАЙЛЫ (file:line) ==
+- src/server/db/schema.ts: DEFAULT_AVATAR:6, avatar/elo в SCHEMA:15-16, current_streak/best_streak:75-76, tableHasColumn:115, COLUMN_MIGRATIONS:125, migrateSchema:152 (PRAGMA table_info + ALTER, идемпотентно, вызывается из initDatabase).
+- src/server/meta.ts (НОВЫЙ): XP_WIN/DRAW/LOSS 100/30/10:1-3, ELO_START:4, ELO_K:5, levelFromXp:9, xpForResult:14, expectedScore:22, actualScore:26, nextElo:32, resultOf:41.
+- src/shared/constants.ts: COSMETIC_IDS:142, CosmeticId:155, CosmeticStyle:157, COSMETIC_STYLES:164.
+- src/shared/types.ts: CosmeticStyle re-export:15, UserStats:290-диапазон, UserPublic/AchievementUnlock/StatsReport/StatsResponse/UserStatsResponse/OwnedCosmetic/EquippedCosmetics/UserCosmeticsResponse/LeaderboardEntry (~333-420).
+- src/server/index.ts: num:1031, readStatsCounters:1036, checkAchievements:1066 (общий для stats и /achievements/check), эндпоинты 1106-1710.
+- src/server/db/seed.ts: streak_5 current_streak:181-188 + UPDATE:190-193.
+- tests/unit/meta.test.ts (НОВЫЙ, 23 теста): порт 3457 (3333 занят прод-сервером), dynamic import после process.env.PORT, fetch по HTTP.
+
+== 5 ПРОВЕРОК ==
+1) npx tsc --noEmit -> exit 0.
+2) npm run build -> exit 0 (postbuild ок; dist/server/meta.js есть, dist/server/index.js содержит новые маршруты).
+3) npm test -> 13 файлов, 228/228 passed (205 baseline + 23 новых). EXIT=1 ТОЛЬКО из-за baseline: unhandled EADDRINUSE 0.0.0.0:3333 (server.test.ts импортирует index.ts без PORT; :3333 держит прод-сервер). Тестовых падений нет.
+4) npm run lint -> 13 errors / 41 warnings (лимит 25e/48w; было 17e/41w — prettier убрал 2 старых форматных ошибки; из моего кода ни одной ошибки/предупреждения — все 13 any-ошибок предсуществующие: index.ts:7 pino, client/Renderer, physics).
+5) npx playwright test -> 6 passed (6/6), 9.8s; прод :3333 (PID 30144) не убивался и не рестартился, src/client/** не менялся.
+BLOCKER (низкая критичность): context7 (`context7_resolve-library-id`) -> "TypeError: fetch failed" (прокси 127.0.0.1:3128) — API sql.js сверял по существующему коду репо (db.exec/db.run/PRAGMA — schema.ts, seed.ts), не по памяти.
+ПРИМЕЧАНИЕ: data/pong.db после прогонов тестов отсутствует (воркеры vitest не доходят до graceful save) — БД мигрируется при первом же старте через ALTER, отдельная команда миграции не нужна. Оценка времени 45 мин соблюдена.
+SKILLS_LOADED: ["superpowers-implement", "evidence-discipline"]
+MCP_USED: ["sequential-thinking", "context7: offline"]
+COMPLIANCE: true
+STATUS: resolved
+
+ПОПРАВКА к предыдущей записи (10:29): в п.4 lint цифра неточна — baseline был 17e/41w, стало 13e/41w, т.е. prettier-форматирование index.ts убрало 4 предсуществующие ошибки, новых не добавлено (промежуточно мои 2 ошибки `quotes` в schema.ts/seed.ts были исправлены: `${DEFAULT_AVATAR}` в шаблонной строке + параметризованный UPDATE). Итог: 13e/41w, все ошибки предсуществующие.
+
+================================================================================
+[2026-09-15 10:45] team-lead-2 (acting dev) -> team-lead:
+TYPE: update | PRIORITY: medium
+Project: pong-advanced
+CONTENT: P3-D 2a «Экраны меты» сделаны (без косметики в игре и без репорта матчей — это 2b). Новые модули клиента: metaView.ts (чистая логика), user.ts (личность+API), toasts.ts (D5 UI), profile.ts (D1), shop.ts (D2), leaderboard.ts (D4); подключены в App.ts (openMetaScreen + биндинги), index.html (3 экрана + 3 кнопки меню + #profile-widget), styles.css (секции meta/shop/lb/toasts + адаптив). Прод :3333 (PID 30144) не трогал, src/server/** и shared/** не менял.
+================================================================================
+
+== ФАЙЛЫ (file:line) ==
+- src/client/metaView.ts (НОВЫЙ, чистая логика, 16 экспортов): levelFromXp:79 (та же формула floor(sqrt(xp/100))+1, что server/meta.ts:9), xpForLevel:85, levelProgress:91, formatWinRate:129, formatPlaytime:135, formatStats:149, validateName:175, rarityClass:189, cosmeticStyle:194, groupCosmetics:200, cosmeticStatus:225, cosmeticStatusLabel:240, buildLeaderboardRows:248, AVATAR_OPTIONS:57 (12 эмодзи), formatPrice:123, formatXp/formatElo:110/143.
+- src/client/user.ts (НОВЫЙ): DEVICE_KEY:14, PROFILE_KEY:15, generateDeviceId:50, getDeviceId:73, requestJson (никогда не бросает):128, apiGet:166/apiPost:170/apiPut:181, getCachedUser:192, isProfileAvailable:196, onUserChange:200, ensureUser:228, refreshUser:250, getStats:262, setProfile:285, fetchLeaderboard:319, fetchUserCosmetics:325, __resetUserForTests:336.
+- src/client/toasts.ts (НОВЫЙ, D5): ToastOptions:9, configureToasts:26, getToastAutoHideMs:32, getToastQueueLength:36, isToastVisible:40, buildToast/ensureContainer:64/43, showToast:130, hideToast:137, showAchievementToast:143, clearToasts:155, initToasts:161. Авто-скрытие 4000 мс, очередь, контейнер pointer-events:none (игровой экран не перехватывает ввод).
+- src/client/profile.ts (НОВЫЙ, D1): renderProfileScreen:205 (ник+сохранение, сетка 12 аватаров, XP-бар, Elo, 10 карточек статистики, кнопка «Повторить» при offline), renderProfileWidget:215 (мини-виджет в меню).
+- src/client/shop.ts (НОВЫЙ, D2): normalizeCosmetic:46, drawCosmeticPreview:81 (мини-canvas 2D для paddle/ball/trail), renderShopScreen:240 (баланс XP, группы Ракетки/Мячи/Следы, rarity-рамки, статусы, Купить/Надеть, 400 Insufficient XP → «нужно N, доступно M», 409 «Уже куплено»).
+- src/client/leaderboard.ts (НОВЫЙ, D4): buildHeader:25, buildRow:37, renderLeaderboardScreen:43 (таблица место/аватар/имя/Elo/W-G/Win%, подсветка своей строки .me).
+- src/client/App.ts (изменён): импорты user/profile/shop/leaderboard/toasts:46-51, META_SCREENS/openMetaScreen:213-235 (показ экрана + async-рендер в try/catch), биндинги меты:1214-1236 (btn-profile/btn-shop/btn-leaderboard, .btn-meta-back, клик по #profile-widget, initToasts, onUserChange → renderProfileWidget, void ensureUser()).
+- src/client/index.html (изменён): #profile-widget в панели меню:20, группа кнопок «Прогресс»:112-119, секции #profile-screen/#shop-screen/#leaderboard-screen:361-395 (каждая с .btn-meta-back[data-back=menu-screen]).
+- src/client/styles.css (изменён): секция «ЭКРАНЫ МЕТЫ» + виджет/профиль/магазин/лидерборд/тосты/адаптив (дописано после строки 799; .panel{position:relative}, .panel--wide, .profile-*, .avatar-*, .stat-*, .cosmetic-*, .lb-*, .toast-*, @media 768/480, prefers-reduced-motion).
+
+== API ДЛЯ 2b (косметика в игре + репорт матчей) ==
+- Личность: `ensureUser(): Promise<UserPublic|null>` (user.ts:228) — кэш localStorage + POST /api/users; `onUserChange(cb): () => void` (user.ts:200) — подписка/отписка; `getCachedUser()` (user.ts:192); `refreshUser()` (user.ts:250).
+- Матч-репорт: `apiPost<StatsResponse>('/api/stats', StatsReport)` (user.ts:170) + `getStats()` (user.ts:262); из ответа доступны xp/level/elo/current_streak/unlocked.
+- Тосты достижений: `showAchievementToast(unlock: AchievementUnlock)` (toasts.ts:143) — принимает wire-объект AchievementUnlock (snake_case), сам берёт icon/name/description/xp_reward.
+- Косметика в игре: `fetchUserCosmetics(userId?)` (user.ts:325) → {owned, equipped{paddle_skin,ball_skin,ball_trail}}; `cosmeticStyle(id)` (metaView.ts:194) → {paddleColor?, ballColor?, trailColor?, glow?} из COSMETIC_STYLES.
+- Магазин: `apiPost('/api/users/:id/cosmetics', {cosmetic_id})` (user.ts:170), `apiPut('/api/users/:id/cosmetics/:cid/equip')` (user.ts:181).
+
+== ТЕСТЫ (НОВЫЕ, 37 шт., jsdom-паттерн как help.test.ts: fake-DOM + vi.stubGlobal) ==
+- tests/unit/metaView.test.ts (17): levelFromXp/levelProgress/xpForLevel (включая границы 99/100/399/400, NaN/Infinity), formatWinRate/formatPlaytime/formatPrice/formatXp/formatElo, formatStats (10 строк), validateName (правила сервера 1-32 [a-zA-Z0-9_\- ]), groupCosmetics (порядок типов + «Прочее» + пустые данные), cosmeticStatus (locked/owned/equipped, в т.ч. через equipped-карту), rarityClass/cosmeticStyle, buildLeaderboardRows (места, isMe, win_rate, фолбэки).
+- tests/unit/toasts.test.ts (9): создание контейнера/тоста, авто-скрытие ~4с (fake timers), очередь (второй ждёт первый), маппинг AchievementUnlock (+XP, фолбэк иконки), clearToasts, configureToasts/initToasts, отсутствие document → без исключений.
+- tests/unit/user.test.ts (11): getDeviceId стабилен+localStorage, ensureUser 201/кэш/без дублей, fetch reject → null (не бросает), кэш профиля offline, 404 (JSON и не-JSON) → null, getStats ok/ошибка, setProfile PUT+кэш, setProfile offline → error без порчи, onUserChange notify+unsubscribe, refreshUser 404 → очистка.
+
+== 5 ПРОВЕРОК ==
+1) npx tsc --noEmit -> exit 0.
+2) npm run build -> exit 0 (postbuild ок; dist/client/{metaView,user,toasts,profile,shop,leaderboard}.js + .d.ts есть; index.html/styles.css перекопированы; dist/client/shared на месте).
+3) npm test -> 16 файлов, 265/265 passed (228 baseline + 37 новых). EXIT=1 ТОЛЬКО из-за baseline: unhandled EADDRINUSE 0.0.0.0:3333 (server.test.ts, :3333 держит прод-сервер). Тестовых падений нет.
+4) npm run lint -> 13 errors / 42 warnings (лимит 25e/48w). 13 errors — предсуществующие (App.ts any 51/53/586/781, Renderer.ts, index.ts:7, physics.ts). +1 warning от меня: user.ts:25 no-unused-vars на имя параметра в типе-функции (тот же класс ложных срабатываний, что в shared/types.ts:185-211); альтернативы (анонимный/rest-параметр) ломают парсер @typescript-eslint или дают тот же warning.
+5) npx playwright test -> 6 passed (6/6), 9.6s — меню не сломано (кнопки #btn-ai/#btn-local-pvp/#btn-4p/#btn-host/#btn-join работают с новой панелью).
+
+== ДОП. ЖИВОЙ СМОУК (временный скрипт из Temp, удалён) ==
+Playwright → :3333 (прод PID 30144, старый dist/server): #btn-profile/#btn-shop/#btn-leaderboard открываются, #profile-widget рендерится (🙂 Player), back → меню, после закрытия меты #btn-ai стартует игру (game visible). Единственный 404 — `GET /api/users/:id/cosmetics` (этого эндпоинта в старом dist/server нет) → магазин показал каталог из GET /api/cosmetics без краша и без pageerror; лидерборд получил 200 [] → сообщение «нет матчей». Требование «404 до рестарта → деградировать без краша» выполнено.
+BLOCKER (низкая критичность): context7 снова offline («TypeError: fetch failed», прокси 127.0.0.1:3128) — по библиотекам не сверялся, работал на штатном TS/DOM/Playwright API.
+ПРИМЕЧАНИЕ: сервер в старой сборке отдаёт UserPublic без полей elo (в UI «Elo 0») и GET /api/users/:id/cosmetics 404 — после рестарта тимлида на новом dist/server эти данные появятся; клиент к обоим вариантам готов.
+SKILLS_LOADED: ["superpowers-implement"]
+MCP_USED: ["sequential-thinking"]
+COMPLIANCE: true
+STATUS: resolved
+
+[TIME] dev-3 -> team-lead:
+TYPE: update | PRIORITY: medium
+Project: pong-advanced
+CONTENT: P3-D 2b — косметика в рендере + репорт матчей.
+== Косметика в игре (D3) ==
+- src/client/game/Renderer.ts:20 RenderCosmetics {paddleColor,paddleGlow,ballColor,trailColor,trailGlow}; :55 buildRenderCosmetics(equipped{paddle_skin,ball_skin,ball_trail}, styleOf) → null при пустой/неизвестной экипировке (дефолты = прежний рендер, обратная совместимость); :86 paddleColorFor + :97 paddleGlowFor — цвет/glow только у СВОЕЙ ракетки (p1 в 1v1/4p; host=p1/client=p2 в LAN — задаёт App через setRenderCosmetics); :109 ballColorFor (косметика перекрывает только базовый #ffffff, игровой #ffee00 от boost сохраняется); :123 trailColorFor; :135 setRenderCosmetics / :144 getRenderCosmetics / :148 getLocalPaddleId.
+- Трейл: свой рендер НЕ нужен — он уже есть (Effects.ts:560, позиции хранят цвет Effects.ts:381), поэтому Renderer.ts:480-493 при наличии trailColor перекрашивает существующие trailPositions + опциональный shadow-glow (0 аллокаций на кадр); без косметики трейл как раньше.
+- 4p: Renderer.ts:406-420 — цвет/glow p1 = косметика, p2/p3/p4 дефолтные.
+- App.ts:109 loadCosmetics — кэш из fetchUserCosmetics+cosmeticStyle на старте (:1334), force-рефетч перед каждым матчем (:699/:797/:1012/:1103/:1425) и по onUserChange (:1312); причина force — shop.ts надевает/покупает БЕЗ событий/refreshUser (shop.ts:171-212). Сеттер в рендер :98. Сервер отдаёт 404 (старый dist/server) → кэш null → дефолтные цвета, без краша.
+== Репорт матча (D5-триггер) ==
+- src/client/matchReport.ts:75 mapLocalResult → wire StatsReport; :57 detectPerfect; :65 buildPlaytime; :45 resultFromScore; :113 beginMatch; :121 trackCombo; :148 reportMatch (guard reportSent=true ДО await → ровно один POST на матч); :132 isMatchReported; :210 reset. POST /api/stats → unlocked[] → showAchievementToast (toasts.ts:143) → refreshUser (обновляет виджет); 404/ошибки/исключения → console.warn + null, игра не ломается (:177-205).
+- Хуки App.ts: 1v1 onGameEnd :722 (resultFromScore(score.p1,score.p2), перспектива p1); 4p :813 (выживание p1 1:0/0:1 — голов в 4p нет); LAN :970 (своя сторона myPaddleId: host p1 / client p2, winner по счёту); beginMatch :698/:796/:940 (fallback на первый state='playing', если game-started пропущен)/:1011/:1103/:1424; playtime — wall-clock beginMatch→end.
+- max_combo: LocalGame хранит ТОЛЬКО текущий combo (LocalGame.ts:274, сброс при голе LocalGame.ts:315-316) → сэмплирую каждый кадр в getState-колбэке renderLoop (App.ts:738).
+- НЕ отслеживается честно: powerups_collected — в LocalGame нет счётчика, поле НЕ отправляется (mapLocalResult включает его только при явном значении); opponent_elo не отправляем; в 4p max_combo не собираю; в 4p «perfect» = победа p1 при 0 пропущенных по выживанию (p1 не выбивали) — семантика честная, но это не 1v1-голы.
+== Тесты (новые, 39) ==
+- tests/unit/match-report.test.ts (25): resultFromScore 5:3/3:5/4:4+NaN; detectPerfect win 0 / win 5:2 / loss / draw / NaN; buildPlaytime (отриц., равное, NaN, undefined); mapLocalResult 1v1 win/loss/draw, 4p, LAN-client перспектива, powerups только при явном значении, клампы; guard «ровно один POST» (двойной + параллельный вызов), рематч разрешает новый, без beginMatch — не шлём; payload /api/stats + user_id + playtime; unlocked→тост+refreshUser; 404 и исключение проглочены; offline без профиля.
+- tests/unit/cosmetic-mapping.test.ts (14): buildRenderCosmetics на реальных COSMETIC_STYLES (neon/fire glow, classic без glow), null/пустые/неизвестные id → null, бросающий styleOf; paddleColorFor/paddleGlowFor только своя сторона; ballColorFor сохраняет #ffee00; trailColorFor; set/get + localPaddle.
+== 5 ПРОВЕРОК ==
+1) npx tsc --noEmit -> exit 0.
+2) npm run build -> exit 0 (postbuild ок).
+3) npm test -> 18 файлов, 304/304 passed (+39). EXIT=1 только baseline: unhandled EADDRINUSE 0.0.0.0:3333 (server.test.ts, порт держит прод PID 30144).
+4) npm run lint -> 13 errors / 44 warnings (лимит 25e/48w). 13 errors предсуществующие; +2 warnings от меня — Renderer.ts:41 и :57 no-unused-vars на имена параметров в type-function (тот же класс ложного срабатывания, что user.ts:25).
+5) npx playwright test -> 6 passed (6/6), 9.6s; плюс временный смоук (файл удалён после прогона) старта AI-игры: GET /api/users/:id/cosmetics реально уходит, pageerror = 0.
+БЛОКЕР (низкая критичность): context7 offline (`Error searching libraries: TypeError: fetch failed`) — проверил вызовом, MCP_USED только sequential-thinking; работал на штатном TS/DOM/Canvas/Playwright API.
+SKILLS_LOADED: ["superpowers-implement", "evidence-discipline"]
+MCP_USED: ["sequential-thinking"]
+COMPLIANCE: true
+STATUS: resolved
+
+[2026-09-11 20:05] team-lead -> bus:
+TYPE: update | PRIORITY: high
+Project: pong-advanced
+CONTENT: P3-D (мета) РЕАЛИЗОВАНА (D1-D5) — но ПРИЁМКА qa/review ОТЛОЖЕНА из-за блокера. Что сделано: (сервер) schema-миграции avatar/elo/current_streak/best_streak, meta.ts (levelFromXp=floor(sqrt(xp/100))+1, elo K=32, xp win/draw/loss=100/30/10), POST /api/stats как хук матча (xp/elo/streak/level + unlocked-достижения без дублей), GET /api/users/:id/cosmetics (equipped, дефолты *_classic), покупка со списанием XP (400 при нехватке, 409 already owned), leaderboard по elo, COSMETIC_STYLES (11 id), 23 теста; (клиент 2a) user.ts (device_id→POST /api/users, onUserChange, graceful), metaView.ts (чистая логика, формула level синхронна серверу), profile.ts (ник/12 аватаров/XP-бар/Elo/10 статов), shop.ts (каталог 11, редкость, превью-canvas, купить/надеть), leaderboard.ts, toasts.ts, экраны+виджет в App.ts/index.html/styles.css, 37 тестов; (клиент 2b) Renderer косметика (своя ракетка p1/сторона в LAN, мяч/трейл, null=дефолт), matchReport.ts (POST /api/stats ровно 1 раз за матч, guard до await, тосты unlocked, refreshUser; powerups_collected не отправляется — нет счётчика), 39 тестов. Верификация (fallback тимлида, §3.3): tsc 0, build 0, 304/304, lint 13e/44w, E2E 6/6; HTTP end-to-end смоук на :3333 — cosmetics 11+style, user (avatar/elo/level), stats (win: xp 200, level 2, elo 1016, streak 1, unlocked 1), leaderboard; скан XSS новых модулей чист (innerHTML не используют). Прод перезапущен на свежий dist (PID 35148). БЛОКЕР (critical): дневная квота free-моделей исчерпана («Rate limit exceeded: free-models-per-day»)— qa-engineer и code-reviewer НЕ стартуют; независимая приёмка P3-D и ретро-приёмка P3-E отложены до восстановления квоты/добавления кредитов. Рейтинги не выставлены (нет вердиктов). НАХОДКА (pre-existing, не P3-D): App.ts:597 room-list рендерит ${room.hostName} через innerHTML — потенциальный XSS от hostName (нужно экранирование/санитизация). Backlog: powerups_collected не трекается, opponent_elo не отправляется, levelFromXp дублирован клиент/сервер, предсуществующие lint-предупреждения.
+SKILLS_LOADED: []
+MCP_USED: []
+COMPLIANCE: true
+STATUS: resolved
+
+================================================================================
+[2026-09-15] team-lead -> bus: реорганизация пула ревьюеров
+TYPE: update | PRIORITY: high
+================================================================================
+Проблема: 6 ревьюеров сидели на ПЛАТНОЙ aihubmix/gpt-5.5; glm-5.3-free недоступна (tokenrouter distributor), tokenrouter баланс , openrouter free — дневной лимит.
+Решение:
+- Объявлена aihubmix/gpt-5.5-free в provider.aihubmix.models (без неё UnknownError).
+- Созданы 2 новых: senior-reviewer (opencode-go/qwen3.8-flash, платная, крупные приёмки), senior-reviewer-1 (opencode-go/deepseek-v4.1-flash, запасной).
+- Переназначены 6: code-reviewer->aihubmix/gpt-5.5-free; code-reviewer-1->opencode/big-pickle; qa-engineer->opencode/ling-3.0-flash-fin-free; qa-engineer-1->opencode/mimo-v2.5-free; security-auditor->aihubmix/coding-glm-5.1-free; security-auditor-1->opencode/nemotron-3.5-lightning-free.
+- AGENTS.md §1 обновлён (исключение для платных senior-reviewer/-1).
+Проверено: sync-agents 32 агента; probe free-моделей (PONG) 9.3-24s; gpt-5.5-free работает; provider-блок цел; бэкап удалён.
+SKILLS_LOADED: ["customize-opencode"]
+MCP_USED: []
+COMPLIANCE: true
+STATUS: resolved
+================================================================================

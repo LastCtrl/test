@@ -1,7 +1,7 @@
 {
     "name":  "security-auditor",
     "description":  "Security Auditor — OWASP, уязвимости, поиск secrets и утечек. Только чтение.",
-    "model":  "aihubmix/gpt-5.5",
+    "model":  "aihubmix/coding-glm-5.1-free",
     "mode":  "subagent",
     "temperature":  0.0,
     "permissions":  [

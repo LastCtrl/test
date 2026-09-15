@@ -1,7 +1,7 @@
 {
     "name":  "code-reviewer-1",
     "description":  "Code Reviewer (copy 1) — code review, best practices, clean code для параллельной работы.",
-    "model":  "aihubmix/gpt-5.5",
+    "model":  "opencode/big-pickle",
     "mode":  "subagent",
     "temperature":  0.1,
     "permissions":  [

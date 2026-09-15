@@ -108,7 +108,7 @@
     "code-reviewer-1": {
         "description": "Code Reviewer (copy 1) — code review, best practices, clean code для параллельной работы.",
         "mode": "subagent",
-        "model": "aihubmix/gpt-5.5",
+        "model": "opencode/big-pickle",
         "temperature": 0.1,
         "permission": {
             "bash": "deny",
@@ -128,7 +128,7 @@
     "code-reviewer": {
         "description": "Code Reviewer — code review, best practices, clean code, антипаттерны. Только чтение.",
         "mode": "subagent",
-        "model": "aihubmix/gpt-5.5",
+        "model": "aihubmix/gpt-5.5-free",
         "temperature": 0.1,
         "permission": {
             "bash": "deny",
@@ -426,7 +426,7 @@
     "qa-engineer-1": {
         "description": "QA Engineer (copy 1) — тесты, edge cases, баг-репорты, регрессия для параллельной работы.",
         "mode": "subagent",
-        "model": "aihubmix/gpt-5.5",
+        "model": "opencode/mimo-v2.5-free",
         "temperature": 0.2,
         "permission": {
             "bash": "allow",
@@ -446,7 +446,7 @@
     "qa-engineer": {
         "description": "QA Engineer — тесты, edge cases, баг-репорты, регрессия.",
         "mode": "subagent",
-        "model": "aihubmix/gpt-5.5",
+        "model": "opencode/ling-3.0-flash-fin-free",
         "temperature": 0.2,
         "permission": {
             "bash": "allow",
@@ -466,7 +466,7 @@
     "security-auditor-1": {
         "description": "Security Auditor (copy 1) — OWASP, уязвимости, поиск secrets для параллельной работы.",
         "mode": "subagent",
-        "model": "aihubmix/gpt-5.5",
+        "model": "opencode/nemotron-3.5-lightning-free",
         "temperature": 0,
         "permission": {
             "bash": "deny",
@@ -485,7 +485,7 @@
     "security-auditor": {
         "description": "Security Auditor — OWASP, уязвимости, поиск secrets и утечек. Только чтение.",
         "mode": "subagent",
-        "model": "aihubmix/gpt-5.5",
+        "model": "aihubmix/coding-glm-5.1-free",
         "temperature": 0,
         "permission": {
             "bash": "deny",
@@ -499,6 +499,46 @@
             "task": "deny"
         },
         "prompt": "{file:.opencode/agents/prompts/security-auditor.txt}"
+    }
+,
+    "senior-reviewer-1": {
+        "description": "Senior Reviewer (запасной) — углублённое ревью крупных и значимых изменений. Копия senior-reviewer для подмены без переназначения моделей. Только чтение.",
+        "mode": "subagent",
+        "model": "opencode-go/deepseek-v4.1-flash",
+        "temperature": 0.1,
+        "permission": {
+            "bash": "deny",
+            "edit": "deny",
+            "external_directory": {
+                "D:\\Тест\\agent-hq\\**": "allow"
+            },
+            "glob": "allow",
+            "grep": "allow",
+            "question": "allow",
+            "read": "allow",
+            "task": "deny"
+        },
+        "prompt": "{file:.opencode/agents/prompts/senior-reviewer-1.txt}"
+    }
+,
+    "senior-reviewer": {
+        "description": "Senior Reviewer — углублённое ревью крупных и значимых изменений (архитектура, интеграции, релизные решения). Только чтение.",
+        "mode": "subagent",
+        "model": "opencode-go/qwen3.8-flash",
+        "temperature": 0.1,
+        "permission": {
+            "bash": "deny",
+            "edit": "deny",
+            "external_directory": {
+                "D:\\Тест\\agent-hq\\**": "allow"
+            },
+            "glob": "allow",
+            "grep": "allow",
+            "question": "allow",
+            "read": "allow",
+            "task": "deny"
+        },
+        "prompt": "{file:.opencode/agents/prompts/senior-reviewer.txt}"
     }
 ,
     "skill-surgeon": {
@@ -689,6 +729,13 @@
         },
         "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free": {
           "name": "Nemotron 3 Nano Omni Reasoning Free (TokenRouter)"
+        }
+      }
+    },
+    "aihubmix": {
+      "models": {
+        "gpt-5.5-free": {
+          "name": "GPT 5.5 (free, AIHubMix)"
         }
       }
     },

@@ -2,11 +2,14 @@
 
 ## 1. Модели
 
-- glm-5.3-free (mimo недоступен: квота opencode исчерпана) — основная
-- nemotron-3.5-lightning-free — быстрая
-- nemotron-3-ultra-free — запасная
-- nemotron-3-ultra-free — все проверяющие (qa-engineer, code-reviewer, security-auditor), fallback после ухода ox-alpha-free
-- Платные модели запрещены.
+- opencode-go/deepseek-v4.1-flash — основная для разработчиков (dev-*, backend*, frontend, devops и пр.)
+- opencode-go/qwen3.8-flash — senior-reviewer (крупные/значимые приёмки) — ПЛАТНАЯ, согласована
+- opencode-go/deepseek-v4.1-flash — senior-reviewer-1 (запасной senior, чтобы не подменять модели вручную)
+- aihubmix/gpt-5.5-free — code-reviewer (крупные ревью; free-лимит 100 req/сут, 1M ток/сут)
+- opencode/ling-3.0-flash-fin-free, opencode/mimo-v2.5-free, opencode/big-pickle, opencode/nemotron-3.5-lightning-free — остальные проверяющие (free)
+- aihubmix/coding-glm-5.1-free — security-auditor (free)
+- Платные модели запрещены, КРОМЕ opencode-go/qwen3.8-flash и opencode-go/deepseek-v4.1-flash для senior-reviewer/-1 (согласовано с пользователем 2026-09-15).
+- glm-5.3-free: больше не бесплатна/недоступна (tokenrouter distributor); баланс tokenrouter $0. model-router/sync сверять с этим списком.
 
 ## 2. Роли
 

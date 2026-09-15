@@ -5,7 +5,7 @@
 - opencode-go/deepseek-v4.1-flash — основная для разработчиков (dev-*, backend*, frontend, devops и пр.)
 - opencode-go/qwen3.8-flash — senior-reviewer (крупные/значимые приёмки) — ПЛАТНАЯ, согласована
 - opencode-go/deepseek-v4.1-flash — senior-reviewer-1 (запасной senior, чтобы не подменять модели вручную)
-- aihubmix/gpt-5.5-free — code-reviewer (крупные ревью; free-лимит 100 req/сут, 1M ток/сут)
+- opencode/big-pickle — code-reviewer (крупные ревью; free-лимит 100 req/сут, 1M ток/сут)
 - opencode/ling-3.0-flash-fin-free, opencode/mimo-v2.5-free, opencode/big-pickle, opencode/nemotron-3.5-lightning-free — остальные проверяющие (free)
 - aihubmix/coding-glm-5.1-free — security-auditor (free)
 - Платные модели запрещены, КРОМЕ opencode-go/qwen3.8-flash и opencode-go/deepseek-v4.1-flash для senior-reviewer/-1 (согласовано с пользователем 2026-09-15).

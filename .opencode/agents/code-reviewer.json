@@ -1,7 +1,7 @@
 {
     "name":  "code-reviewer",
     "description":  "Code Reviewer — code review, best practices, clean code, антипаттерны. Только чтение.",
-    "model":  "aihubmix/gpt-5.5-free",
+    "model":  "opencode/big-pickle",
     "mode":  "subagent",
     "temperature":  0.1,
     "permissions":  [

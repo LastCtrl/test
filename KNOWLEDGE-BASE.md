@@ -200,6 +200,30 @@
 - **Fix**: для строгого compliance обновить исторические записи или явно принять baseline; код compliance-gate менять не требуется.
 - **Discovered by**: qa-engineer read-only QA, 2026-09-15
 
+### BUG-017: pong-advanced — XSS через hostName в LAN room-list (произвольный JS)
+- **Date**: 2026-09-15
+- **Severity**: critical
+- **File**: D:\Тест\pong-advanced\src\server\index.ts:214 (валидация), :351 (createRoom), :979 (buildRoomInfo); D:\Тест\pong-advanced\src\client\App.ts:597 (renderRoomList)
+- **Lines**: index.ts:214 (`hostName: z.string().optional()` — без лимитов/санитизации); App.ts:593-605 (`item.innerHTML` с `${room.hostName}` без экранирования)
+- **Symptom**: Любой LAN-клиент создаёт комнату с hostName `<img src=x onerror=...>`; другие клиенты при просмотре списка комнат исполняют произвольный JS в своём браузере.
+- **Root cause**: hostName принимается сервером как сырая строка без ограничений (z.string().optional()), передаётся в room-list без экранирования и вставляется в innerHTML.
+- **Proof (live)**: инъекция `<img src=x onerror="window.__xss=1">` → сервер вернул hostName как есть, img инжектился в DOM, onerror СРАБОТАЛ (window.__xss=1) — подтверждено Playwright-тестом на :3335.
+- **Fix**: 1) сервер: ограничить hostName (длина ≤32, запрет `<>&"'` или экранирование); 2) клиент: использовать textContent вместо innerHTML для hostName (или экранировать HTML-сущности).
+- **Discovered by**: qa-engineer независимая приёмка P3-D/P3-E, 2026-09-15
+- **Status**: FIXED (2026-09-15) — сервер: `sanitizeHostName()` (whitelist `[\p{L}\p{N} _.-]`, ≤20, fallback 'Host', zod-transform + второй слой в createRoom); клиент: `renderRoomList` переписан на DOM API/textContent. QA re-check: 9 payload'ов → 'Host', `window.__xss` не установлен, onerror=0; кириллица/`Ping-Pong.1_2` сохранены.
+
+### BUG-018: pong-advanced — покупка косметики без транзакции (UPDATE xp + INSERT user_cosmetics)
+- **Date**: 2026-09-15
+- **Severity**: major (латентный; в текущей архитектуре смягчён)
+- **File**: D:\Тест\pong-advanced\src\server\index.ts:1568-1576 (+ level update :1585)
+- **Lines**: 1568 (`UPDATE users SET xp = xp - ?`), 1573 (`INSERT INTO user_cosmetics`), 1585 (`UPDATE users SET level = ?`) — без BEGIN/COMMIT
+- **Symptom**: При жёстком краше процесса между UPDATE и INSERT пользователь теряет XP без получения косметики (нарушение атомарности).
+- **Root cause**: Два связанных write выполняются без транзакции; sql.js поддерживает `db.run('BEGIN')`/`db.run('COMMIT')`, но они не используются.
+- **Mitigation (текущая архитектура)**: БД = sql.js in-memory, saveDatabase вызывается ТОЛЬКО при graceful shutdown (index.ts:1954). При жёстком краше теряется вся in-memory БД целиком — разрыв между UPDATE и INSERT неотличим от полного отката. Конкурентный запрос не может наблюдать промежуточное состояние (синхронный однопоточный sql.js). Риск станет реальным при добавлении периодического save на диск или переходе на файловую SQLite.
+- **Fix**: обернуть UPDATE+INSERT(+level) в BEGIN/COMMIT (дёшево, закрывает латентный риск).
+- **Discovered by**: qa-engineer независимая приёмка P3-D/P3-E, 2026-09-15
+- **Status**: FIXED (2026-09-15) — `applyCosmeticPurchase()` обёрнут в BEGIN→UPDATE xp→INSERT→level→COMMIT, catch→ROLLBACK; unit-тест с PK-конфликтом INSERT подтверждает, что XP не списывается; QA HTTP-проверка: XP консистентен при 200/400/409.
+
 ## Patterns
 
 ### PowerShell encoding pitfalls on Windows

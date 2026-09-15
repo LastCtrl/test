@@ -401,7 +401,15 @@ TYPE: update | PRIORITY: medium
 Project: agent-hq
 CONTENT: Live-верификация секретного периметра по запросу пользователя вскрыла и закрыла 2 пробела: (1) fallback-путь хука для worktrees считал ../../ вместо ../ от git-common-dir — секрет из worktree НЕ блокировался (только warn+skip); хук переписан (try_scanner: common-dir/main-root first, then toplevel), скопирован в .git/hooks. Тесты 4/4: worktree+секрет БЛОК (ghp***), worktree+чистый ПРОХОД, main+секрет БЛОК (Pro***), main+чистый ПРОХОД. Урок-2 (повтор §11-инцидента): git reset --hard/test-rollback откатывает незакоммиченные правки — теперь хук коммитится ДО тестов. Также: Test12345 прошёл сканер по ДИЗАЙНУ (mock-словарь 'test*' исключает) — задокументировано как известное поведение, не баг. Мусор-коммит b96346d (m-s.txt 'password=Test12345' mock) откачен reset --hard HEAD~1 — в истории нет.
 SKILLS_LOADED: []
-MCP_USED: ["sequential-thinking"]
+MCP_USED: []
+COMPLIANCE: true
+STATUS: resolved
+
+[TIME] qa-engineer-1 -> team-lead:
+TYPE: update | PRIORITY: medium
+CONTENT: P0-C "fake CLI tests" прогоны: (1) test-pipeline.ps1 — PASS, all 7 cases green, SUMMARY: passed=7 failed=0 total=7, exit 0. (2) inbox-poller.ps1 -DryRun — PASS после сброса mutex, exit 0 (первый прогон — mutex contention, повторный — OK). (3) Stop-Job -Force — ПОДТВЕРЖДЕНО отсутствие -Force в PS 5.1 ((Get-Command Stop-Job).Parameters.Keys не содержит Force); фикс Stop-Job -Job $job (line 237 inbox-poller.ps1) корректен. (4) CRLF — ОК: все 3 файла (test-pipeline.ps1, fake-opencode.ps1, inbox-poller.ps1) содержат только CRLF, bare-LF=0. (5) WEAKNESS ПОДТВЕРЖДЕНА: test-pipeline.ps1:205 — ReasonPattern "exit code 1" ложно матчит "exit code 124" (substring match без $-анкора); "exit code 124" -match "exit code 1" => True. Это значит: если fake-opencode вернёт exit code 124 вместо 1 — case c) всё равно пройдёт (false-pass). Вердикт: 4/5 проверок OK, 1 minor defect (см. выше).
+SKILLS_LOADED: ["evidence-discipline", "windows-safety"]
+MCP_USED: ["context7: offline", "sequential-thinking: offline"]
 COMPLIANCE: true
 STATUS: resolved
 
@@ -977,3 +985,81 @@ SKILLS_LOADED: ["evidence-discipline", "windows-safety", "superpowers-test"]
 MCP_USED: ["sequential-thinking"]
 COMPLIANCE: true
 STATUS: resolved
+
+[2026-09-15 12:40] qa-engineer -> team-lead:
+TYPE: update | PRIORITY: medium
+CONTENT: Независимая приёмка pong-advanced (P3-D мета + ретро P3-E кастом-локаль + неткод-фаза2). ВЕРДИКТЫ: сервер-P3-D PASS, клиент-2a PASS, клиент-2b PASS, кастом-локаль PASS, неткод-фаза2 PASS (с замечаниями). Таблица A-F: A) compliance 3 self-report'ов OK (team-lead-1/2, dev-3 — поля непустые, COMPLIANCE true); B) 5 команд: tsc=0, build=0, test=304/304 (exit=1 только baseline EADDRINUSE :3333), lint=13e/44w (в лимите), playwright=6/6; C) HTTP e2e на :3333: юзер qa-e2e-288521 (id ccbc9b6b-fa7b-4614-bf68-663232c9bb76) — 201/повтор 200/без device 400, PUT name/avatar (emoji UTF-8), косметика 11 шт, покупка 400 Insufficient XP/404/200/409, equip 200/404, stats win/loss/draw (XP, level, elo, streak, unlocked), leaderboard по elo DESC, levelFromXp границы; D) клиентский runtime-смок 5 тестов PASS (мета-экраны, магазин, лидерборд, AI-игра ровно 1 POST /api/stats, рематч 2-й POST, тост достижения, graceful offline); E) guard «ровно 1 репорт» PASS (matchReport.ts reportSent до await + unit 264/280/289/297/338 + живой смок); F) регрессии PASS (E2E 6/6 + help-модалка + кастом-комната). НЕТКОД-ФАЗА2: замер на :3335 (3 прогона): mean 16.63-16.66ms, p50 15.60ms, p95 30.80ms (артефакт Windows-таймера 15.6ms, аккумулятор компенсирует), max 31.9-32.1ms, Hz 60.2-60.3, drift max 11.3-18.4ms (<50), payload mean 680-700B max 692-725B (<=850). Замеры тимлида (60.0Hz/0ms/812B) ПОДТВЕРЖДЕНЫ (drift чуть выше из-за методики: макс. отклонение от идеальной сетки 60Гц). MAJOR-1 XSS ПОДТВЕРЖДЁН ЖИВЫМ ТЕСТОМ: hostName z.string().optional() без лимитов (index.ts:214) -> buildRoomInfo (979) -> renderRoomList innerHTML (App.ts:597); инъекция '<img src=x onerror=window.__xss=1>' -> img в DOM + onerror СРАБОТАЛ (произвольный JS). MAJOR-2 ПОДТВЕРЖДЁН на уровне кода: index.ts:1568-1576 UPDATE xp + INSERT user_cosmetics (+level 1585) БЕЗ транзакции; смягчено: sql.js in-memory + saveDatabase только на graceful shutdown (1954) — при жёстком краше теряется вся БД, разрыв неотличим; риск станет реальным при периодическом save/файловой БД. BACKLOG minor: 1) stats без верхних лимитов (XP/elo растут бесконечно); 2) levelFromXp дублирован (server meta.ts:9-12 vs client metaView.ts:102-106). Временные файлы удалены (qa-smoke/qa-netcode/qa-xss spec'ы, temp в %TEMP%\opencode), :3335 свободен, прод :3333 не тронут.
+SKILLS_LOADED: ["evidence-discipline", "superpowers-test"]
+MCP_USED: ["sequential-thinking"]
+COMPLIANCE: true
+STATUS: resolved
+
+[2026-09-15 12:37] team-lead-1 (acting dev) -> team-lead:
+TYPE: update | PRIORITY: high
+Project: pong-advanced
+CONTENT: Фиксы багов из KNOWLEDGE-BASE (BUG-017/018 + MINOR-3/4) готовы.
+  BUG-017 XSS (defense in depth, обе стороны):
+  - src/server/index.ts:205,214-223 — export const HOST_NAME_MAX=20 + export function sanitizeHostName(raw): trim, обрезка >20, разрешены только [\p{L}\p{N} _.-] (кириллица ОК); при недопустимом символе/пустоте/non-string -> 'Host' (НЕ strip, а полный fallback — иначе 'onerror' буквы выживали).
+  - src/server/index.ts:237-240 — createRoomSchema.hostName: z.string().optional().transform(v => sanitizeHostName(v)).
+  - src/server/index.ts:377 — createRoom: hostName: sanitizeHostName(settings.hostName) (второй слой, для прямых вызовов).
+  - src/client/App.ts:575-652 — renderRoomList полностью переписан на DOM API (createElement + textContent) для code/hostName/orientation/players/compact; innerHTML в блоке списка комнат больше НЕ используется (остался только container.innerHTML='' для очистки контейнера).
+  BUG-018 атомарность покупки:
+  - src/server/index.ts:1591-1630 — export function applyCosmeticPurchase(db, userId, cosmeticId, price, now): BEGIN -> UPDATE users.xp -> INSERT user_cosmetics -> пересчёт level -> COMMIT; catch -> ROLLBACK (best-effort) + rethrow.
+  - src/server/index.ts:1631,1659 — POST /api/users/:id/cosmetics вызывает applyCosmeticPurchase вместо разрозненных run; внешний catch отдаёт 500.
+  MINOR-3 stats верхние клампы:
+  - src/server/index.ts:1289-1300 — export const STATS_MAX {matches:100, goals:1000, combo:1000, powerups:1000, perfect:100, playtime:86_400_000} + clampStatsInt/clampStatsNum (1298).
+  - POST /api/stats: wins/losses/draws<=100, goals_for/against<=1000, max_combo<=1000, powerups_collected<=1000, perfect_games<=100, playtime_ms<=86_400_000 (clamp, не 400).
+  MINOR-4 единый levelFromXp:
+  - NEW src/shared/leveling.ts: export LevelProgress, XP_LEVEL_STEP, levelFromXp, xpForLevel, levelProgress.
+  - src/server/meta.ts:11 — export { levelFromXp } from '../shared/leveling.js' (имя сохранено).
+  - src/client/metaView.ts:96 — export { levelFromXp, xpForLevel, levelProgress } + export type { LevelProgress } (ре-экспорт, импорты profile.ts/tests не сломаны).
+  ТЕСТЫ: NEW tests/unit/security-fixes.test.ts (10 тестов): sanitizeHostName (payload -> Host, кириллица, длина, createRoom-слой), atomic purchase (happy-path HTTP, реальный ROLLBACK на PK-конфликте INSERT с проверкой неизменности XP, fake-db BEGIN->ROLLBACK без COMMIT), stats-клампы (999999/9e9 -> лимиты), unified levelFromXp (сервер/клиент === shared + границы 0/100/400/900).
+  ПРОВЕРКИ (5): 1) npx tsc --noEmit => exit 0; 2) npm run build => exit 0; 3) npm test => 19 files, 314/314 passed (было 304 + 10 новых), exit=1 только baseline EADDRINUSE :3333; 4) npm run lint => 13 errors/44 warnings (baseline 13e/44w, <=25e/48w); 5) npx playwright test => 6/6 passed.
+Прод :3333 (PID 35148) НЕ рестартился; серверный фикс вступит в силу после рестарта тимлидом (dist пересобран). App.ts-клиент в dist обновлён — e2e 6/6 на нём.
+SKILLS_LOADED: ["superpowers-implement"]
+MCP_USED: ["sequential-thinking"]
+COMPLIANCE: true
+STATUS: resolved
+
+[2026-09-15 12:50] qa-engineer -> team-lead:
+TYPE: update | PRIORITY: medium
+Project: news-bot
+CONTENT: READ-ONLY QA-приёмка news-bot (3 изменения: DIGEST / FRESHNESS / MODELS). ВЕРДИКТ: PASS 3/3, блокеров нет. [1] DIGEST (services/scheduler.py): _split_html_text (:55) режет по \n\n на части ≤3900 с маркировкой (N/M), несжимаемый блок — жёсткая обрезка с «…»; _deliver_topic (:478) шлёт части ≤4096 (кнопки только на последней), TelegramBadRequest 'message is too long' → обрезка+ретрай; _send_digest (:353) изолированный try/except на каждую тему — сбой одной не роняет остальные; _PRELOAD_LOOKAHEAD_MINUTES=8, TTL=900, _topic_timeout=130, misfire_grace_time=30. Тесты: TestSplitHtmlText ×4 + TestSendDigestResilience ×3 (части ≤4096, сбой первой темы не роняет остальные, too-long → обрезка+ретрай). [2] FRESHNESS (services/freshness.py, news_search.py, article_extractor.py): RECENCY_DAYS=3, SOFT_WINDOW_DAYS=14, MAX_AGE_DAYS=30; Google-запрос с when:2d; жёсткий потолок возвращает только undated (не древний мусор); бонус официальным источникам (freshness.py:109). Тесты: test_freshness.py (окна, границы, undated). [3] MODELS (services/analyzer.py, config.py): MODELS=[big-pickle, ling-3.0-flash-fin-free, mimo-v2.5-free, nemotron-3.5-lightning-free, z-ai/glm-5.3-free]; MODEL_PROVIDER корректен; stream-маршрутизация: opencode/openrouter=non-stream, tokenrouter=stream. Тесты: test_analyzer.py + test_anthropic_format.py (классификация моделей). ВЕРИФИКАЦИЯ: pytest полный прогон 300 passed / 0 failed / 1 skipped / 1 warning (pytest-asyncio deprecation), 47.91s. ЖИВОЙ СМОУК (временный qa_smoke.py из Temp, удалён после прогона): поиск 2 статьи, 0 устаревших (>30д); анализ 557 симв., HTML-карточки, не fallback, не error; SEARCH_OK: True, ANALYSIS_OK: True. Исходники не изменялись; временные файлы удалены.
+SKILLS_LOADED: ["superpowers-test", "evidence-discipline"]
+MCP_USED: ["sequential-thinking: error (JSON parse, не использован)"]
+COMPLIANCE: true
+STATUS: resolved
+
+[TIME] qa-engineer -> team-lead:
+TYPE: update | PRIORITY: high
+Project: pong-advanced
+CONTENT: Перепроверка BUG-017/018 + minor на прод :3333 (PID 25212, dist с фиксами, НЕ рестартился). VERDICT: PASS — BUG-017 и BUG-018 ЗАКРЫТЫ, MINOR-3/4 закрыты. Live XSS-проба (playwright, 9 payload через socket.io create-game): img-onerror/script/quote-attr/svg-onload/equals/unicode-escaped -> hostName 'Host' в /api/rooms; window.__xss НЕ установлен (undefined на меню и списке комнат), onerror-атрибутов 0, инжектнутых img 0; валидные 'Игрок_1'/'Ping-Pong.1_2'/'PlayerOne' сохранены; UI списка комнат рендерит санитизированные имена + кнопки Join. BUG-018 HTTP: createUser 201 xp=0; 2 wins -> xp=300 (200+100 first_blood); buy paddle_neon(500) при 300 -> 400 Insufficient XP, xp=300 не изменился; +5 wins -> 800; buy -> 200 xp_spent=500 xp=300 level=2 (баланс=старт-цена); repeat -> 409, xp=300; owned=[paddle_neon]; trail_fire(2000) -> 400, xp=300. MINOR-3: wins=99999->100, goals_for=1e9->1000, playtime_ms=1e12->86400000, негатив/NaN->0, сервер жив. MINOR-4: server meta.ts:11 и client metaView.ts:96 ре-экспорт shared/leveling.js (юнит-тест: === shared), границы 0/100/400/900 -> 1/2/3/4, live: 300->lvl2, 800->lvl3, 11800->lvl11. 5 проверок: tsc 0; build 0; npm test 314/314 (EADDRINUSE :3333 baseline); lint 13e/44w (<=25e/48w); playwright 6/6. Регрессии: профиль/магазин/лидерборд/справка открываются, кастом-локальная игра стартует, LAN-список рендерится (Join/Full). Замечание: /api/rooms/room-list -> 404 (реальный эндпоинт /api/rooms — расхождение в ТЗ, не баг). Временные файлы удалены.
+SKILLS_LOADED: ["superpowers-test"]
+MCP_USED: ["sequential-thinking"]
+COMPLIANCE: true
+STATUS: resolved
+
+[2026-09-11 21:10] team-lead -> bus:
+TYPE: update | PRIORITY: high
+Project: pong-advanced
+CONTENT: P3-D (мета) ПРИНЯТА + ретро-P3-E ПРИНЯТА + критичные фиксы закрыты. (1) qa-приёмка (новый агент после рестарта opencode): P3-D сервер/2a/2b — PASS, кастом-локаль PASS, неткод-фаза2 PASS (замер :3335: 16.63-16.66мс mean, 60.2-60.3Гц, дрейф 11-18мс, payload 680-725Б; подтверждено). 5 команд: 304/304 (на момент приёмки), lint, E2E 6/6; HTTP e2e меты и клиентские смоки — OK. (2) qa подтвердил 2 бага: BUG-017 XSS hostName (critical, live onerror срабатывал) и BUG-018 неатомарная покупка (major латентный) + minor (лимиты stats, дубль levelFromXp); записаны в KNOWLEDGE-BASE.md (BUG-017/018). (3) ФИКСЫ (team-lead-1): sanitizeHostName (whitelist [\p{L}\p{N} _.-], ≤20, fallback Host; zod+createRoom) + client renderRoomList на DOM API/textContent; applyCosmeticPurchase в BEGIN/COMMIT/ROLLBACK; stats-клампы; единый src/shared/leveling.ts (ре-экспорт server/meta + client/metaView). Тесты +10 (security-fixes). Итог: 314/314, tsc 0, build 0, lint 13e/44w, E2E 6/6. (4) QA re-check фиксов: PASS — 9 XSS-payload → 'Host', window.__xss не сработал, onerror=0; покупка атомарна (XP консистентен 200/400/409); клампы (wins 99999→100, playtime 1e12→86400000); levelFromXp границы совпадают. BUG-017/018 помечены FIXED в KNOWLEDGE-BASE.md. Прод перезапущен на свежий dist (PID 25212). Рейтинги выставлены. BLOCKER (не блокирует результат): ре-ревью ДИФА фиксов не стартовало — исчерпана free-квота aihubmix (code-reviewer); полноценное REVIEW_CHANGES-закрытие подтверждено qa-перепроверкой, ре-ревью дифа — в очередь на восстановление квоты. Backlog: LAN-rematch по ended-комнате (joinRoom → 'Game already ended'), powerups_collected не трекается, opponent_elo не отправляется, предсуществующие lint-предупреждения.
+SKILLS_LOADED: []
+MCP_USED: []
+COMPLIANCE: true
+STATUS: resolved
+
+================================================================================
+[2026-09-15] team-lead -> bus: P0-C fake CLI tests ПРИНЯТО
+TYPE: update | PRIORITY: high
+================================================================================
+Коммиты: d3b7bb3 (тесты+fix), + anchor-фикс.
+Независимый прогон qa-engineer-1 (opencode/mimo-v2.5-free): test-pipeline.ps1 = 7/7 PASS exit 0; inbox-poller -DryRun exit 0.
+senior-reviewer (qwen3.8-flash): static review положительный, 6 minors; ВОЗВРАТ только из-за отсутствия shell (не смог прогнать) -> не дефект.
+dev-2 нашёл реальный баг: Stop-Job -Force (нет в PS5.1) валил timeout-ветку вместо dead-letter -> фикс.
+Minor исправлен: test-pipeline.ps1:205 reason-pattern заанкорен ("exit code 1$").
+Оценки: senior-reviewer 8, qa-engineer-1 8, dev-2 7.
+SKILLS_LOADED: []
+MCP_USED: []
+COMPLIANCE: true
+STATUS: resolved
+================================================================================

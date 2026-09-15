@@ -1190,3 +1190,24 @@ MCP_USED: ["sequential-thinking", "context7: offline"]
 COMPLIANCE: true
 STATUS: resolved
 ================================================================================
+
+[2026-09-15T13:25:00] qa-engineer-1 -> team-lead:
+TYPE: update | PRIORITY: medium
+CONTENT: P0-B acceptance: sync-agents.ps1 OK, schema validation OK (133 nodes), team-lead* task=object with 28 allows + "*":deny, no team-lead in allow lists (anti-fork-bomb), leaves (dev-1/code-reviewer/qa-engineer) task=string "deny", no blanket "allow" for any agent, all allow entries are valid agent names, other permissions (read/edit/bash/glob/grep/skill) unchanged.
+SKILLS_LOADED: ["evidence-discipline", "windows-safety"]
+MCP_USED: []
+COMPLIANCE: true
+STATUS: resolved
+
+================================================================================
+[2026-09-15] team-lead -> bus: P0-B task allowlist ПРИНЯТО
+TYPE: update | PRIORITY: high
+================================================================================
+Коммит 2e4b4e9. team-lead* task = {*:deny, <28 агентов>:allow} (deny-by-default, * первым из-за last-rule-wins); self-recursion заблокирован (self + ^team-lead(-\d+)?$ вырезаются). Листья task=deny. Приёмка qa-engineer-1: ПРИНЯТО, 0 дефектов.
+Оценки: dev-3 9, qa-engineer-1 8.
+P0-B статус: exit code ✅, task allowlist ✅, self-recursion ✅ | остаётся: granular command policy, worker worktree+boundary, False DONE на terminal paths.
+SKILLS_LOADED: []
+MCP_USED: []
+COMPLIANCE: true
+STATUS: resolved
+================================================================================

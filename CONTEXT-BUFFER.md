@@ -1211,3 +1211,51 @@ MCP_USED: []
 COMPLIANCE: true
 STATUS: resolved
 ================================================================================
+================================================================================
+
+[2026-09-15T13:31:09] dev-1 -> team-lead:
+TYPE: update | PRIORITY: medium
+CONTENT: P0-A native discovery-test — задача выполнена, НО тест честно FAIL (exit 1) на реальном дефекте репо.
+
+АРТЕФАКТ: tests\test-discovery.ps1 (новый файл, единственная правка; 447 CRLF, 0 lone LF, UTF-8 без BOM, PSParser::Tokenize = 0 ошибок).
+Запуск: & "D:\Тест\agent-hq\tests\test-discovery.ps1" -> PASS=18 FAIL=1 SKIP=0 WARN=2, EXIT=1.
+
+ЧТО ПРОВЕРЯЕТ (9 групп, чистый PS 5.1, без Pester, exit 1 при любом FAIL): C1 opencode debug config exit 0 + parseable .agent; C2 источники .opencode\agents\*.json (registry.json исключён, требуется непустой name); C3 каждый источник присутствует в .agent + counts совпадают; C4 уникальность имён агентов; C5 frontmatter SKILL.md (name/description непустые); C6 name скилла = папке; C7 уникальность имён скиллов; C8 runtime-видимость скиллов через opencode debug skill; C9 required_skills -> существующие скиллы (SKIP если поля нет).
+
+РЕЗУЛЬТАТЫ (артефакты с диска/CLI): агенты sources=32, visible=32/32, runtime keys=35; скиллы 30 файлов SKILL.md (все с непустыми name/description), runtime debug skill = 31 (30 файлов + builtin customize-opencode), все 30 файлов видимы; required_skills 128 ссылок, 3 битых.
+
+ДЕФЕКТ 1 (БЛОКИРУЮЩИЙ exit 0; не чинил — решает team-lead): required_skills ссылается на несуществующий скилл "clean-code": .opencode\agents\registry.json:733 (agents.code-reviewer), :760 (agents.code-reviewer-1), :879 (agents.skill-surgeon). Скилла clean-code нет: .agents\skills\clean-code\SKILL.md отсутствует, в opencode debug skill его нет, поиск папки по репо пуст. Тот же "clean-code" есть в specialization.primary (registry.json:721, :748) — это НЕ required_skills, в счётчик не попадает. Варианты: создать скилл clean-code ИЛИ убрать из required_skills. Тест под дефект НЕ подгонялся.
+
+ДЕФЕКТ 2 (WARN, не блокирует): runtime регистрирует незадекларированного агента "prompts/README" из .opencode\agents\prompts\README.md (проверено: opencode debug agent "prompts/README" -> mode=all, permission "*": allow) — фантомный агент с широкими правами; лечится переименованием README.md в README.txt или переносом из .opencode\agents.
+
+НЮАНС C6 (зафиксировано явно, не подгонка): 4 скилла superpowers заданы именем по относительному пути (superpowers\test -> name superpowers-test) — ровно так их отдаёт runtime. Сравнение только с листовой папкой ложно пометило бы их дефектом; тест принимает каноничное <parent>-<leaf> имя и печатает способ совпадения.
+
+Не трогал другие скрипты/конфиги; temp не создавал; git status = только "?? tests/test-discovery.ps1".
+NOT EVIDENCE: происхождение ссылки clean-code и её наличие ранее (git-история не проверялась). context7 не вызывался — внешних библиотечных API не использовалось, поведение opencode CLI проверено прямым запуском.
+
+SKILLS_LOADED: ["evidence-discipline", "windows-safety", "superpowers-test"]
+MCP_USED: ["sequential-thinking"]
+COMPLIANCE: true
+STATUS: resolved
+================================================================================
+--------------------------------------------------------------------------------
+[
+2026-09-15T13:31:47
+] dev-1 -> team-lead: addendum к записи P0-A (discovery-test)
+TYPE: update | PRIORITY: low
+CONTENT: git status на момент сдачи после записи в шину: ?? tests/test-discovery.ps1 (мой новый файл), M CONTEXT-BUFFER.md (эта запись), M .memory/ratings.jsonl — НЕ моя правка (1 insertion / 1 deletion, обновление рейтингов шло параллельно; в ratings.jsonl я не писал). Temp-файл отчёта удалён, temp-артефактов не осталось; в tests\ новых файлов, кроме test-discovery.ps1, нет.
+Команда проверки: & "D:\Тест\agent-hq\tests\test-discovery.ps1" -> PASS=18 FAIL=1 SKIP=0 WARN=2, EXIT=1 (FAIL = дефект clean-code из основного отчёта).
+SKILLS_LOADED: ["evidence-discipline", "windows-safety", "superpowers-test"]
+MCP_USED: ["sequential-thinking"]
+COMPLIANCE: true
+STATUS: resolved
+--------------------------------------------------------------------------------
+
+[2026-09-15T13:35:01] skill-surgeon -> team-lead:
+TYPE: update | PRIORITY: medium
+Project: agent-hq
+CONTENT: Создан скилл .agents\skills\clean-code\SKILL.md (96 строк, frontmatter name/description валиден). Содержание: принципы SOLID/DRY/KISS/YAGNI, читаемость и именование, размер функций/классов, обработка ошибок, комментарии vs самодокументируемый код, code smells (magic numbers, long method, god object, copy-paste, флаговые параметры, глубокая вложенность), чек-лист ревьюера. Закрывает DEFECT 1 из tests\test-discovery.ps1 (required_skills clean-code в registry.json:733/:760/:879). Проверка: & "D:\Тест\agent-hq\tests\test-discovery.ps1" -> PASS=20 FAIL=0 SKIP=0 WARN=1, Check 9 PASS (128 references resolved against 32 known skills, 0 dangling), RESULT: PASS, EXIT=0. opencode debug skill = 32 runtime skill(s) (было 31), clean-code виден. Сам тест и registry.json не тронуты, коммита нет.
+SKILLS_LOADED: ["evidence-discipline", "windows-safety"]
+MCP_USED: []
+COMPLIANCE: true
+STATUS: resolved

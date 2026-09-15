@@ -147,8 +147,7 @@ function Assert-ConfigSchemaKeys {
     )
 
     if (-not (Test-Path -LiteralPath $SchemaPath)) {
-        Write-Warning "Schema not found: $SchemaPath — skipping top-level key validation"
-        return
+        throw "Schema not found: $SchemaPath — top-level key validation cannot run (fail-closed)."
     }
 
     try {
@@ -156,14 +155,12 @@ function Assert-ConfigSchemaKeys {
         $schema = $schemaRaw | ConvertFrom-Json
     }
     catch {
-        Write-Warning "Cannot parse schema ($SchemaPath): $($_.Exception.Message) — skipping top-level key validation"
-        return
+        throw "Cannot parse schema ($SchemaPath): $($_.Exception.Message)"
     }
 
     $configDef = $schema.'$defs'.Config
     if (($null -eq $configDef) -or ($null -eq $configDef.properties)) {
-        Write-Warning "Schema has no `$defs.Config.properties — skipping top-level key validation"
-        return
+        throw "Schema has no `$defs.Config.properties — cannot validate top-level keys (fail-closed)."
     }
 
     $allowed = @($configDef.properties.PSObject.Properties.Name)
@@ -174,7 +171,7 @@ function Assert-ConfigSchemaKeys {
 
     Write-Host "Top-level keys in opencode.json: $($actual -join ', ')" -ForegroundColor Cyan
 
-    $unknown = @($actual | Where-Object { $allowed -notcontains $_ })
+    $unknown = @($actual | Where-Object { $allowed -cnotcontains $_ })
     if ($unknown.Count -gt 0) {
         throw "Unknown top-level key(s) in opencode.json not present in schema `$defs.Config.properties: $($unknown -join ', ')"
     }
@@ -432,7 +429,8 @@ if ($allBackups.Count -gt 3) {
     }
 }
 
-# 11. Шаг безопасности .git выполняется отдельной командой (см. CONTEXT-BUFFER / install-step).
+# 11. Установка git-хука (отдельный скрипт; безопасно при CRLF).
+& (Join-Path $PSScriptRoot "install-hooks.ps1")
 
 Write-Host "`n=== DONE: $count agents written to opencode.json (text replacement, manual JSON serialization) ===" -ForegroundColor Cyan
 Write-Host "Prompts saved to: $promptsDir" -ForegroundColor Gray

@@ -1,0 +1,475 @@
+﻿opencode.exe : [93m[1m! [0m agent "code-reviewer" is a subagent, not a primary agent. Falling back to default agent
+C:\Users\Ermak_DS\AppData\Roaming\npm\opencode.ps1:14 знак:3
++   & "$basedir/node_modules/opencode-ai/bin/opencode.exe"   $args
++   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: ([93m[1m! [0m...o default agent:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+[0m
+> build ┬╖ gpt-5.5
+[0m
+╨Я╤А╨╛╨▓╨╡╤А╤П╤О ╤В╨╛╨╗╤М╨║╨╛ ╤Г╨║╨░╨╖╨░╨╜╨╜╤Л╨╣ diff-╤Д╨░╨╣╨╗ ╨╕ ╨▒╤Г╨┤╤Г ╤Б╤Б╤Л╨╗╨░╤В╤М╤Б╤П ╨╜╨░ ╤Б╤В╤А╨╛╨║╨╕ ╨▓╨╜╤Г╤В╤А╨╕ ╨╜╨╡╨│╨╛.
+[0mтЬЧ [0mRead .memory/reports/p0-review.diff failed[90m [limit=2000][0m
+[91m[1mError: [0mCannot read binary file: D:\╨в╨╡╤Б╤В\agent-hq\.memory\reports\p0-review.diff
+`Read` ╤Б╤З╨╕╤В╨░╨╡╤В ╤Д╨░╨╣╨╗ ╨▒╨╕╨╜╨░╤А╨╜╤Л╨╝; ╨╕╤Б╨┐╨╛╨╗╤М╨╖╤Г╤О PowerShell ╤В╨╛╨╗╤М╨║╨╛ ╨┤╨╗╤П ╤З╤В╨╡╨╜╨╕╤П ╤Н╤В╨╛╨│╨╛ ╨╢╨╡ ╤Д╨░╨╣╨╗╨░ ╤Б ╨┤╨╡╨║╨╛╨┤╨╕╤А╨╛╨▓╨░╨╜╨╕╨╡╨╝ ╨┐╨╛ BOM.
+[0m
+[0m$ [0m$p = "D:\╨в╨╡╤Б╤В\agent-hq\.memory\reports\p0-review.diff"; $bytes = [System.IO.File]::ReadAllBytes($p); if (
+$bytes.Length -ge 2 -and $bytes[0] -eq 255 -and $bytes[1] -eq 254) { [System.Text.Encoding]::Unicode.GetString($bytes) 
+} elseif ($bytes.Length -ge 2 -and $bytes[0] -eq 254 -and $bytes[1] -eq 255) { [System.Text.Encoding]::BigEndianUnicode
+.GetString($bytes) } elseif ($bytes.Length -ge 3 -and $bytes[0] -eq 239 -and $bytes[1] -eq 187 -and $bytes[2] -eq 191) 
+{ [System.Text.Encoding]::UTF8.GetString($bytes) } else { [System.Text.Encoding]::UTF8.GetString($bytes) }
+?diff --git a/.agents/hooks/pre-commit b/.agents/hooks/pre-commit
+index 4128fd0..a54b344 100644
+--- a/.agents/hooks/pre-commit
++++ b/.agents/hooks/pre-commit
+@@ -10,9 +10,17 @@ if [ -f "$SCRIPT" ]; then
+   powershell -NoProfile -ExecutionPolicy Bypass -File "$SCRIPT"
+   exit $?
+ fi
+-# fallback: main repo path via git-dir mapping (worktree without scanner script)
+-GITDIR="$(git rev-parse --git-common-dir 2>/dev/null)"
+-SCRIPT2="$GITDIR/../../.agents/scripts/pre-commit-secrets.ps1"
++# fallback: main repo path via git-common-dir mapping (worktree without scanner script).
++# git-common-dir points at <repo>/.git, so ONE level up is the repo root.
++GITDIR="$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null)"
++if [ -z "$GITDIR" ]; then
++  GITDIR="$(git rev-parse --git-common-dir 2>/dev/null)"
++  case "$GITDIR" in
++    /*|[A-Za-z]:/*) ;;
++    *) GITDIR="$ROOT/$GITDIR" ;;
++  esac
++fi
++SCRIPT2="$GITDIR/../.agents/scripts/pre-commit-secrets.ps1"
+ if [ -f "$SCRIPT2" ]; then
+   powershell -NoProfile -ExecutionPolicy Bypass -File "$SCRIPT2"
+   exit $?
+diff --git a/.agents/scripts/install-hooks.ps1 b/.agents/scripts/install-hooks.ps1
+new file mode 100644
+index 0000000..9e4c070
+--- /dev/null
++++ b/.agents/scripts/install-hooks.ps1
+@@ -0,0 +1,15 @@
++я╗┐param()
++# Installs the canonical pre-commit hook into .git/hooks.
++# Kept as a separate small script: the inline version inside sync-agents.ps1
++# triggered corporate AV (AMSI / ScriptContainedMaliciousContent).
++$root = if ($env:AGENT_HQ_ROOT) { $env:AGENT_HQ_ROOT } else { Split-Path (Split-Path $PSScriptRoot -Parent) -Parent }
++$hookSource = Join-Path $root ".agents\hooks\pre-commit"
++$gitHooksDir = Join-Path $root ".git\hooks"
++$hookTarget = Join-Path $gitHooksDir "pre-commit"
++if ((Test-Path -LiteralPath $hookSource) -and (Test-Path -LiteralPath $gitHooksDir -PathType Container)) {
++    Copy-Item -LiteralPath $hookSource -Destination $hookTarget -Force
++    Write-Host "Git hook installed: $hookTarget" -ForegroundColor Green
++}
++else {
++    Write-Warning "Git hook not installed (source: $(Test-Path -LiteralPath $hookSource); .git/hooks: $(Test-Path -Lit
+eralPath $gitHooksDir))"
++}
+diff --git a/.agents/scripts/sync-agents.ps1 b/.agents/scripts/sync-agents.ps1
+index 2cabbeb..4f11f6f 100644
+--- a/.agents/scripts/sync-agents.ps1
++++ b/.agents/scripts/sync-agents.ps1
+@@ -1,6 +1,5 @@
+ я╗┐param(
+-    [switch]$DryRun,
+-    [switch]$TestLegacyRemoval
++    [switch]$DryRun
+ )
+ 
+ $ErrorActionPreference = "Stop"
+@@ -138,172 +137,56 @@ function ConvertTo-AgentJson {
+ }
+ 
+ # ============================================================
+-# ╨г╨┤╨░╨╗╨╡╨╜╨╕╨╡ top-level JSON-╤Б╨╡╨║╤Ж╨╕╨╕ ╨┐╨╛ ╨╕╨╝╨╡╨╜╨╕ ╨║╨╗╤О╤З╨░ (text-based).
+-# ╨Ъ╨╛╤А╤А╨╡╨║╤В╨╜╨░╤П ╨╗╨╛╨│╨╕╨║╨░ ╨╖╨░╨┐╤П╤В╤Л╤Е: ╤Б╨╡╨║╤Ж╨╕╤П ╨╝╨╛╨╢╨╡╤В ╨▒╤Л╤В╤М ╨┐╨╡╤А╨▓╨╛╨╣, ╤Б╤А╨╡╨┤╨╜╨╡╨╣
+-# ╨╕╨╗╨╕ ╨┐╨╛╤Б╨╗╨╡╨┤╨╜╨╡╨╣. ╨Т╨╛╨╖╨▓╤А╨░╤Й╨░╨╡╤В ╨╜╨╛╨▓╤Л╨╣ ╤В╨╡╨║╤Б╤В ╨╕╨╗╨╕ $null, ╨╡╤Б╨╗╨╕ ╨║╨╗╤О╤З ╨╜╨╡ ╨╜╨░╨╣╨┤╨
+╡╨╜.
++# ╨Т╨░╨╗╨╕╨┤╨░╤Ж╨╕╤П: top-level ╨║╨╗╤О╤З╨╕ opencode.json тКЖ $defs.Config.properties
++# ╤Б╤Е╨╡╨╝╤Л schemas/opencode.config.schema.json. ╨Э╨╡╨╕╨╖╨▓╨╡╤Б╤В╨╜╤Л╨╣ ╨║╨╗╤О╤З тЖТ ╨╛╤И╨╕╨▒╨║╨░.
+ # ============================================================
+-function Remove-JsonTopLevelSection {
++function Assert-ConfigSchemaKeys {
+     param(
+-        [string]$text,
+-        [string]$keyName
++        [string]$ConfigPath,
++        [string]$SchemaPath
+     )
+ 
+-    $pattern = '(?m)^[ \t]*"' + [regex]::Escape($keyName) + '"\s*:\s*\{'
+-    $match = [regex]::Match($text, $pattern)
+-    if (-not $match.Success) {
+-        return $null
++    if (-not (Test-Path -LiteralPath $SchemaPath)) {
++        Write-Warning "Schema not found: $SchemaPath тАФ skipping top-level key validation"
++        return
+     }
+ 
+-    $braceStart = $match.Index + $match.Length - 1
+-    $braceEnd = Find-JsonBlockEnd -text $text -startBraceIndex $braceStart
+-    if ($braceEnd -lt 0) {
+-        return $null
++    try {
++        $schemaRaw = [System.IO.File]::ReadAllText($SchemaPath, [System.Text.Encoding]::UTF8)
++        $schema = $schemaRaw | ConvertFrom-Json
+     }
+-
+-    # 1. ╨г╨┤╨░╨╗╤П╨╡╨╝ ╤Б╨╡╨║╤Ж╨╕╤О [start..end]
+-    $delFrom = $match.Index
+-    $delTo = $braceEnd + 1
+-
+-    # 2. ╨Ю╨▒╤А╨╡╨╖╨░╨╡╨╝ ╨┐╤А╨╛╨▒╨╡╨╗╤Л ╨┐╨╛ ╨║╤А╨░╤П╨╝
+-    $before = $text.Substring(0, $delFrom).TrimEnd()
+-    $after = $text.Substring($delTo).TrimStart()
+-
+-    # ╨Ч╨░╨┐╤П╤В╨░╤П ╨▓ ╨╜╨░╤З╨░╨╗╨╡ $after ╤А╨░╨╖╨┤╨╡╨╗╤П╨╗╨░ ╤Г╨┤╨░╨╗╤П╨╡╨╝╤Г╤О ╤Б╨╡╨║╤Ж╨╕╤О ╤Б╨╛ ╤Б╨╗╨╡╨┤╤Г╤О╤Й╨╕╨╝
+-    # ╤Н╨╗╨╡╨╝╨╡╨╜╤В╨╛╨╝ тАФ ╨╛╨╜╨░ ╨▒╨╛╨╗╤М╤И╨╡ ╨╜╨╡ ╨╜╤Г╨╢╨╜╨░, ╤Г╨▒╨╕╤А╨░╨╡╨╝ (╨╕ ╨┐╨╛╨▓╤В╨╛╤А╨╜╤Л╨╡ ╨┐╤А╨╛╨▒╨╡╨╗╤Л
+ ╨╖╨░ ╨╜╨╡╨╣).
+-    if ($after -match '^,') {
+-        $after = $after.Substring(1).TrimStart()
++    catch {
++        Write-Warning "Cannot parse schema ($SchemaPath): $($_.Exception.Message) тАФ skipping top-level key validatio
+n"
++        return
+     }
+ 
+-    # ╨б╨╡╨║╤Ж╨╕╤П ╨▒╤Л╨╗╨░ ╨┐╨╛╤Б╨╗╨╡╨┤╨╜╨╡╨╣: ╨▓╨╕╤Б╤П╤З╨░╤П ╨╖╨░╨┐╤П╤В╨░╤П ╨┐╨╡╤А╨╡╨┤ ╨╖╨░╨║╤А╤Л╨▓╨░╤О╤Й╨╡╨╣ } тАФ 
+╤Г╨▒╤А╨░╤В╤М.
+-    if ($after -match '^}' -and $before -match ',$') {
+-        $before = $before.TrimEnd(',').TrimEnd()
++    $configDef = $schema.'$defs'.Config
++    if (($null -eq $configDef) -or ($null -eq $configDef.properties)) {
++        Write-Warning "Schema has no `$defs.Config.properties тАФ skipping top-level key validation"
++        return
+     }
+ 
+-    # 3. ╨Ч╨░╨┐╤П╤В╨░╤П ╨╜╤Г╨╢╨╜╨░, ╤В╨╛╨╗╤М╨║╨╛ ╨╡╤Б╨╗╨╕ ╨┐╨╛ ╨╛╨▒╨╡ ╤Б╤В╨╛╤А╨╛╨╜╤Л ╨╛╤Б╤В╨░╨╗╨╕╤Б╤М ╤Н╨╗╨╡╨╝╨╡╨╜╤В╤Л
+-    #    (before ╨╜╨╡ ╨╖╨░╨║╨░╨╜╤З╨╕╨▓╨░╨╡╤В╤Б╤П ╨╜╨░ "{" ╨╕╨╗╨╕ ",", after ╨╜╨╡ ╨╜╨░╤З╨╕╨╜╨░╨╡╤В╤Б╤П ╤Б "}" ╨╕╨╗╨╕ ",
+")
+-    $needComma = ($before -notmatch '[{,]$') -and ($after -notmatch '^[},]') -and ($after.Trim().Length -gt 0)
++    $allowed = @($configDef.properties.PSObject.Properties.Name)
+ 
+-    # 4. ╨б╨╛╨▒╨╕╤А╨░╨╡╨╝ ╤А╨╡╨╖╤Г╨╗╤М╤В╨░╤В
+-    $comma = if ($needComma) { "," } else { "" }
+-    return $before + $comma + "`n" + $after
+-}
++    $configRaw = [System.IO.File]::ReadAllText($ConfigPath, [System.Text.Encoding]::UTF8)
++    $config = $configRaw | ConvertFrom-Json
++    $actual = @($config.PSObject.Properties.Name)
+ 
+-# ============================================================
+-# ╨в╨Х╨б╨в: -TestLegacyRemoval тАФ ╤Г╨┤╨░╨╗╨╡╨╜╨╕╨╡ legacy-╤Б╨╡╨║╤Ж╨╕╨╕ "agent"
+-# ╨▓ 3 ╨┐╨╛╨╖╨╕╤Ж╨╕╤П╤Е (╨┐╨╡╤А╨▓╨░╤П / ╤Б╨╡╤А╨╡╨┤╨╕╨╜╨░ / ╨┐╨╛╤Б╨╗╨╡╨┤╨╜╤П╤П) ╨▓╨╛ ╨▓╤А╨╡╨╝╨╡╨╜╨╜╤Л╤Е JSON.
+-# ============================================================
+-if ($TestLegacyRemoval) {
+-    $tempDir = Join-Path $env:TEMP ("legacy-test-" + [System.IO.Path]::GetRandomFileName())
+-    New-Item -ItemType Directory -Path $tempDir -Force | Out-Null
+-
+-    # ╨б╨╡╨║╤Ж╨╕╤П "agent" ╨Я╨Х╨а╨Т╨Р╨п (╨╖╨░ ╨╜╨╡╨╣ ╨╕╨┤╤Г╤В ╨┤╤А╤Г╨│╨╕╨╡ ╨║╨╗╤О╤З╨╕)
+-    $firstJson = @'
+-{
+-  "agent": {
+-    "name": "legacy"
+-  },
+-  "agents": {
+-    "dev-1": { "mode": "subagent" }
+-  },
+-  "theme": "dark"
+-}
+-'@
++    Write-Host "Top-level keys in opencode.json: $($actual -join ', ')" -ForegroundColor Cyan
+ 
+-    # ╨б╨╡╨║╤Ж╨╕╤П "agent" ╨▓ ╨б╨Х╨а╨Х╨Ф╨Ш╨Э╨Х
+-    $middleJson = @'
+-{
+-  "theme": "dark",
+-  "agent": {
+-    "name": "legacy",
+-    "nested": { "deep": true }
+-  },
+-  "agents": {
+-    "dev-1": { "mode": "subagent" }
+-  }
+-}
+-'@
+-
+-    # ╨б╨╡╨║╤Ж╨╕╤П "agent" ╨Я╨Ю╨б╨Ы╨Х╨Ф╨Э╨п╨п (╨╖╨░ ╨╜╨╡╨╣ ╤В╨╛╨╗╤М╨║╨╛ ╨╖╨░╨║╤А╤Л╨▓╨░╤О╤Й╨░╤П })
+-    $lastJson = @'
+-{
+-  "agents": {
+-    "dev-1": { "mode": "subagent" }
+-  },
+-  "theme": "dark",
+-  "agent": {
+-    "name": "legacy"
+-  }
+-}
+-'@
+-
+-    $cases = @(
+-        @{ Name = "first";   Json = $firstJson },
+-        @{ Name = "middle";  Json = $middleJson },
+-        @{ Name = "last";    Json = $lastJson }
+-    )
+-
+-    $passed = 0
+-    $failed = 0
+-    foreach ($case in $cases) {
+-        $tmpFile = Join-Path $tempDir ("case-" + $case.Name + ".json")
+-        [System.IO.File]::WriteAllText($tmpFile, $case.Json, (New-Object System.Text.UTF8Encoding($false)))
+-
+-        $resultText = Remove-JsonTopLevelSection -text $case.Json -keyName "agent"
+-        $casePass = $false
+-        if ($null -eq $resultText) {
+-            Write-Host "  [FAIL] $($case.Name): 'agent' section not found" -ForegroundColor Red
+-        }
+-        else {
+-            try {
+-                $null = $resultText | ConvertFrom-Json -ErrorAction Stop
+-                $parsed = $resultText | ConvertFrom-Json
+-                # 'agent' ╨┤╨╛╨╗╨╢╨╡╨╜ ╨╕╤Б╤З╨╡╨╖╨╜╤Г╤В╤М, 'agents' ╨╕ 'theme' тАФ ╨╛╤Б╤В╨░╤В╤М╤Б╤П
+-                $agentGone = ($null -eq $parsed.agent)
+-                $agentsKept = ($null -ne $parsed.agents)
+-                $themeKept = ($null -ne $parsed.theme)
+-                if ($agentGone -and $agentsKept -and $themeKept) {
+-                    $casePass = $true
+-                }
+-                else {
+-                    Write-Host "  [FAIL] $($case.Name): wrong keys after removal (agentGone=$agentGone agentsKept=$age
+ntsKept themeKept=$themeKept)" -ForegroundColor Red
+-                }
+-            }
+-            catch {
+-                Write-Host "  [FAIL] $($case.Name): invalid JSON after removal тАФ $($_.Exception.Message)" -Foregroun
+dColor Red
+-            }
+-        }
+-
+-        if ($casePass) {
+-            # ╨Ф╨╛╨┐. ╨┐╤А╨╛╨▓╨╡╤А╨║╨░: ╤Г╨┤╨░╨╗╨╡╨╜╨╕╨╡ ╨╕╨╖ ╤Д╨░╨╣╨╗╨░ ╨╜╨░ ╨┤╨╕╤Б╨║╨╡ (╤В╨╛╤В ╨╢╨╡ ╨║╨╛╨┤╨╛╨▓╤Л╨╣ ╨
+┐╤Г╤В╤М)
+-            $onDisk = [System.IO.File]::ReadAllText($tmpFile, [System.Text.Encoding]::UTF8)
+-            $diskResult = Remove-JsonTopLevelSection -text $onDisk -keyName "agent"
+-            try {
+-                $null = $diskResult | ConvertFrom-Json -ErrorAction Stop
+-                Write-Host "  [PASS] $($case.Name)" -ForegroundColor Green
+-                $passed++
+-            }
+-            catch {
+-                Write-Host "  [FAIL] $($case.Name): on-disk variant invalid тАФ $($_.Exception.Message)" -ForegroundCo
+lor Red
+-                $failed++
+-            }
+-        }
+-        else {
+-            $failed++
+-        }
++    $unknown = @($actual | Where-Object { $allowed -notcontains $_ })
++    if ($unknown.Count -gt 0) {
++        throw "Unknown top-level key(s) in opencode.json not present in schema `$defs.Config.properties: $($unknown -j
+oin ', ')"
+     }
+ 
+-    # ╨з╨╕╤Б╤В╨╕╨╝ ╨▓╤А╨╡╨╝╨╡╨╜╨╜╤Л╨╡ ╤Д╨░╨╣╨╗╤Л
+-    Remove-Item -LiteralPath $tempDir -Recurse -Force -ErrorAction SilentlyContinue
+-
+-    Write-Host ""
+-    Write-Host "=== Legacy removal test: $passed passed, $failed failed ===" -ForegroundColor $(if ($failed -eq 0) { "
+Green" } else { "Red" })
+-    if ($failed -eq 0) { exit 0 } else { exit 1 }
++    Write-Host "Schema validation OK: all top-level keys are known." -ForegroundColor Green
+ }
+ 
+ $root = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
+ $agentsDir = Join-Path $root ".opencode\agents"
+ $promptsDir = Join-Path $agentsDir "prompts"
+ $configPath = Join-Path $root "opencode.json"
++$schemaPath = Join-Path $root "schemas\opencode.config.schema.json"
+ 
+ if (-not (Test-Path $promptsDir)) {
+     New-Item -ItemType Directory -Path $promptsDir -Force | Out-Null
+@@ -312,6 +195,26 @@ if (-not (Test-Path $promptsDir)) {
+ $allowKeys = @("read", "edit", "bash", "glob", "grep", "skill", "question", "webfetch", "websearch", "task", "list")
+ $denyIfMissing = @("edit", "bash", "task")
+ 
++# ============================================================
++# ╨С╨╗╨╛╨║ evidence-discipline, ╨┤╨╛╨▒╨░╨▓╨╗╤П╨╡╨╝╤Л╨╣ ╨▓ ╨╜╨░╤З╨░╨╗╨╛ ╨Ъ╨Р╨Ц╨Ф╨Ю╨У╨Ю ╨┐╤А╨╛╨╝╨┐╤В╨░
++# (6 ╨┐╤А╨░╨▓╨╕╨╗ + ╨╖╨░╨┐╤А╨╡╤В DONE ╨▒╨╡╨╖ ╨░╤А╤В╨╡╤Д╨░╨║╤В╨░). Verbatim here-string тАФ
++# ╨╛╨┤╨╕╨╜╨░╤А╨╜╤Л╨╡ ╨║╨░╨▓╤Л╤З╨║╨╕, ╤З╤В╨╛╨▒╤Л backtick-╤Б╨╕╨╝╨▓╨╛╨╗╤Л ╨╜╨╡ ╨╕╨╜╤В╨╡╤А╨┐╤А╨╡╤В╨╕╤А╨╛╨▓╨░╨╗╨╕╤Б╤М.
++# ============================================================
++$evidenceHeader = @'
++## EVIDENCE-DISCIPLINE (╨╛╨▒╤П╨╖╨░╤В╨╡╨╗╤М╨╜╨╛; ╨╜╨░╤А╤Г╤И╨╡╨╜╨╕╨╡ = REJECT)
++1. ╨Э╨╡ ╤Г╤В╨▓╨╡╤А╨╢╨┤╨░╨╣ ╤Б╤Г╤Й╨╡╤Б╤В╨▓╨╛╨▓╨░╨╜╨╕╨╡ ╤Д╨░╨╣╨╗╨░/╨║╨╛╨╝╨░╨╜╨┤╤Л/API/╤Б╨║╨╕╨╗╨╗╨░ ╨▒╨╡╨╖ ╨┐╤А╨╛╨▓╨╡╤А╨║
+╨╕ (Read ╨╕╨╗╨╕ ╨╖╨░╨┐╤Г╤Б╨║).
++2. ╨Э╨╡ ╨┐╤А╨╛╨▓╨╡╤А╨╡╨╜╨╛ тАФ ╨┐╨╕╤И╨╕ `NOT ENOUGH EVIDENCE: <╤З╤В╨╛ ╨╕╨╝╨╡╨╜╨╜╨╛>`, ╨╜╨╡ ╨┤╨╛╨│╨░╨┤╤Л╨▓╨░╨╣╤Б╤П.
++3. `DONE` тАФ ╤В╨╛╨╗╤М╨║╨╛ ╤Б ╨░╤А╤В╨╡╤Д╨░╨║╤В╨╛╨╝ (╨┐╤Г╤В╤М + ╨▓╤Л╨▓╨╛╨┤/diff). ╨Э╨╡╤В ╨░╤А╤В╨╡╤Д╨░╨║╤В╨░ тАФ `PARTIA
+L`.
++4. ╨б╤Б╤Л╨╗╨║╨╕ ╨╜╨░ ╨║╨╛╨┤ тАФ `path:line`, ╤В╨╛╨╗╤М╨║╨╛ ╨┐╨╛╤Б╨╗╨╡ ╤З╤В╨╡╨╜╨╕╤П.
++5. ╨Ю╤В╤Б╤Г╤В╤Б╤В╨▓╤Г╤О╤Й╨╡╨╡ ╨╜╨░╨╖╤Л╨▓╨░╨╣ `missing`, ╨╜╨╡ ╨┐╨╛╨┤╨╝╨╡╨╜╤П╨╣ ╨┐╨╛╤Е╨╛╨╢╨╕╨╝.
++6. ╨а╨░╨╖╨╗╨╕╤З╨░╨╣: ┬л╨┐╤А╨╛╨▓╨╡╤А╨╕╨╗┬╗ / ┬л╨┐╤А╨╡╨┤╨┐╨╛╨╗╨░╨│╨░╤О┬╗ / ┬л╤Б╨┤╨╡╨╗╨░╨╗┬╗.
++
++╨Ч╨Р╨Я╨а╨Х╨й╨Х╨Э╨Ю ╨┐╨╕╤Б╨░╤В╤М `DONE` ╨▒╨╡╨╖ ╨░╤А╤В╨╡╤Д╨░╨║╤В╨░ тАФ ╤Н╤В╨╛ ╨╗╨╛╨╢╨╜╤Л╨╣ ╨╛╤В╤З╤С╤В (REJECT).
++
++---
++
++'@
++
+ $jsonFiles = Get-ChildItem -Path $agentsDir -Filter "*.json" | Where-Object { $_.Name -ne "registry.json" }
+ 
+ Write-Host "=== Sync Agents: $($jsonFiles.Count) files found ===" -ForegroundColor Cyan
+@@ -360,7 +263,7 @@ foreach ($file in $jsonFiles) {
+     $name = if ($data.name) { $data.name } else { [System.IO.Path]::GetFileNameWithoutExtension($file.Name) }
+ 
+     $promptFile = Join-Path $promptsDir "$name.txt"
+-    [System.IO.File]::WriteAllText($promptFile, $data.prompt, (New-Object System.Text.UTF8Encoding($false)))
++    [System.IO.File]::WriteAllText($promptFile, ($evidenceHeader + $data.prompt), (New-Object System.Text.UTF8Encoding
+($false)))
+ 
+     $perm = [ordered]@{}
+     foreach ($key in $allowKeys) {
+@@ -370,13 +273,10 @@ foreach ($file in $jsonFiles) {
+             $perm[$key] = "deny"
+         }
+     }
+-    # external_directory: ╨│╨╗╨╛╨▒╨░╨╗╤М╨╜╤Л╨╡ ╨┤╨╛╨▓╨╡╤А╨╡╨╜╨╜╤Л╨╡ ╨╖╨╛╨╜╤Л (D:\╨в╨╡╤Б╤В + opencode-╨┐╤Г╤В╨╕ ╨╜╨░ C:)
+-    # ╨С╨╡╨╖ ╤Н╤В╨╛╨│╨╛ per-agent permission ╨┐╨╡╤А╨╡╨║╤А╤Л╨▓╨░╨╡╤В top-level ╨╕ ╨░╨│╨╡╨╜╤В╤Л ╨┐╤А╨╛╤Б╤П╤В ╨┐╨╛╨┤╤В╨▓╨
+╡╤А╨╢╨┤╨╡╨╜╨╕╨╡
++    # external_directory: ╨в╨Ю╨Ы╨м╨Ъ╨Ю ╨║╨╛╤А╨╡╨╜╤М ╤А╨╡╨┐╨╛ (worktrees тАФ ╨▓╨╜╤Г╤В╤А╨╕ ╤А╨╡╨┐╨╛).
++    # ╨Ъ╨╛╨╜╤Д╨╕╨│/╨║╤А╨╡╨┤╤Л opencode ╨╕ ╨┐╤А╨╛╤З╨╕╨╡ ╨┐╤Г╤В╨╕ C: ╨░╨│╨╡╨╜╤В╨░╨╝ ╨╜╨╡╨┤╨╛╤Б╤В╤Г╨┐╨╜╤Л.
+     $perm["external_directory"] = [ordered]@{
+-        "D:\╨в╨╡╤Б╤В\**"                                        = "allow"
+-        "C:\Users\Ermak_DS\.local\share\opencode\**"        = "allow"
+-        "C:\Users\Ermak_DS\AppData\Local\opencode\**"       = "allow"
+-        "C:\Users\Ermak_DS\.config\opencode\**"             = "allow"
++        "D:\╨в╨╡╤Б╤В\agent-hq\**" = "allow"
+     }
+ 
+     # ╨б╨╛╨▒╨╕╤А╨░╨╡╨╝ entry ╨║╨░╨║ ╤Е╤Н╤И╤В╨░╨▒╨╗╨╕╤Ж╤Г (╨╜╨╡ PSCustomObject тАФ ╨┤╨╗╤П ╤А╤Г╤З╨╜╨╛╨╣ ╤Б╨╡╤А╨╕╨░╨╗╨╕╨╖
+╨░╤Ж╨╕╨╕)
+@@ -419,6 +319,8 @@ if ($DryRun) {
+ # ╨в╨Ю╨з╨Х╨з╨Э╨Р╨п ╨в╨Х╨Ъ╨б╨в╨Ю╨Т╨Р╨п ╨Ч╨Р╨Ь╨Х╨Э╨Р ╤Б╨╡╨║╤Ж╨╕╨╕ "agent" ╨▓ opencode.json
+ # ╨Э╨Х ╨╕╤Б╨┐╨╛╨╗╤М╨╖╤Г╨╡╨╝ ConvertFrom-Json/ConvertTo-Json ╨╜╨░ ╨▓╤Б╤С╨╝ ╤Д╨░╨╣╨╗╨╡ тАФ
+ # PS 5.1 ╤В╨╡╤А╤П╨╡╤В NoteProperty-╤Б╨╡╨║╤Ж╨╕╨╕ ╨╕ ╨┐╨╛╤А╤В╨╕╤В ╨║╨╕╤А╨╕╨╗╨╗╨╕╤Ж╤Г.
++# ╨Т╨Р╨Ц╨Э╨Ю: ╨╡╨┤╨╕╨╜╤Б╤В╨▓╨╡╨╜╨╜╤Л╨╣ ╨║╨╛╤А╤А╨╡╨║╤В╨╜╤Л╨╣ ╨║╨╗╤О╤З ╤Б╤Е╨╡╨╝╤Л тАФ "agent" (╨╡╨┤.╤З.).
++# ╨Ы╨╡╨│╨░╤Б╨╕-╨║╨╗╤О╤З "agents" (╨╝╨╜.╤З.) ╨▒╨╛╨╗╤М╤И╨╡ ╨Э╨Х ╨┐╨╛╨┤╨┤╨╡╤А╨╢╨╕╨▓╨░╨╡╤В╤Б╤П ╨╕ ╨╜╨╡ ╨╕╤Й╨╡╤В╤Б╤П.
+ # ============================================================
+ 
+ if (-not (Test-Path $configPath)) {
+@@ -430,7 +332,7 @@ $configText = [System.IO.File]::ReadAllText($configPath, [System.Text.Encoding]:
+ 
+ # 2. ╨б╨╛╨▒╤А╨░╤В╤М JSON ╤Б╨╡╨║╤Ж╨╕╨╕ agent ╨▓╤А╤Г╤З╨╜╤Г╤О (╨▒╨╡╨╖ ConvertTo-Json тАФ PS 5.1 ╨╗╨╛╨╝╨░╨╡╤В ╨║╨╕╤А╨╕╨╗╨╗
+╨╕╤Ж╤Г)
+ $agentLines = [System.Collections.ArrayList]::new()
+-[void]$agentLines.Add('  "agents": {')
++[void]$agentLines.Add('  "agent": {')
+ for ($i = 0; $i -lt $agentEntries.Count; $i++) {
+     $e = $agentEntries[$i]
+     $jsonBlock = ConvertTo-AgentJson -name $e.name -description $e.description -mode $e.mode -model $e.model -temperat
+ure $e.temperature -permission $e.permission -prompt $e.prompt
+@@ -440,26 +342,13 @@ for ($i = 0; $i -lt $agentEntries.Count; $i++) {
+ [void]$agentLines.Add('  }')
+ $agentJsonBlock = $agentLines -join "`n"
+ 
+-# 3. ╨Э╨░╨╣╤В╨╕ ╨▓╨╡╤А╤Е╨╜╨╡╤Г╤А╨╛╨▓╨╜╨╡╨▓╤Л╨╣ ╨║╨╗╤О╤З "agents" (╨╗╤О╨▒╨╛╨╣ ╨╛╤В╤Б╤В╤Г╨┐, ╨╜╨╛ ╨в╨Ю╨Ы╨м╨Ъ╨Ю top-level
+)
+-#    ╨г╤Б╤В╨╛╨╣╤З╨╕╨▓╨╛ ╨║ ╨╛╤В╤Б╤В╤Г╨┐╨░╨╝; ╨┤╤Г╨▒╨╗╤М-╨╖╨░╤Й╨╕╤В╨░: ╤Б╨╡╨║╤Ж╨╕╤П "agent" (╨╡╨┤.╤З., ╨╗╨╡╨│╨░╤Б╨╕-╨▒╨
+░╨│) ╤Г╨┤╨░╨╗╤П╨╡╤В╤Б╤П
+-$agentPattern = '(?m)^[ \t]*"agents"\s*:\s*\{'
++# 3. ╨Э╨░╨╣╤В╨╕ ╨▓╨╡╤А╤Е╨╜╨╡╤Г╤А╨╛╨▓╨╜╨╡╨▓╤Л╨╣ ╨║╨╗╤О╤З "agent" (╨╗╤О╨▒╨╛╨╣ ╨╛╤В╤Б╤В╤Г╨┐, ╨╜╨╛ ╨в╨Ю╨Ы╨м╨Ъ╨Ю top-level)
+.
++#    ╨Ъ╨╗╤О╤З "agent" тАФ ╨║╨░╨╜╨╛╨╜╨╕╤З╨╡╤Б╨║╨╕╨╣ ╨║╨╗╤О╤З ╤Б╤Е╨╡╨╝╤Л; ╨Э╨Х ╤Г╨┤╨░╨╗╤П╨╡╨╝ ╨╡╨│╨╛ ╨║╨░╨║ legacy.
++$agentPattern = '(?m)^[ \t]*"agent"\s*:\s*\{'
+ $agentMatch = [regex]::Match($configText, $agentPattern)
+ 
+-# ╨Ы╨╡╨│╨░╤Б╨╕-╨┤╤Г╨▒╨╗╤М: ╤Г╨┤╨░╨╗╨╕╤В╤М top-level "agent" (╨╡╨┤╨╕╨╜╤Б╤В╨▓╨╡╨╜╨╜╨╛╨╡ ╤З╨╕╤Б╨╗╨╛) ╨╡╤Б╨╗╨╕ ╤Б╤Г╤Й╨╡╤Б╤
+В╨▓╤Г╨╡╤В
+-$legacyPattern = '(?m)^[ \t]*"agent"\s*:\s*\{'
+-$legacyMatch = [regex]::Match($configText, $legacyPattern)
+-if ($legacyMatch.Success) {
+-    $newText = Remove-JsonTopLevelSection -text $configText -keyName "agent"
+-    if ($null -ne $newText) {
+-        $configText = $newText
+-        Write-Warning "Legacy duplicate 'agent' section removed"
+-        # ╨Я╨╛╨▓╤В╨╛╤А╨╜╨╛ ╨╕╤Й╨╡╨╝ agents (╨┐╨╛╨╖╨╕╤Ж╨╕╨╕ ╤Б╨╝╨╡╤Б╤В╨╕╨╗╨╕╤Б╤М)
+-        $agentMatch = [regex]::Match($configText, $agentPattern)
+-    }
+-}
+-
+ if (-not $agentMatch.Success) {
+-    Write-Warning "Top-level 'agents' key not found тАФ appending before final }"
++    Write-Warning "Top-level 'agent' key not found тАФ appending before final }"
+     $lastBrace = $configText.LastIndexOf("}")
+     if ($lastBrace -lt 0) {
+         throw "opencode.json has no closing brace тАФ cannot inject agent section"
+@@ -520,8 +409,21 @@ catch {
+     exit 1
+ }
+ 
++# 9b. ╨Т╨░╨╗╨╕╨┤╨░╤Ж╨╕╤П top-level ╨║╨╗╤О╤З╨╡╨╣ ╨┐╤А╨╛╤В╨╕╨▓ ╤Б╤Е╨╡╨╝╤Л; ╨╜╨╡╨╕╨╖╨▓╨╡╤Б╤В╨╜╤Л╨╣ ╨║╨╗╤О╤З тЖТ ╨╛╤В╨║╨░╤
+В
++try {
++    Assert-ConfigSchemaKeys -ConfigPath $configPath -SchemaPath $schemaPath
++}
++catch {
++    Write-Error "$($_.Exception.Message) тАФ rolling back from backup"
++    Copy-Item -LiteralPath $backupPath -Destination $configPath -Force
++    exit 1
++}
++
+ # 10. ╨г╨┤╨░╨╗╨╡╨╜╨╕╨╡ ╤Б╤В╨░╤А╤Л╤Е ╨▒╤Н╨║╨░╨┐╨╛╨▓ тАФ ╨╛╤Б╤В╨░╨▓╨╕╤В╤М ╤В╨╛╨╗╤М╨║╨╛ ╨┐╨╛╤Б╨╗╨╡╨┤╨╜╨╕╨╡ 3
+-$allBackups = Get-ChildItem -LiteralPath $root -Filter "opencode.json.bak.*" | Sort-Object Name -Descending
++#     (pre-migration ╨▒╤Н╨║╨░╨┐ тАФ ╨╕╤Б╨║╨╗╤О╤З╨╡╨╜╨╕╨╡, ╨╜╨╡ ╤Г╨┤╨░╨╗╤П╨╡╨╝)
++$allBackups = Get-ChildItem -LiteralPath $root -Filter "opencode.json.bak.*" |
++    Where-Object { $_.Name -notlike "*.pre-migration" } |
++    Sort-Object Name -Descending
+ if ($allBackups.Count -gt 3) {
+     $toDelete = $allBackups | Select-Object -Skip 3
+     foreach ($old in $toDelete) {
+@@ -530,5 +432,7 @@ if ($allBackups.Count -gt 3) {
+     }
+ }
+ 
++# 11. ╨и╨░╨│ ╨▒╨╡╨╖╨╛╨┐╨░╤Б╨╜╨╛╤Б╤В╨╕ .git ╨▓╤Л╨┐╨╛╨╗╨╜╤П╨╡╤В╤Б╤П ╨╛╤В╨┤╨╡╨╗╤М╨╜╨╛╨╣ ╨║╨╛╨╝╨░╨╜╨┤╨╛╨╣ (╤Б╨╝. CONTEXT-B
+UFFER / install-step).
++
+ Write-Host "`n=== DONE: $count agents written to opencode.json (text replacement, manual JSON serialization) ===" -For
+egroundColor Cyan
+ Write-Host "Prompts saved to: $promptsDir" -ForegroundColor Gray
+diff --git a/.gitattributes b/.gitattributes
+new file mode 100644
+index 0000000..4077b93
+--- /dev/null
++++ b/.gitattributes
+@@ -0,0 +1,3 @@
++я╗┐# Agent HQ: PowerShell scripts must use CRLF (PS 5.1 + UTF-8 BOM + LF => false 'ScriptContainedMaliciousContent' / 
+AMSI block)
++*.ps1 text eol=crlf
++*.sh text eol=lf
+diff --git a/.gitignore b/.gitignore
+index 50c8755..e4dd9a7 100644
+--- a/.gitignore
++++ b/.gitignore
+@@ -57,6 +57,7 @@ task-summary*
+ # Root stray prevention (canonical agents live in .opencode/agents/)
+ /*.json
+ !opencode.json
++!agent-hq.json
+ /prompts/
+ 
+ # Projects (working code, not part of agent-hq core)
+[0m
+**╨Т╨╡╤А╨┤╨╕╨║╤В: APPROVE_WITH_CHANGES**
+
+╨Я╤А╨╛╨▒╨╗╨╡╨╝╤Л:
+
+- Medium: `.agents/scripts/sync-agents.ps1:63`, `.agents/scripts/sync-agents.ps1:74`, `.agents/scripts/sync-agents.ps1:81`  
+  `Assert-ConfigSchemaKeys` ╨┐╤А╨╛╨┐╤Г╤Б╨║╨░╨╡╤В ╨▓╨░╨╗╨╕╨┤╨░╤Ж╨╕╤О ╨┐╤А╨╕ ╨╛╤В╤Б╤Г╤В╤Б╤В╨▓╨╕╨╕/╨▒╨╕╤В╨╛╨╣ ╤Б╤Е╨╡╨╝╨╡ ╨╕╨╗╨╕ ╨╛╤В╤Б╤Г╤В╤Б╤В╨▓╨╕╨╕ `$defs.Config.properties`. ╨Ф╨╗╤П P0-╨╝╨╕╨│╤А╨░╤Ж╨╕╨╕ ╤Н╤В╨╛ ╤Б╨╗╨░╨▒╤Л╨╣ gate: ╨╜╨╡╨╕╨╖╨▓╨╡╤Б╤В╨╜╤Л╨╡ top-level ╨║╨╗╤О╤З╨╕ ╨╝╨╛╨│╤Г╤В ╨┐╤А╨╛╨╣╤В╨╕ ╨╝╨╛╨╗╤З╨░. ╨Ы╤Г╤З╤И╨╡ `throw`, ╨░ ╨╜╨╡ `Write-Warning + return`.
+
+- Low: `.agents/scripts/sync-agents.ps1:93`  
+  ╨Я╤А╨╛╨▓╨╡╤А╨║╨░ `$allowed -notcontains $_` ╨▓ PowerShell ╤А╨╡╨│╨╕╤Б╤В╤А╨╛╨╜╨╡╨╖╨░╨▓╨╕╤Б╨╕╨╝╨░╤П. JSON-╨║╨╗╤О╤З╨╕ ╤Д╨░╨║╤В╨╕╤З╨╡╤Б╨║╨╕ case-sensitive, ╨┐╨╛╤Н╤В╨╛╨╝╤Г `Agent` ╨╝╨╛╨╢╨╡╤В ╨┐╤А╨╛╨╣╤В╨╕ ╨║╨░╨║ `agent`. ╨Ы╤Г╤З╤И╨╡ ╨╕╤Б╨┐╨╛╨╗╤М╨╖╨╛╨▓╨░╤В╤М case-sensitive ╤Б╤А╨░╨▓╨╜╨╡╨╜╨╕╨╡: `-cnotcontains`.
+
+- Low: `.agents/scripts/sync-agents.ps1:432`, `.agents/scripts/install-hooks.ps1:1`  
+  ╨г╤Б╤В╨░╨╜╨╛╨▓╨║╨░ pre-commit ╨▓╤Л╨╜╨╡╤Б╨╡╨╜╨░ ╨▓ ╨╛╤В╨┤╨╡╨╗╤М╨╜╤Л╨╣ ╤Б╨║╤А╨╕╨┐╤В, ╨╜╨╛ ╨▓ diff ╨╜╨╡ ╨▓╨╕╨┤╨╜╨╛ ╨░╨▓╤В╨╛╨╝╨░╤В╨╕╤З╨╡╤Б╨║╨╛╨│╨╛ ╨▓╤Л╨╖╨╛╨▓╨░ ╨╕╨╖ `sync-agents.ps1`. ╨Х╤Б╨╗╨╕ ╨┐╤А╨╡╨╢╨╜╨╡╨╡ ╨╛╨╢╨╕╨┤╨░╨╜╨╕╨╡ ╨▒╤Л╨╗╨╛ тАЬsync-agents ╤Б╤В╨░╨▓╨╕╤В hookтАЭ, ╤Н╤В╨╛ ╤А╨╡╨│╤А╨╡╤Б╤Б╨╕╤П ╨▒╨╡╨╖╨╛╨┐╨░╤Б╨╜╨╛╤Б╤В╨╕: ╨┐╨╛╤Б╨╗╨╡ sync hook ╨╝╨╛╨╢╨╡╤В ╨╜╨╡ ╨╛╨▒╨╜╨╛╨▓╨╕╤В╤М╤Б╤П/╨╜╨╡ ╤Г╤Б╤В╨░╨╜╨╛╨▓╨╕╤В╤М╤Б╤П.
+
+╨Ъ╤А╨╕╤В╨╕╤З╨╜╤Л╤Е ╨▒╨╗╨╛╨║╨╡╤А╨╛╨▓ ╨▓ ╤А╨░╨╝╨║╨░╤Е ╨┐╤А╨╛╤З╨╕╤В╨░╨╜╨╜╨╛╨│╨╛ diff ╨╜╨╡ ╨▓╨╕╨╢╤Г.

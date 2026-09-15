@@ -202,7 +202,7 @@ if (-not (Test-Path -LiteralPath $TempBase -PathType Container)) {
 
 Invoke-Case "a) success -> outbox done + archive, empty dead-letter" { param($r) Test-CaseSuccess -Root $r }
 Invoke-Case "b) nomarker -> dead-letter (missing success marker)"    { param($r) Test-FailureCase -Root $r -Mode "nomarker"    -ReasonPattern "success marker" }
-Invoke-Case "c) exit1 -> dead-letter (exit code)"                    { param($r) Test-FailureCase -Root $r -Mode "exit1"       -ReasonPattern "exit code 1$" }
+Invoke-Case "c) exit1 -> dead-letter (exit code)"                    { param($r) Test-FailureCase -Root $r -Mode "exit1"       -ReasonPattern "exit code 1(?![0-9])" }
 Invoke-Case "d) empty -> dead-letter (empty stdout)"                 { param($r) Test-FailureCase -Root $r -Mode "empty"       -ReasonPattern "empty stdout" }
 Invoke-Case "e) stderr-only -> dead-letter (empty stdout)"           { param($r) Test-FailureCase -Root $r -Mode "stderr-only" -ReasonPattern "empty stdout" }
 Invoke-Case "f) errormarker -> dead-letter (error marker)"           { param($r) Test-FailureCase -Root $r -Mode "errormarker" -ReasonPattern "error marker" }

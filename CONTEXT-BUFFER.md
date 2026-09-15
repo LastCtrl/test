@@ -1600,3 +1600,23 @@ MCP_USED: []
 COMPLIANCE: true
 STATUS: resolved
 ================================================================================
+
+[15:37] dev-3 -> team-lead:
+TYPE: update | PRIORITY: medium
+Project: agent-hq
+CONTENT: P1-1 "atomic claim + lease/heartbeat + release-on-terminal + StaleCheck-Release" DONE.
+(1) NEW .agents/scripts/task-state.ps1 (412 lines, UTF-8 BOM, CRLF): dot-source-safe helper (never calls exit, never changes caller $ErrorActionPreference). Functions: Get-TaskStateDir:35, Get-ClaimFileName:57, Get-ClaimPath:78, Read-ClaimData:93, Write-JsonAtomic:120, ConvertTo-ClaimTime:153, Claim-Task:167, Update-Heartbeat:239, Release-Task:283, Get-Claim:303, Get-StaleClaims:329, Revoke-StaleClaims:380. State = <root>/.memory/claims/<safe-id>.claim.json.
+(2) ATOMICITY MECHANISM: Claim-Task creates the lease with [System.IO.File]::Open(path, CreateNew, Write, FileShare::None) = OS-level CREATE_NEW; exactly one process wins, every other gets IOException -> $false. Lease JSON {task_id, agent, claimed_at, heartbeat_at, lease_seconds, attempt} written through the same handle; on write failure the file is deleted (no half-lock). Unsafe task ids are SHA256-hashed -> no path traversal. Update-Heartbeat = tmp + File.Replace (fallback Move-Item -Force). Release-Task idempotent ($true when unclaimed afterwards). Get-StaleClaims uses heartbeat_at, falling back to file LastWriteTime for a corrupt lease. Revoke-StaleClaims re-verifies each lease right before delete (no lost-update race) and returns the revoked list.
+(3) INTEGRATION project-queue.ps1 (670 lines): dot-source + no-op fallbacks :44-62, $ClaimsDir :48; Release-Task after Complete save :423 and after Dead save :472; StaleCheck calls Revoke-StaleClaims :528-531, revoked count added to output :573/:582. Invalid started_at still exits 1.
+(4) INTEGRATION inbox-poller.ps1 (616 lines): $ClaimsDir :18; dot-source + no-op fallbacks :69-86; Claim-Task before processing :481 (already claimed -> log + skip, no duplicate run); try/finally Release-Task :554-558 on every terminal path (success, dead-letter, dry-run, exception). Global Mutex kept untouched.
+(5) TESTS tests/test-task-state.ps1 (264 lines, ASCII, no BOM, CRLF): 5 cases / 33 checks, ALL PASS, exit 0. a) 4 parallel Start-Job Claim-Task on one id -> exactly 1 true; b) heartbeat_at moves forward, claimed_at/agent preserved; c) aged lease detected by Get-StaleClaims, revoked, re-claimable; fresh lease untouched; d) Release idempotent incl. never-claimed; e) edges: unsafe id hashed and stays inside state dir, unknown id -> null/false, empty id -> false, empty stale set -> 0. Case e found a REAL binder bug (Mandatory + [string] rejects an empty string), fixed with [AllowEmptyString] so the guard is reachable.
+(6) REGRESSION (all exit 0): test-vault 8/8; test-pipeline 9/9; test-discovery PASS=22 FAIL=0 SKIP=0 WARN=1 RESULT PASS; test-false-done 17/17 (project-queue runs from a temp mirror WITHOUT task-state.ps1 -> no-op fallback keeps it green); test-task-state 5/5; verify-phase 0 failed / 41.
+(7) Manual integration: pre-claimed message -> poller logs "Already claimed by another worker - skipping", outbox=0 dead-letter=0 inbox file intact; after release -> processed (outbox=1, claims_left=0, archived=1). project-queue: aged claim (age 7200s) revoked by -StaleCheck, claim file gone, exit 0; -Complete released the claim, exit 0.
+(8) CRLF: all changed files CRLF, bareLF=0. BOM: task-state/inbox-poller/project-queue = UTF-8 BOM (preserved/expected); test-task-state + .gitignore = no BOM.
+(9) Also modified .gitignore: added .memory/claims/ (runtime state, same class as .memory/evidence/). Revert if out of scope.
+NOTES: context7 MCP offline in this session (fetch failed) - no external library used, only .NET BCL / PowerShell built-ins; planning via sequential-thinking. No commit. Temp roots removed. projects/1c-buh/queue.json.bak is gitignored and pre-existing (Created 15:09), refreshed by verify-phase F7 backup step.
+SKILLS_LOADED: ["evidence-discipline", "windows-safety", "superpowers-implement"]
+MCP_USED: ["sequential-thinking", "context7: offline"]
+COMPLIANCE: true
+STATUS: resolved
+================================================================================

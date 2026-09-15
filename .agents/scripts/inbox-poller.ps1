@@ -15,6 +15,7 @@ $Archive = Join-Path $Memory "archive"
 $DeadLetter = Join-Path $Memory "dead-letter"
 $Traces = Join-Path $Memory "traces"
 $TasksDir = Join-Path $Base ".agents\tasks"
+$ClaimsDir = Join-Path $Memory "claims"
 
 # --- Global constants (DRY: magic numbers & encoding) ---
 $script:Utf8NoBom = [System.Text.Encoding]::GetEncoding(65001)
@@ -62,6 +63,24 @@ if (Test-Path -LiteralPath $evidenceWriterPath) {
     $script:EvidenceAvailable = $true
 } else {
     Write-Log "⚠️ evidence-writer.ps1 not found at $evidenceWriterPath — evidence records disabled"
+}
+
+# --- Task claims (P1-1): dot-source the file-atomic claim/lease helper. It lets
+# concurrent poller instances skip messages another instance already owns. A
+# missing helper degrades to no-op stubs instead of crashing the poller.
+$taskStateHelperPath = Join-Path $PSScriptRoot "task-state.ps1"
+if (Test-Path -LiteralPath $taskStateHelperPath) {
+    . $taskStateHelperPath
+} else {
+    Write-Log "⚠️ task-state.ps1 not found at $taskStateHelperPath — task claims DISABLED"
+    function Claim-Task {
+        param([AllowEmptyString()][string]$TaskId, [string]$Agent = "", [int]$LeaseSeconds = 900, [string]$StateDir)
+        return $true
+    }
+    function Release-Task {
+        param([AllowEmptyString()][string]$TaskId, [string]$StateDir)
+        return $true
+    }
 }
 
 # Global mutex to prevent concurrent execution
@@ -456,6 +475,16 @@ function Process-InboxFile {
 
     $startedAt = Format-DateTime
 
+    # P1-1: atomic claim. If another worker already owns this message id, skip it
+    # instead of running the same task twice. The body below is intentionally left
+    # at its original indentation to keep the diff small (PowerShell ignores it).
+    if (-not (Claim-Task -TaskId $messageId -Agent $targetAgent -StateDir $ClaimsDir)) {
+        Write-Log "Already claimed by another worker — skipping: $messageId"
+        return
+    }
+
+    try {
+
     # Guard: empty payload → immediately dead-letter
     if (Check-Payload $msg) {
         Write-Log "💀 Empty payload — immediately dead-letter: $($messageId)"
@@ -521,6 +550,11 @@ function Process-InboxFile {
                 -priority $priority -payload $payload -startedAt $startedAt `
                 -response $dlResponse -filePath $filePath -evidence $evidencePath
         }
+    }
+    } finally {
+        # P1-1: release the claim on every terminal path (success, dead-letter,
+        # dry-run) and even on an unexpected error — no permanent lock.
+        $null = Release-Task -TaskId $messageId -StateDir $ClaimsDir
     }
 }
 

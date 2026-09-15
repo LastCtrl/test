@@ -41,6 +41,26 @@ $ProjectsRoot = Join-Path $projectRoot "projects"
 # UTF-8 without BOM encoding
 $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
 
+# --- P1-1 task claims: dot-source the file-atomic claim/lease helper.
+# Explicit -StateDir is derived from THIS script's root so the queue and its
+# leases always live under the same tree. A missing helper degrades to no-op
+# stubs (queue management keeps working) instead of aborting the run.
+$ClaimsDir = Join-Path $projectRoot ".memory\claims"
+$taskStatePath = Join-Path $scriptDir "task-state.ps1"
+if (Test-Path -LiteralPath $taskStatePath) {
+    . $taskStatePath
+} else {
+    Write-Warning "task-state.ps1 not found at $taskStatePath - task claims disabled"
+    function Release-Task {
+        param([AllowEmptyString()][string]$TaskId, [string]$StateDir)
+        return $true
+    }
+    function Revoke-StaleClaims {
+        param([int]$TtlSeconds = 900, [string]$StateDir)
+        return @()
+    }
+}
+
 # Priority ordering: lower number = higher priority
 $PriorityOrder = @{
     "critical" = 0
@@ -398,6 +418,12 @@ function Complete-Task {
         exit 1
     }
 
+    # P1-1: the task reached a terminal state -> drop its lease. Idempotent and
+    # never fatal: a failure here must not claim the task is still in progress.
+    if (-not (Release-Task -TaskId $TaskId -StateDir $ClaimsDir)) {
+        Write-Warning "Failed to release task claim for '$TaskId' (stale claims will revoke it)"
+    }
+
     if ($releaseFailed) {
         # Задача помечена done и сохранена, но агент не освобождён: не выдаём
         # чистый успех (exit 0) — иначе оркестратор сочтёт assignment закрытым.
@@ -440,6 +466,11 @@ function Dead-Task {
     if (-not (Save-Queue -ProjectName $ProjectName -Data $queue)) {
         Write-Error "Failed to save queue after marking task dead"
         exit 1
+    }
+
+    # P1-1: dead is terminal -> drop the lease (idempotent, non-fatal).
+    if (-not (Release-Task -TaskId $TaskId -StateDir $ClaimsDir)) {
+        Write-Warning "Failed to release task claim for '$TaskId' (stale claims will revoke it)"
     }
 
     Write-Output "Task '$TaskId' marked as dead in project '$ProjectName' (reason: $TaskReason)"
@@ -492,6 +523,13 @@ function Invoke-StaleCheck {
     $changed = 0
     $invalidStart = 0
 
+    # P1-1: release claim leases whose heartbeat expired. This is independent of
+    # the queue retry logic below: a crashed worker must not keep a task locked.
+    $revokedClaims = @(Revoke-StaleClaims -TtlSeconds 900 -StateDir $ClaimsDir)
+    foreach ($rc in $revokedClaims) {
+        Write-Output "Task '$($rc.task_id)' stale claim revoked (age $($rc.age_seconds)s)"
+    }
+
     foreach ($t in $queue.tasks) {
         if ($t.status -ne "in_progress") { continue }
         if (-not $t.started_at) { continue }
@@ -532,7 +570,7 @@ function Invoke-StaleCheck {
             Write-Output "No stale tasks found in project '$ProjectName', but $invalidStart task(s) had unparseable started_at and were skipped"
             exit 1
         }
-        Write-Output "No stale tasks found in project '$ProjectName'"
+        Write-Output "No stale tasks found in project '$ProjectName' (revoked claims: $($revokedClaims.Count))"
         return
     }
 
@@ -541,7 +579,7 @@ function Invoke-StaleCheck {
         exit 1
     }
 
-    Write-Output "Stale check complete: $changed task(s) processed in project '$ProjectName' (skipped invalid: $invalidStart)"
+    Write-Output "Stale check complete: $changed task(s) processed in project '$ProjectName' (skipped invalid: $invalidStart, revoked claims: $($revokedClaims.Count))"
     if ($invalidStart -gt 0) { exit 1 }
 }
 

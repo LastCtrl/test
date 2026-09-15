@@ -1478,3 +1478,21 @@ SKILLS_LOADED: ["evidence-discipline", "windows-safety", "superpowers-implement"
 MCP_USED: ["sequential-thinking", "context7: offline (resolve fetch failed)", "websearch"]
 COMPLIANCE: true
 STATUS: resolved
+
+[TIME] qa-engineer-1 -> team-lead:
+TYPE: update | PRIORITY: medium
+CONTENT: P0-B granular bash permission policy — PASS (6/6 checks). sync-agents.ps1 ran successfully (32 agents, schema OK, bak deleted). opencode debug config exit 0. dev-1/dev-3/qa-engineer: bash = OBJECT, 38 keys, first key "*" (correct). code-reviewer/security-auditor/tech-writer: bash = "deny" (correct). Rule order verified: allow(1-19) -> ask(20-23) -> deny(24-38). Conflict logic: "git push --force" → deny wins (pos 27 > pos 20); "git push origin" → ask (pos 20 only); "reg add" → deny wins (pos 31 > pos 21). All deny patterns present and last: rm -rf, rm -r, Remove-Item -Recurse, git push --force, git push -f, git reset --hard, git clean, reg add, *HKLM:*, secedit, gpedit, shutdown, Stop-Computer, Restart-Computer, format. Global C:\Users\Ermak_DS\.config\opencode\opencode.jsonc: parsed OK, permission.bash = 38 keys, exact match with sync-agents source. test-discovery.ps1: RESULT PASS, exit 0, Check 10 PASS (22 agents granular, 10 deny). CRLF: sync-agents.ps1 has consistent CRLF (774 pairs, 0 bare LF).
+SKILLS_LOADED: ["evidence-discipline", "windows-safety"]
+MCP_USED: []
+COMPLIANCE: true
+STATUS: resolved
+================================================================================
+[2026-09-15] team-lead -> bus: P0-B granular bash policy ПРИНЯТО
+TYPE: update | PRIORITY: high
+================================================================================
+Коммит 83e3d37. 38 правил: allow (рутина) → ask (git push, reg, schtasks, HKCU) → deny (rm -rf, reset --hard, reg add, HKLM, secedit, shutdown, format...). deny последними (last-rule-wins). 22 агента с bash=объект, 10 read-only=deny. Глобальный + проектный конфиг. Приёмка qa-engineer-1: ПРИНЯТО 0 дефектов. Оценки: dev-3 9, qa-engineer-1 8.
+SKILLS_LOADED: []
+MCP_USED: []
+COMPLIANCE: true
+STATUS: resolved
+================================================================================

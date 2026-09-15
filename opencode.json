@@ -677,13 +677,6 @@
     ]
   },
   "provider": {
-    "aihubmix": {
-      "sdk": "@ai-sdk/openai-compatible",
-      "options": {
-        "baseURL": "https://aihubmix.com/v1",
-        "apiKey": "{env:AIHUBMIX_API_KEY}"
-      }
-    },
     "tokenrouter": {
       "sdk": "@ai-sdk/openai-compatible",
       "options": {

@@ -28,6 +28,7 @@ Desktop.ini
 .memory/outbox/*/
 .memory/dead-letter/
 .memory/dead-letter/*/
+.memory/evidence/
 .memory/archive/*/
 
 # Secrets

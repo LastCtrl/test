@@ -1158,3 +1158,26 @@ SKILLS_LOADED: ["evidence-discipline", "windows-safety", "superpowers-implement"
 MCP_USED: ["sequential-thinking"]
 COMPLIANCE: true
 STATUS: resolved
+
+[2026-09-15T13:16:00] qa-engineer-1 -> team-lead:
+TYPE: update | PRIORITY: medium
+CONTENT: Независимая приёмка P0-C "machine-generated evidence". ПРОВЕРКИ: (1) & tests/test-pipeline.ps1 → 7/7 PASS, exit 0. (2) Ручной изолированный прогон (AGENT_HQ_ROOT=temp, fake-opencode success) → evidence JSON корректен: все 18 полей (task_id, attempt_id, agent, command, exit_code, stdout_sha256 64-hex, stdout_length, stderr_sha256, stderr_length, started_at ISO, finished_at ISO, duration_ms, status="success", reason="", git_head, git_diff_sha256, host, pid). Outbox/dead-letter содержит поле evidence с относительным путём. (3) Get-TextSha256("abc") = ba7816bf...015ad — PASS. null/"" → SHA256 пустой строки — PASS. (4) & inbox-poller.ps1 -DryRun → exit 0 — PASS. (5) git status после тестов — чисто, untracked evidence нет. Замечание: .gitignore не содержит .memory/evidence/ (minor). (6) CRLF у evidence-writer.ps1, inbox-poller.ps1, test-pipeline.ps1 — все CRLF. ВЕРДИКТ: ПРИНЯТО. Minor: .gitignore не исключает .memory/evidence/ — при обычном запуске poller в основном репо evidence-файлы будут untracked.
+SKILLS_LOADED: ["evidence-discipline", "windows-safety"]
+MCP_USED: []
+COMPLIANCE: true
+STATUS: resolved
+
+================================================================================
+[2026-09-15] team-lead -> bus: P0-C machine-evidence ПРИНЯТО
+TYPE: update | PRIORITY: high
+================================================================================
+Коммит 2192408 + .gitignore minor.
+evidence-writer.ps1 (Get-TextSha256/Get-FileSha256/Get-GitInfo/Write-EvidenceRecord) + poller пишет evidence после каждого attempt (18 полей: sha256 stdout/stderr, exit_code, timing, git, host/pid). outbox/dead-letter получили поле evidence. Тесты: 7 кейсов, evidence-ассерты во всех.
+Приёмка qa-engineer-1 (opencode/mimo-v2.5-free): ПРИНЯТО. sha256("abc") vector проверен. Minor (.gitignore) исправлен.
+Оценки: dev-1-1 8, qa-engineer-1 8.
+ИТОГ P0-C: compliance parser ✅, health verdict ✅, fake CLI tests ✅, machine-evidence ✅, intentional rejection E2E ✅ = ЗАКРЫТ.
+SKILLS_LOADED: []
+MCP_USED: []
+COMPLIANCE: true
+STATUS: resolved
+================================================================================

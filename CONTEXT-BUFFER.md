@@ -641,3 +641,72 @@ MCP_USED: ["sequential-thinking"]
 COMPLIANCE: true
 STATUS: resolved
 ================================================================================
+
+[2026-09-15] opencode-main ->
+TYPE: update | PRIORITY: high
+CONTENT: Аудит расхода по opencode.db (node:sqlite, readOnly). За 14 дней: input 341M, cache_read 327M, output 5.3M, cost ~\.4. Средне 48M ток/день, пики 04.09=150.6M и 07.09=166.5M (по одной марафон-сессии build, 905 шагов x ~125K контекста). Output = 0.8% трафика (input:output ~64:1). build = 52-55% всего трафика. 93% объёма на free-моделях. Верификация: code-reviewer (пустой ответ, копия 1 зависла) -> code-reviewer-1 подтвердил цифры ±10%, доказал что cache_read отдельная величина, двойного счёта нет. tech-writer отчёт: .memory/reports/usage-report-2026-09-15.md. Вывод: квота OpenCode Go не узкое место (используется ~4% лимита DeepSeek); основной расход - длина/контекст сессий.
+SKILLS_LOADED: []
+MCP_USED: []
+COMPLIANCE: true
+STATUS: resolved
+
+[2026-09-15T12:40:00] dev-2 -> team-lead:
+TYPE: update | PRIORITY: high
+Project: news-bot
+CONTENT: Фикс «дайджест 08:25 не пришёл» (15.09.2026). КОРНЕВАЯ ПРИЧИНА (доказательство bot.log 08:25:56,822): aiogram.exceptions.TelegramBadRequest 'Bad Request: message is too long' — тема уровня детализации 4 (15 статей, до 180 слов/новость) дала HTML > 4096 симв.; исключение на первом bot.send_message НЕ было поймано на уровне темы → прерван ВЕСЬ _send_digest (все 9 тем, mark_digest_sent не выполнен). Сопутствующее: preload 9 тем = 149.2с при окне 3 мин — впритык; тик 08:24:56 missed APScheduler'ом. ФИКСЫ (services/scheduler.py): (1) _split_html_text (:55) — разбивка длинных текстов по границам \n\n на части ≤3900 симв. с маркировкой (N/M), несжимаемый блок — жёсткая обрезка с «…»; (2) _deliver_topic (:478) — доставка темы с учётом 4096-лимита: длинный текст сразу частями (кнопки только на последней части), при TelegramBadRequest 'message is too long' — обрезка части и ретрай; (3) _send_digest (:353) — изолированный try/except вокруг каждой темы: сбой одной темы (сеть/лимит) логируется с traceback и НЕ прерывает остальные; итоговый лог N/M тем за время; (4) _PRELOAD_LOOKAHEAD_MINUTES 3→8, TTL 600→900 (worst-case 9 тем × 130с / семафор 3 = 390с < 480с окно); (5) _topic_timeout 115→130 (> ANALYSIS_TIMEOUT=100 + search/enrich ~25с); (6) misfire_grace_time=30 на digest_tick — тик слота не теряется; (7) подробное логирование: старт/финиш тика, preload-окно, старт/финиш preload со временем, кэш vs build-on-the-fly, причина каждого skip (pending/recently/limit/notifications/no topics), части сплита. Сохранены: лимиты плана, was_digest_sent_recently-дедуп, /skip-механика, все темы без обрезки. ТЕСТЫ (tests/test_digest.py): TestSplitHtmlText ×4 (unit сплиттера), TestSendDigestResilience ×3: длинная тема доставляется частями ≤4096 и digest помечен; сбой отправки первой темы не роняет остальные; TelegramBadRequest too-long → обрезка+ретрай, доставка не теряется. pytest tests: 257 passed, 0 failed, 1 skipped. БЕНЧМАРК (временный скрипт, удалён): 3 темы = 40.5с, 9 тем = 121.6с (симуляция 40с/тема, семафор 3) — укладывается в окно preload 8 мин с запасом ×4; worst-case 130с/тема × 3 волны = 390с < 480с. Спецэффект level-4 (21970 симв.) → 8 частей по ≤2965. ГАРАНТИЯ ОТПРАВКИ теперь: даже если тема длиннее 4096 — доставляется частями; даже если тема упала — остальные уходят; даже если preload не успел — build-on-the-fly не теряет слот (misfire_grace_time); degraded-fallback на таймауте темы сохранён.
+SKILLS_LOADED: ["superpowers-implement", "windows-safety"]
+MCP_USED: ["sequential-thinking", "context7: offline (fetch failed x3 — Telegram 4096-лимит подтверждён traceback из лога инцидента)"]
+COMPLIANCE: true
+STATUS: resolved
+
+[2026-09-15 09:25] code-reviewer -> team-lead:
+TYPE: update | PRIORITY: medium
+Project: pong-advanced
+CONTENT: Review 2 zadach. ZADACHA 1 (kastom lokal): VERDICT APPROVE, major 0. LocalGame.ts vse novye opcii optional, defolty = prezhnie (powerupPool=[...POWERUP_TYPES_LOCAL] :141-145, freq :146-149, paddleSize 1 :150-153, gravity 0, matchDuration 0); paddleSize dlya vertikali freshPaddle :265-289 = server startRoom :1480-1487; ambientGravity cap BALL_SPEED_CAP :361-366 = server :478-488, dvoynogo gravity net (ambient otdelen ot powerup applyGravity); matchDuration winner p1/p2/draw :563-580 + onGameEnd(0/1/2), App :622-629 draw cherez ended-field; powerupPool=[] spawnPowerUp no-op :772-774; LAN-put startLANHost(collectSettings()) :1204-1206 netronut, toLanSettings :733-749; HUD timeLeft odin element (lazy-create :254-265, idempotent). Minor: (a) rematch posle custom-local vozvrashaet menu-nastroiki — handleRematch App.ts:975-976 startLocalGame(localMode, collectSettings()) chitaet menu-screen, custom-nastroiki (powerups/gravity/matchDuration) teryayutsya — minor UX; (b) collectActivePowerups :411-415 ne skoplen .screen, no .powerup-toggle est tolko v custom-room-screen — kollizii net. ZADACHA 2 (netkod faza 2): VERDICT APPROVE, major 0. startTickLoop index.ts:1424-1451: Date.now, clamp 250ms, steps<5 (spiral smerti net), broadcast tolko steps>0, startRoom :1454 + pause :1616 + disconnect :1653 ochishayut interval, dvoynogo tika net (grep: edinstvennyy setInterval :1431, staryy udalen); toWirePaddle :894-905 udalyonnye vx/vy/giantTimer/shrinkTimer/magnetTimer NE chitayutsya klientom (Renderer drawPaddle tolko height/x/y :409/:417-423; NetInterpolator lerpPaddle tolko x/y/energy :215-226; grep podtverzhden); winner=null ubran — state.winner posylaetsya tolko pri nalichii :927, App chitaet tolko v ended-vetke :853-858; paddleHitEvents optional types.ts:124 — Effects.ts:444 guard, Renderer :196/:341/:357 || []; input seq :1596-1599 monotonen, net inputSeq u novogo clientInfo, wrap nevozmozhen (2^53); ultimate bez seq prohodi tselikom (po zamyslu); heartbeat 30ms startNetInputLoop :111-114, stop v quitToMenu :312 + ended :845, dvoinyh intervalov net (stop pered startom). NetInterpolator :86-95 delay=avg*1.5+jitter*2.5 clamp 20-250, jitter EMA do obnovleniya avg (korrektno); reconcile :26-59 dead-zone 1px, 8-32px 6px/kadr, snap >32 posle 2 podryad — rezinki/drebezga net (monotonnaya shodimost). Testy: net-interpolator 15 (delay/extrapolation/buffer/monotonic/reconcile 5) obnovleny, localgame-custom 12 soderzhatelnye; spot-progon 27/27 PASS; tsc --noEmit EXIT=0; prettier src .ts fayly chistye. Minor: (c) kastomy 420 vmesto PADDLE_SPEED (App.ts:95, :144, :1086; Input.ts:65 pre-existing); (d) ended-room cleanup index.ts:1667-1684 udalyaet komnatu bez clearInterval + resume-countdown timeout :1636-1641 mozhet zapustit tik na osirotevshey komnate (disconnect vo vremya countdown) — interval zhivet vечно, tick no-op; pre-existing pattern (cleanup/timer ne menyalisya zadachey), rekomendovano fix; (e) index.html ne prettier-konformen (pre-existing, ves fail v stile odnoy stroki, dazhe netronutye stroki) + net-interpolator.test.ts formatting (tests/ vne skop 
+pm run format); (f) server input seq/stale-otsiv ne pokryt unit-testami (gap, logika proverena chteniem). SHOV App.ts: CHIST — custom-uchastki (collectCustomSettings :417-446, startLocalGameCustom :448-456, customFormat-toggly :1173-1184, bindingi :1198-1233) i netkod-uchastki (sendNetInput :104-121, getLanRenderState :123-175, resetLanNetState :177-184) ne peresekayutsya po funkciyam; custom-local stavit localMode='ai'/'local-pvp' → sendNetInput guard 'lan' → heartbeat ne konfliktno; tochki ochistki heartbeat quit/ended pokryty, net utechek. Server :3333 (PID 28828) ne trogat, tolko chtenie + tsc/prettier/vitest unit (port ne ispolzovalsya).
+SKILLS_LOADED: ["evidence-discipline"]
+MCP_USED: ["sequential-thinking"]
+COMPLIANCE: true
+STATUS: resolved
+
+[2026-09-11 19:10] team-lead -> bus:
+TYPE: update | PRIORITY: high
+Project: pong-advanced
+CONTENT: Доработка по фидбеку юзера закрыта. (1) КАСТОМНАЯ ИГРА ПРОТИВ ИИ/2P: общий экран настроек + селектор формата (ai/local2p), AI-группы (уровень/характер) только для ai; LocalGame получил опциональные оверрайды (пул бонусов/частота/размер ракеток/гравитация/лимит матча → timeLeft/winner), дефолты = прежнее поведение; LAN-путь не изменён. (2) НЕТКОД ФАЗА 2 — корень «поплагивания» найден: setInterval(16.7мс) на Windows квантовался → реальный тик ~40Гц с дрейфом +1806мс за 6с; заменён на аккумуляторный тик-цикл. Замер тимлида (temp-инстанс :3334, playwright-зонд): 60.0Гц, mean 16.67мс, дрейф 0мс, payload 812Б (до: 40.2Гц/дрейф +1806мс/973Б). Плюс input seq+heartbeat 30мс, payload slim (server-only поля убраны), тюнинг интерполяции (delay avg×1.5+jitter×2.5, reconcile 8-32px). Верификация: tsc 0, build 0, 205/205, lint 17e/41w, E2E 6/6 (в т.ч. против нового прод-сервера). Прод-сервер перезапущен на свежий dist (PID 30144). BLOCKER (эскалация): канал модели glm-5.3-free недоступен («No available channel under group default») — обе копии qa-engineer не стартовали; верификацию выполнил тимлид (§3.3 fallback). Требуется: восстановление канала + ретро-приёмка qa по завершении. Backlog minor: rematch в custom-local теряет кастомные настройки (берёт меню), хардкод 420 вместо PADDLE_SPEED, предсуществующий clearInterval на удалении комнаты.
+SKILLS_LOADED: []
+MCP_USED: []
+COMPLIANCE: true
+STATUS: resolved
+
+[2026-09-15 09:40] team-lead ->
+Project: news-bot
+TYPE: update | PRIORITY: high
+CONTENT: Разобраны 3 претензии. (1) FREE-МОДЕЛИ: в opencode пользователя реально подключено 32 free-модели (opencode Zen 6, aihubmix 4 без ключа, openrouter 20, tokenrouter 2). Проверено живьём openrouter-ключом: рабочие — nex-agi/nex-n2.5-pro:free (0.8с), nvidia/nemotron-3-super-120b-a12b:free (0.6с), nvidia/nemotron-3.5-lightning:free (3.1с), cohere/north-mini-code:free (0.7с); мёртвые — z-ai/glm-5.2:free (404, стал платным), google/gemma-4-31b-it:free (429), thinkingmachines/inkling:free (403). Ранее вписанные в бота glm-5.3-flash/deepseek-v4.1-flash/qwen3.7-plus — платный тариф opencode-go, НЕ free (ошибка acknowledge). (2) ДАЙДЖЕСТ не отправлялся: корень — TelegramBadRequest «message is too long» (>4096) ронял весь _send_digest. Фикс в scheduler.py: _split_html_text (части <=3900), _deliverable по каждой теме с try/except, _PRELOAD_LOOKAHEAD 3->8 мин, TTL 600->900, _topic_timeout 115->130, misfire_grace_time=30, подробные логи. (3) СВЕЖЕСТЬ новостей: корень — в news_search.py не было фильтра по дате, Google News отдавал по релевантности. Добавлен services/freshness.py (парсер дат + окна RECENCY_DAYS=3/SOFT_WINDOW_DAYS=14 + анти-старьё), подключён в news_search.py и article_extractor.py, в Google-запрос добавлен when:2d. Живой смоук: выдача за 15.09 — часы/дни, июль/январь отсеяны. Тесты: 296 passed / 0 failed / 1 skipped. Бот перезапущен (pid 22732).
+БЛОКЕР: субагенты падают «No available channel for model z-ai/glm-5.3-free» — конфиги агентов исправлены (мёртвая tokenrouter/z-ai/glm-5.3-free -> openrouter/nex-agi/nex-n2.5-pro:free в opencode.json, .opencode/agents/*.json, registry.json, .agents/cards/*.json), но ТЕКУЩАЯ сессия opencode кэширует старый конфиг — нужен рестарт opencode, чтобы субагенты заработали. До рестарта верификацию делал тимлид вручную (pytest + живые смоуки).
+ENV_RISK: корпоративный прокси HTTP_PROXY=127.0.0.1:3128 давал транзиентные ConnectError.
+NEXT: перевести LLM-цепочку бота с платных opencode-go на free (openrouter free / opencode Zen free) — требуется решение по ключу OPENROUTER в .env бота.
+SKILLS_LOADED: ["model-router"]
+MCP_USED: ["sequential-thinking"]
+COMPLIANCE: true
+STATUS: resolved
+
+================================================================================
+[2026-09-15] team-lead -> bus: HANDOFF / СНИМОК ПЕРЕД /compact (2)
+TYPE: update | PRIORITY: high
+================================================================================
+ПОСЛЕДНИЕ КОММИТЫ (ветка feature/skills-mcp-enforcement):
+  adab2b3 (провайдер aihubmix - ошибочный, в 5.... заменён) -> 6?..: fix(config) aihubmix builtin, custom block removed
+  4d87db5 fix(P0): CRLF root-cause (AMSI false block = LF+PS5.1) + normalize *.ps1 + .gitattributes
+  5dab233 feat(P0): agents->agent migration + agent-hq.json + schema pin + hook fix/install + portability
+  815e266 fix(P0 wave1): poller exit-code/dead-letter, compliance-gate, health, skills frontmatter, rm api/
+СОСТОЯНИЕ P0:
+ - ЗАКРЫТО: C1 false-DONE, C8 compliance regex, C9 health, C11 skills frontmatter(валидный YAML), C6 hook worktree-fallback(+installed), C18 hook installer(install-hooks.ps1), portability(C13, 10 скриптов), C10 schema (agent, dead keys->agent-hq.json, schema pinned), P0-B task-allowlist (team-lead*/task=allow, листья deny), C19 evidence-discipline (skill+AGENTS §12+инъекция в промпты), CRLF-фикс (главный!).
+ - НЕ ЗАКРЫТО: machine-generated evidence, fake-CLI tests, P1.
+ВАЖНЫЙ УРОК: PS 5.1 + UTF-8 BOM + LF = ложный ScriptContainedMaliciousContent (AV). Все *.ps1 нормализованы в CRLF + .gitattributes. Агенты пишут LF -> нужна post-write нормализация (новый пункт P0).
+ПРОВАЙДЕРЫ: glm-5.3-free ЛЕЖИТ (No available channel). aihubmix/gpt-5.5 РАБОТАЕТ (встроенный провайдер + env AIHUBMIX_API_KEY, новый ключ). ВАЖНО: текущая сессия opencode держит СТАРЫЙ env -> для субагентов на aihubmix нужен ПЕРЕЗАПУСК opencode (либо запуск через opencode run -m).
+ПРИЁМКА: батч P0 (5dab233,4d87db5,adab2b3/fix) НЕ проверен ревьюерами (glm был недоступен; code-reviewer падал). После рестарта прогнать qa+code-reviewer на aihubmix/gpt-5.5.
+SKILLS_LOADED: []
+MCP_USED: ["sequential-thinking"]
+COMPLIANCE: true
+STATUS: resolved
+================================================================================

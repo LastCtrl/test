@@ -1,7 +1,7 @@
 {
     "name":  "qa-engineer",
     "description":  "QA Engineer — тесты, edge cases, баг-репорты, регрессия.",
-    "model":  "opencode/ling-3.0-flash-fin-free",
+    "model":  "aihubmix/coding-glm-5.1-free",
     "mode":  "subagent",
     "temperature":  0.2,
     "permissions":  [

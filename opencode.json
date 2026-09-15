@@ -446,7 +446,7 @@
     "qa-engineer": {
         "description": "QA Engineer — тесты, edge cases, баг-репорты, регрессия.",
         "mode": "subagent",
-        "model": "opencode/ling-3.0-flash-fin-free",
+        "model": "aihubmix/coding-glm-5.1-free",
         "temperature": 0.2,
         "permission": {
             "bash": "allow",
@@ -485,7 +485,7 @@
     "security-auditor": {
         "description": "Security Auditor — OWASP, уязвимости, поиск secrets и утечек. Только чтение.",
         "mode": "subagent",
-        "model": "aihubmix/coding-glm-5.1-free",
+        "model": "opencode/ling-3.0-flash-fin-free",
         "temperature": 0,
         "permission": {
             "bash": "deny",

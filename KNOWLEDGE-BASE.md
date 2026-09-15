@@ -190,6 +190,16 @@
 - **Fix**: Вынести simplifyReason в shared модуль, использовать в report_build_v2.js и filials_build.js.
 - **Discovered by**: qa-engineer финальная приёмка v2, 2026-09-01
 
+### BUG-016: compliance-gate обнаруживает исторические self-report без SKILLS_LOADED
+- **Date**: 2026-09-15
+- **Severity**: minor (non-blocker)
+- **File**: .agents/scripts/compliance-gate.ps1; CONTEXT-BUFFER.md
+- **Lines**: compliance-gate.ps1:67-82
+- **Symptom**: default-запуск завершается с `Passed: 19`, `Failed: 5`; пять исторических записей имеют `SKILLS_LOADED empty`.
+- **Root cause**: compliance-gate корректно применяет fail-closed правило для исторических self-report, в которых поле `SKILLS_LOADED` пустое; это состояние данных, а не падение валидатора.
+- **Fix**: для строгого compliance обновить исторические записи или явно принять baseline; код compliance-gate менять не требуется.
+- **Discovered by**: qa-engineer read-only QA, 2026-09-15
+
 ## Patterns
 
 ### PowerShell encoding pitfalls on Windows

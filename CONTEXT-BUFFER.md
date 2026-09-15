@@ -624,8 +624,17 @@ PowerShell падает с ScriptContainedMaliciousContent (AMSI/Kaspersky false
 SKILLS_LOADED: []
 MCP_USED: ["sequential-thinking"]
 COMPLIANCE: true
-STATUS: blocked
+STATUS: resolved
 ================================================================================
+
+[TIME] qa-engineer -> team-lead:
+TYPE: update | PRIORITY: medium
+Project: agent-hq
+CONTENT: READ-ONLY QA завершена. Пункт 1 PASS: sync-agents.ps1 вывел "=== Sync Agents: 30 files found ===", "Schema validation OK", "Git hook installed"; отдельный PowerShell-процесс завершил PROCESS_EXIT_CODE=0. Пункт 2 PASS: в копии schemas/opencode.config.schema.json и временной копии opencode.json добавлен top-level zzz; Assert-ConfigSchemaKeys выбросил "Unknown top-level key(s) ...: zzz"; TEMP_EXISTS=False. Реальные opencode.json и схема не изменены (git diff exit 0). Пункт 3 PASS по запуску: compliance-gate.ps1 default отработал и вывел Passed: 19, Failed: 5, Total: 24; 5 historical violations — non-blocker finding, записан в KNOWLEDGE-BASE.md BUG-016. Пункт 4 PASS: inbox-poller.ps1 -Once отработал без stderr, PROCESS_EXIT_CODE=0, PSParser passed; .memory/inbox не содержит *.json. Пункт 5 PASS: SHA-256 .agents/hooks/pre-commit и .git/hooks/pre-commit равны C2C1ACCA25D02CE6ECF0206FA05CAA27E6B168CCB1F2E20A850E756DD4450888, HASHES_EQUAL=True. Пункт 6 PASS: code-reviewer/qa-engineer/security-auditor = aihubmix/gpt-5.5; dev-1 = opencode-go/deepseek-v4.1-flash. Блокеров нет. Все временные каталоги qa-* удалены; git status чистый. Изменён только служебный self-report и KNOWLEDGE-BASE.md BUG-016; исходники не изменялись.
+SKILLS_LOADED: ["evidence-discipline", "superpowers-test", "skill-enforcement"]
+MCP_USED: ["sequential-thinking"]
+COMPLIANCE: true
+STATUS: resolved
 
 ================================================================================
 [2026-09-15] team-lead -> bus: РЕЗОЛЮЦИЯ блокера (CRLF)
@@ -709,4 +718,19 @@ SKILLS_LOADED: []
 MCP_USED: ["sequential-thinking"]
 COMPLIANCE: true
 STATUS: resolved
+================================================================================
+
+================================================================================
+[2026-09-15] team-lead -> bus: status + блокер приёмки
+TYPE: update | PRIORITY: high
+================================================================================
+1) Независимый КОД-РЕВЬЮ батча P0 выполнен (модель aihubmix/gpt-5.5, через opencode run, т.к. CLI не умеет subagent-primary -> делал build-агент). Вердикт APPROVE_WITH_CHANGES, 3 замечания (schema fail-open; -notcontains регистронезав.; потерян вызов установки хука). ВСЕ исправлены, коммит 361f2bb.
+2) qa-engineer приёмка НЕ прошла: ошибка "Rate limit exceeded: free-models-per-day. Add 10 credits...". Лимит бесплатных моделей исчерпан на сутки.
+3) Расхождение модели: на диске ревьюеры = aihubmix/gpt-5.5 (живой opencode.json + .opencode/agents). Правки другой сессии (openrouter/nex-agi/nex-n2.5-pro:free) попали в .agents/cards/*.json и .opencode/agents/registry.json (производные/legacy). Карды регенерированы (nex убран), registry.json (legacy, не рантайм) всё ещё nex.
+4) СЕССИЯ opencode кэширует конфиг на старте -> UI показывает nex, на диске aihubmix. НУЖЕН ПЕРЕЗАПУСК (или compact+restart).
+ОТКРЫТО: qa-приёмка (ждёт квоту free-моделей); machine-evidence; fake-CLI; P1.
+SKILLS_LOADED: []
+MCP_USED: ["sequential-thinking"]
+COMPLIANCE: true
+STATUS: blocked
 ================================================================================

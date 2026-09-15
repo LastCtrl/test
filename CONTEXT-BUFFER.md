@@ -1259,3 +1259,19 @@ SKILLS_LOADED: ["evidence-discipline", "windows-safety"]
 MCP_USED: []
 COMPLIANCE: true
 STATUS: resolved
+
+================================================================================
+[2026-09-15] team-lead -> bus: P0-A discovery-test + clean-code
+TYPE: update | PRIORITY: high
+================================================================================
+Коммиты 2bc9f42, 39fbbae.
+test-discovery.ps1 (9 проверок): агенты 32/32 видимы runtime, имена уникальны, скиллы frontmatter/уникальны, required_skills сходятся. Нашёл реальные дефекты:
+ - dangling clean-code в registry required_skills (3 ссылки) -> создан скилл clean-code (skill-surgeon);
+ - фантомный агент prompts/README (*:allow) -> README.md переименован в .txt.
+Итог: discovery PASS=20 FAIL=0; vault 8/8; pipeline 7/7. Оценки: dev-1 8, skill-surgeon 8.
+P0-A: миграция ✅, agent-hq.json ✅, schema-валидация ✅, frontmatter ✅, discovery ✅, уникальность имён ✅, required_skills ✅ = ЗАКРЫТ.
+SKILLS_LOADED: []
+MCP_USED: []
+COMPLIANCE: true
+STATUS: resolved
+================================================================================

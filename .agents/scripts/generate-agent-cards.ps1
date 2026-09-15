@@ -6,7 +6,7 @@
   name, model, mode, prompt; heuristically determines role_summary and capabilities;
   generates .agents/cards/<name>.json and .agents/cards/index.json.
 .PARAMETER Root
-  Repository root path. Default: D:\Тест\agent-hq.
+  Repository root path. Default: $env:AGENT_HQ_ROOT if set, else inferred from $PSScriptRoot.
 .PARAMETER OutDir
   Output directory for cards (relative to Root). Default: .agents\cards\.
 .NOTES
@@ -16,7 +16,7 @@
 
 [CmdletBinding()]
 param(
-    [string]$Root = "D:\Тест\agent-hq",
+    [string]$Root = $(if ($env:AGENT_HQ_ROOT) { $env:AGENT_HQ_ROOT } else { Split-Path (Split-Path $PSScriptRoot -Parent) -Parent }),
     [string]$OutDir = ".agents\cards\"
 )
 

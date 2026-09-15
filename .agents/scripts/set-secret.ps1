@@ -2,7 +2,7 @@
 # The secret is entered via masked input (Read-Host -AsSecureString), never passed
 # as a parameter, never printed, never logged. Only a SHA256 fingerprint (12 hex)
 # is shown so the user can verify "the same secret" without revealing it.
-# Storage: C:\Users\Ermak_DS\.agent-secrets\secret.<Name>.enc (outside the repo).
+# Storage: <AGENT_HQ_SECRETS or %USERPROFILE%\.agent-secrets>\secret.<Name>.enc (outside the repo).
 
 param(
     # two mutually exclusive usages: save a secret (Name required) or list names
@@ -10,7 +10,7 @@ param(
     [Parameter(ParameterSetName='List')][switch]$List
 )
 
-$SecretsDir = 'C:\Users\Ermak_DS\.agent-secrets'
+$SecretsDir = if ($env:AGENT_HQ_SECRETS) { $env:AGENT_HQ_SECRETS } else { Join-Path $env:USERPROFILE '.agent-secrets' }
 
 if ($PSCmdlet.ParameterSetName -eq 'List') {
     if (-not (Test-Path -LiteralPath $SecretsDir -PathType Container)) {

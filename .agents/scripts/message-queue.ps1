@@ -14,7 +14,7 @@ param(
     [string]$Days
 )
 
-$Base = "D:\Тест\agent-hq"
+$Base = if ($env:AGENT_HQ_ROOT) { $env:AGENT_HQ_ROOT } else { Split-Path (Split-Path $PSScriptRoot -Parent) -Parent }
 $Memory = Join-Path $Base ".memory"
 $Inbox = Join-Path $Memory "inbox"
 $Outbox = Join-Path $Memory "outbox"

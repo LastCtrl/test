@@ -57,6 +57,7 @@ task-summary*
 # Root stray prevention (canonical agents live in .opencode/agents/)
 /*.json
 !opencode.json
+!agent-hq.json
 /prompts/
 
 # Projects (working code, not part of agent-hq core)

@@ -12,7 +12,7 @@ param(
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 
 $ErrorActionPreference = "Stop"
-$baseDir = "D:\Тест\agent-hq"
+$baseDir = if ($env:AGENT_HQ_ROOT) { $env:AGENT_HQ_ROOT } else { Split-Path (Split-Path $PSScriptRoot -Parent) -Parent }
 
 if ($FixSync) {
     Write-Host "[-FixSync] Re-running sync-agents.ps1 before check..."

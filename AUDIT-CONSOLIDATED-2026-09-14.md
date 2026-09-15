@@ -186,7 +186,33 @@ Explainable routing · Capability passport · Prompt A/B · Team optimizer · Re
 
 ---
 
-## 9. Anti-backlog (чего НЕ делать сейчас)
+## 9. Использование MCP и skills (факт)
+
+Наблюдение (2026-09-14): MCP-серверы **подключены** (`opencode mcp list`): context7 ✓, hermes-atlas-mcp ✓, sequential-thinking ✓; serena — disabled. Однако по самоотчётам CONTEXT-BUFFER:
+- `MCP_USED` (61 запись): **sequential-thinking 47**, context7 — **3× «offline»**, hermes-atlas — 1× «offline».
+- `SKILLS_LOADED` (61 запись): superpowers-implement 21, evidence-discipline 4, superpowers-test 3, windows-safety 3, model-router 2, skill-enforcement 2, qa-engineer 2, 1c-dev 2, 1c-query 1.
+
+**Вывод:** агенты почти не используют MCP; context7/hermes помечают «offline» при **живых** серверах. Проблема — не доступность серверов, а **отсутствие реального enforcement** (compliance проверял текст, а не факт вызовов; см. §6).
+
+Меры (в план):
+1. Compliance сверяет `MCP_USED`/`SKILLS_LOADED` с **трейсами реальных вызовов**; «offline» без попытки вызова — violation (P0-C/P1).
+2. Обязательные триггеры: внешняя библиотека → context7; нет скилла → hermes-atlas; задача >3 шагов → sequential-thinking.
+3. **Прокси-env** (HTTP(S)_PROXY/NO_PROXY) для context7/hermes — как у serena; иначе флапают.
+4. `/doctor`: реальный probe MCP, а не статус из конфига.
+5. Реестр `required_skills` сверять с фактически существующими скиллами.
+
+## 10. P0-0 детализация (версия + схема) — зафиксировано
+
+- **Версия opencode:** `1.18.30`.
+- **Схема:** `schemas/opencode.config.schema.json` (скачана с https://opencode.ai/config.json через cntlm, 2026-09-14), SHA256 `57CC1BB1814AA6B3DF5F308159B1B0BC4884F5F7E6B082FA7D1BE1BEA83BF4BD`. `$defs.Config` — источник истины по ключам.
+- **Точная миграция:**
+  - `agents` → `agent` (единственное число) — канонично (подтверждено `$defs.Config`).
+  - Удалить несуществующие в схеме ключи `memory`, `workspace`, `projects`, `modules` → перенести в отдельный `agent-hq.json`.
+  - `sync-agents.ps1` пишет `agent`, НЕ удаляет сингулярный блок.
+  - Валидация: top-level ключи opencode.json ⊆ `$defs.Config.properties`.
+- **Доступные (и полезные) ключи схемы:** `agent, default_agent, subagent_depth, skills, plugin, permission, provider, mcp, command, compaction, watcher, snapshot, tools, instructions, model, small_model`.
+
+## 11. Anti-backlog (чего НЕ делать сейчас)
 
 - Не добавлять агентов ради количества; не удалять пул 30 без данных.
 - Не строить ML-routing до чистой статистики.

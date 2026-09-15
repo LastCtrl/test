@@ -10,7 +10,7 @@ $scripts  = Join-Path (Join-Path (Split-Path -Parent $here) '.agents') 'scripts'
 $getToken = Join-Path $scripts 'get-secret.ps1'
 $setSecret = Join-Path $scripts 'set-secret.ps1'
 $runBridge = Join-Path $scripts 'run-bridge.ps1'
-$SecretsDir = 'C:\Users\Ermak_DS\.agent-secrets'
+$SecretsDir = if ($env:AGENT_HQ_SECRETS) { $env:AGENT_HQ_SECRETS } else { Join-Path $env:USERPROFILE '.agent-secrets' }
 $TestName = 'selftest-tmp'
 $TestPlain = 'test-secret-123'
 

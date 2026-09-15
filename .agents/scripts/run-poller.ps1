@@ -1,7 +1,7 @@
 # Runner for inbox poller - avoids path issues
 param([switch]$DryRun)
 
-$Base = 'D:\Тест\agent-hq'
+$Base = if ($env:AGENT_HQ_ROOT) { $env:AGENT_HQ_ROOT } else { Split-Path (Split-Path $PSScriptRoot -Parent) -Parent }
 $Memory = Join-Path $Base '.memory'
 $Inbox = Join-Path $Memory 'inbox'
 $Traces = Join-Path $Memory 'traces'

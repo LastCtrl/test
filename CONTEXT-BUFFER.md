@@ -584,3 +584,45 @@ SKILLS_LOADED: []
 MCP_USED: []
 COMPLIANCE: true
 STATUS: resolved
+
+[2026-09-15 08:45] team-lead-2 (acting dev) -> team-lead:
+TYPE: update | PRIORITY: medium
+Project: pong-advanced
+CONTENT: Кастомная локальная игра (против ИИ и 2P) реализована. UI: index.html:98 кнопка #btn-custom-local в группе локальных режимов; index.html:193-194 селектор «Формат» (data-option=customFormat, ai/local2p, дефолт ai); index.html:198/:204 AI-группы customAiLevel/customAiPersonality + display-тоггл; index.html:320 btn-custom-local-start. App.ts:417 collectCustomSettings расширен (format/aiLevel/aiPersonality; LAN-путь startLANHost по поведению не изменён); App.ts:448 startLocalGameCustom; App.ts:612 проброс оверрайдов powerups/powerupFrequencyMs/ballSpeed/paddleSize/gravity/matchDuration в LocalGame.start; App.ts:649 HUD оставшегося времени через updateTimeLeftDisplay(st.timeLeft) в provider рендера; App.ts:1173 тоггл AI-групп по customFormat заскоуплен .screen; App.ts:1201 binding btn-custom-local-start. LocalGame.ts: :94/:136-156 опциональные поля (powerupPool/powerupFrequencyMs/paddleSize/ambientGravity/gravityVy/matchDuration/timeLeft/winner, все дефолты сохраняют прежнее поведение); :146 freq; :265 freshPaddle height=PADDLE_H*paddleSize (позиционирование с учётом вертикали); :361 applyAmbientGravity (gravityVy += g*dt, cap BALL_SPEED_CAP — консистентно server index.ts:475-485); :419 вызов в tick; :563 matchDuration тикает → winner p1/p2/draw + onGameEnd; :772 spawnPowerUp по пулу (powerups=[] → спавна нет); :848 getState timeLeft/winner. Тест tests/unit/localgame-custom.test.ts (12 тестов). 5 проверок: (1) npx tsc --noEmit EXIT=0; (2) npm run build EXIT=0; (3) npm test 205/205 (12 файлов, +12 новых; 1 unhandled EADDRINUSE :3333 = baseline — PID 28828 работает, не рестартил); (4) npm run lint 17e/41w <=25e/48w; (5) npx playwright test 6/6 passed. Доп. runtime-проверка (временная спека, удалена): #btn-custom-local → #custom-room-screen, тоггл AI-групп ai↔local2p, старт с matchDuration=30000 → #time-left-display видим (M:SS), quit→меню, старт local2p. Сетевые участки App.ts и server-файлы не трогал.
+SKILLS_LOADED: ["superpowers-implement"]
+MCP_USED: ["sequential-thinking"]
+COMPLIANCE: true
+STATUS: resolved
+
+[2026-09-15 08:29] dev-3 -> team-lead:
+TYPE: update | PRIORITY: medium
+Project: pong-advanced
+CONTENT: Фаза 2 (сетевое «поплагивание») — диагностика цифрами + минимальные фиксы. МЕТОДИКА: временная node-проба (raw socket.io EIO=4 через ws, create/start, 6с) на своём инстансе :3334 (tsx src, погашен; temp_probe.mjs удалён). МЕТРИКИ ДО → ПОСЛЕ: broadcast-интервал mean 24.19мс → 16.68мс; p50 30.45 → 15.56; p95 31.6 → 30.89; std 7.53 → 4.03; дрейф за 6с +1806мс → +5мс; факт. частота 40.2 → 58.3 Гц; payload mean 973Б → 690Б (−29%, ~−16.5 КБ/с на клиента); RTT (ws ping/pong) 0.46 → 0.53мс; эффективный interp-delay: 36.3мс (старая формула avg*1.5 от измеренного mean 24.19) → 29.3мс (измерено: EMA interval 16.08мс, EMA jitter 2.08мс, формула avg*1.5+jitter*2.5). ПРИЧИНА (Шаг 1): setInterval(TICK_MS=16.667) на Windows квантуется (~15.2мс) и срабатывает в основном через ~30.4мс → сервер фактически 40 Гц с джиттером ±15мс и дрейфом; RTT ни при чём (loopback <1мс). ФИКСЫ (Шаг 2): (1) server/index.ts:1424 startTickLoop() — цикл по аккумулятору реального времени (Date.now, clamp 250мс, ≤5 шагов/файр), dt шага фиксирован TICK_MS, broadcast при steps>0; вызовы :1511 (startRoom) и :1639 (resume-game) — вместо float-setInterval; (2) broadcast: :894 toWirePaddle отправляет только клиентские поля (x/y/height/energy/combo/ultimateActive/ultimateTimer/permShrink), убраны server-only vx/vy/giantTimer/shrinkTimer/magnetTimer; :907 broadcastState не шлёт пустые paddleHitEvents/extraBalls/magnetArcs/teleportEvents/shieldHitEvents/powerupEvents и winner=null (splice-очистка событий сохранена); types.ts:124 paddleHitEvents сделан optional — потребители Effects.ts:444 (if), Renderer.ts:196/:341/:357 (|| []), NetInterpolator — не сломались; (3) input-lag: App.ts:104 sendNetInput + :111 startNetInputLoop (heartbeat 30мс) + seq; старт :898 (game-started), :986 (host start), :1277 (rematch); стоп :312 (quitToMenu), :845 (state=ended); touch-emit :1092/:1141 тоже с seq; server input :1596 отклоняет устаревший seq, :1602 пишет vx/vy только если поле присутствует (устранён баг: {ultimate:true} обнулял скорость ракетки на кадр); (4) NetInterpolator.ts:64 jitterMs (EMA |gap−avg|), :92 delay = avg*1.5 + jitter*2.5 (20–250мс) — буфер растёт с джиттером; reconcile :33 dead-zone 1px, :43 средний дифф 8–32px линейно ≤6px/кадр без снапа, снап только >32px после 2 подряд; было >8px → +0.25*diff и жёсткий снап на 2-й кадр («резинка»). Проба reconcile (temp, удалена): diff 12/20/34px → макс шаг 6px/кадр, плавная сходимость; старый алгоритм на 12px давал +3px и снап-рывок 9px. 5 ПРОВЕРОК: (1) npx tsc --noEmit EXIT=0; (2) npm run build EXIT=0; (3) npm test 205/205 (12 файлов; 1 unhandled EADDRINUSE :3333 = baseline, PID 28828 работал); (4) npm run lint 17e/41w ≤25e/48w; (5) npx playwright test 6/6 (8.8с; :3333 отдавал свежий dist/client с новым App.js). Сервер :3333 НЕ рестартил (тимлид сделает; в памяти старый dist). Временное удалено: temp_probe.mjs, temp_reconcile.ts, temp_srv_*.out/.err, test-results/, playwright-report/.
+SKILLS_LOADED: ["superpowers-implement"]
+MCP_USED: ["sequential-thinking"]
+COMPLIANCE: true
+STATUS: resolved
+
+[2026-09-15 08:40] tech-writer -> team-lead:
+TYPE: update | PRIORITY: medium
+Project: agent-hq
+CONTENT: Отчёт о расходе токенов/денег за 14 дней (02.09-15.09.2026) сформирован и сохранён: D:\Тест\agent-hq\.memory\reports\usage-report-2026-09-15.md. Данные из локальной SQLite-базы opencode (C:\Users\Ermak_DS\.local\share\opencode\opencode.db, node:sqlite, readOnly). Ключевые факты: 329 сессий, 659M токенов total (input 338.4M / cache_read 315.4M / output 5.3M / reasoning 1.3M), cost \.39 за окно (все платные строки = deepseek-v4.1-flash через opencode-go; 93%+ трафика на free-моделях). Среднее 47.1M/день по календарю, максимум 164.0M (07.09). Лидер расхода — агент build (352.1M, 52%), топ-сессия 118M (build/deepseek-v4.1-flash «Тестирование и полный анализ системы», 04.09). Проект e4d01245...8fe = 614.8M (93%), global 44.2M. Отчёт содержит: резюме, таблицы по дням/моделям/топ-10 сессий/агентам/проектам, раздел «Почему так много токенов» (tool-loop: переотправка контекста на каждом шаге, input:output = 64:1, роль cache_read в снижении цены) и примечание о достоверности (cost оценочный, эталон — консоль OpenCode Go/Zen). Пустые дни (03/05/06/12/13.09) отражены как факты. Временный скрипт temp_report.js удалён после сбора данных.
+SKILLS_LOADED: ["evidence-discipline"]
+MCP_USED: ["sequential-thinking: not used"]
+COMPLIANCE: true
+STATUS: resolved
+
+================================================================================
+[2026-09-15] team-lead -> bus: BLOCKER
+TYPE: blocker | PRIORITY: critical
+Project: agent-hq
+================================================================================
+P0-A/P0-B: переписанный генератор .agents/scripts/sync-agents.ps1 НЕ ЗАПУСКАЕТСЯ на этой машине —
+PowerShell падает с ScriptContainedMaliciousContent (AMSI/Kaspersky false-positive). Проверено: версия из HEAD запускается; обе половины новой — блокируются; токенов/control-символов/обфускации нет; блок установки хука в одиночку работает. Т.е. это AV-эвристика на конкретном содержимом, не наш код.
+Применено ВРУЧНУЮ (без прогона генератора): opencode.json мигрирован agents->agent (30), мёртвые ключи вынесены в agent-hq.json, external_directory сужен до D:\Тест\agent-hq\**; hook починен (../ fallback) и установлен в .git/hooks; portability (AGENTS_HQ_ROOT) в 10 скриптах; evidence-discipline скилл + AGENTS §12.
+НУЖНО: исключение AV/ИТ для D:\Тест\agent-hq\.agents\scripts\*.ps1 ЛИБО реструктуризация генератора (разбить на мелкие скрипты).
+SKILLS_LOADED: []
+MCP_USED: ["sequential-thinking"]
+COMPLIANCE: true
+STATUS: blocked
+================================================================================

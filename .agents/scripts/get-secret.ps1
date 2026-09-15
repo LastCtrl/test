@@ -10,7 +10,7 @@ param(
     [switch]$Verify
 )
 
-$SecretsDir = 'C:\Users\Ermak_DS\.agent-secrets'
+$SecretsDir = if ($env:AGENT_HQ_SECRETS) { $env:AGENT_HQ_SECRETS } else { Join-Path $env:USERPROFILE '.agent-secrets' }
 
 if ($Name -notmatch '^[a-z0-9-]{2,40}$') {
     Write-Error ("Недопустимое имя секрета '$Name'. Разрешено: 2-40 символов, строчные латиница/цифры/дефис.")

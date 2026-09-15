@@ -10,9 +10,17 @@ if [ -f "$SCRIPT" ]; then
   powershell -NoProfile -ExecutionPolicy Bypass -File "$SCRIPT"
   exit $?
 fi
-# fallback: main repo path via git-dir mapping (worktree without scanner script)
-GITDIR="$(git rev-parse --git-common-dir 2>/dev/null)"
-SCRIPT2="$GITDIR/../../.agents/scripts/pre-commit-secrets.ps1"
+# fallback: main repo path via git-common-dir mapping (worktree without scanner script).
+# git-common-dir points at <repo>/.git, so ONE level up is the repo root.
+GITDIR="$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null)"
+if [ -z "$GITDIR" ]; then
+  GITDIR="$(git rev-parse --git-common-dir 2>/dev/null)"
+  case "$GITDIR" in
+    /*|[A-Za-z]:/*) ;;
+    *) GITDIR="$ROOT/$GITDIR" ;;
+  esac
+fi
+SCRIPT2="$GITDIR/../.agents/scripts/pre-commit-secrets.ps1"
 if [ -f "$SCRIPT2" ]; then
   powershell -NoProfile -ExecutionPolicy Bypass -File "$SCRIPT2"
   exit $?

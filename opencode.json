@@ -64,7 +64,7 @@
       "description": "Статус системы agent-hq: агенты, utilization, Memory Bank, worktrees, здоровье."
     }
   },
-  "agents": {
+  "agent": {
     "backend-1": {
         "description": "Backend Specialist (copy 1) — REST/GraphQL API, бизнес-логика, middleware, авторизация для параллельной работы.",
         "mode": "subagent",
@@ -755,15 +755,6 @@
     }
 
   },
-  "memory": {
-    "bank_path": ".memory/",
-    "archive_ttl_days": 7,
-    "compression": {
-      "enabled": true,
-      "max_size_kb": 50,
-      "strategy": "summary+archive"
-    }
-  },
   "compaction": {
     "auto": true,
     "prune": true,
@@ -774,41 +765,6 @@
       ".memory/**",
       ".agents/worktrees/**"
     ]
-  },
-  "workspace": {
-    "root": "D:\\Тест\\agent-hq",
-    "sandbox_per_agent": true,
-    "merge_strategy": "git-branch"
-  },
-  "projects": {
-    "news-bot": {
-      "type": "telegram-bot",
-      "agents": [
-        "backend",
-        "devops",
-        "qa-engineer",
-        "tech-writer"
-      ]
-    },
-    "pong-advanced": {
-      "type": "full-stack",
-      "agents": [
-        "frontend",
-        "backend",
-        "devops",
-        "qa-engineer"
-      ]
-    }
-  },
-  "modules": {
-    "memory_bank": true,
-    "agent_sandbox": true,
-    "model_router": true,
-    "context_compression": true,
-    "distributed_tracing": true,
-    "performance_scoring": true,
-    "plugins": true,
-    "health_monitoring": true
   },
   "provider": {
     "tokenrouter": {
@@ -845,10 +801,7 @@
   },
   "permission": {
     "external_directory": {
-      "D:\\\\Тест\\\\**": "allow",
-      "C:\\\\Users\\\\Ermak_DS\\\\.local\\\\share\\\\opencode\\\\**": "allow",
-      "C:\\\\Users\\\\Ermak_DS\\\\AppData\\\\Local\\\\opencode\\\\**": "allow",
-      "C:\\\\Users\\\\Ermak_DS\\\\.config\\\\opencode\\\\**": "allow"
+      "D:\\Тест\\agent-hq\\**": "allow"
     }
   }
 }

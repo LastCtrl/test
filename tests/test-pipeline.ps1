@@ -233,6 +233,42 @@ function Test-RedactionCase {
     return $all
 }
 
+# P0-D (regex refine): Redact-Secrets is a pure function, so it is exercised
+# directly instead of through the poller. It must leave ordinary go-to-code
+# alone while still masking real key=value credentials.
+function Test-RedactionRegexCase {
+    $all = $true
+    $redactPath = Join-Path $RepoRoot ".agents\scripts\redact.ps1"
+    $redactExists = Test-PathLeaf $redactPath
+    $all = (Write-Check "redact.ps1 exists" $redactExists) -and $all
+    if (-not $redactExists) { return $all }
+
+    . $redactPath
+
+    # False positive: the value is a call expression -> must stay untouched.
+    # The string is assembled at runtime so this file holds no literal secret.
+    $goTo = "const " + "api" + "Key = get" + "Api" + "Key();"
+    $goToOut = Redact-Secrets $goTo
+    $all = (Write-Check "go-to code 'apiKey = getApiKey()' is NOT redacted" ($goToOut -eq $goTo)) -and $all
+
+    # True positive: a real key=value credential must still be masked.
+    $secret = "abc" + "123" + "def456"
+    $rawKey = "api" + "_" + "key=" + $secret
+    $keyOut = Redact-Secrets $rawKey
+    $keyMasked = ((-not $keyOut.Contains($secret)) -and $keyOut.Contains("[REDACTED]"))
+    $all = (Write-Check "api_key=<secret> IS redacted" $keyMasked) -and $all
+
+    # Well-known shapes must not be weakened by the refinement.
+    $rawSk = "s" + "k-" + "ABCDEFGHIJKLMNOPQRSTUVWX"
+    $skOut = Redact-Secrets $rawSk
+    $all = (Write-Check "sk- key is still redacted" (-not $skOut.Contains($rawSk))) -and $all
+
+    # Idempotence: redacting an already redacted string changes nothing.
+    $all = (Write-Check "Redact-Secrets is idempotent" ((Redact-Secrets $keyOut) -eq $keyOut)) -and $all
+
+    return $all
+}
+
 # --- runner ----------------------------------------------------------------
 
 function Invoke-Case {
@@ -288,6 +324,7 @@ Invoke-Case "e) stderr-only -> dead-letter (empty stdout)"           { param($r)
 Invoke-Case "f) errormarker -> dead-letter (error marker)"           { param($r) Test-FailureCase -Root $r -Mode "errormarker" -ReasonPattern "error marker" }
 Invoke-Case "g) timeout -> dead-letter (timeout/124)"                { param($r) Test-FailureCase -Root $r -Mode "timeout"     -ReasonPattern "124|TIMEOUT" -JobTimeout "3" }
 Invoke-Case "h) leak -> redacted in dead-letter"                     { param($r) Test-RedactionCase -Root $r }
+Invoke-Case "i) redaction regex -> go-to code kept, secrets masked"  { Test-RedactionRegexCase }
 
 $total = $script:CasePass + $script:CaseFail
 Write-Host ""

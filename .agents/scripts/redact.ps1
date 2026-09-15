@@ -35,7 +35,15 @@ function Redact-Secrets {
     $value = $value -replace '(bearer)\s+[A-Za-z0-9._-]{16,}', '$1 [REDACTED]'
 
     # key: value / key=value: keep the key name and separator, mask the value.
-    $value = $value -replace '(password|passwd|pwd|secret|token|api[_-]?key)(\s*[:=]\s*)\S+', '$1$2[REDACTED]'
+    # Refined (P0-D): two guards stop this rule from eating ordinary source code:
+    #   * the key is boundary-delimited and the two-word form must use a real
+    #     separator (api_key / api-key); camelCase "apiKey" and bare "apikey"
+    #     no longer match (separator is required instead of optional);
+    #   * the value must not be a call expression -- getApiKey(), obj.method(...)
+    #     -- so go-to-code such as `apiKey = getApiKey()` stays untouched.
+    # Quoted and plain credentials (password=..., token=..., secret: ...) are
+    # still masked; the well-known shapes above are matched independently.
+    $value = $value -replace '(?<![A-Za-z0-9])(password|passwd|pwd|secret|token|api[_-]key)(?![A-Za-z0-9])(\s*[:=]\s*)(?![A-Za-z_][A-Za-z0-9_.]*\s*\()(\S+)', '$1$2[REDACTED]'
 
     return $value
 }

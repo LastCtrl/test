@@ -1560,3 +1560,16 @@ MCP_USED: []
 COMPLIANCE: true
 STATUS: resolved
 ================================================================================
+================================================================================
+[2026-09-15T15:16:07] dev-2 -> team-lead:
+TYPE: update | PRIORITY: medium
+CONTENT: Закрыт остаток P0-D.
+(A) Pin. .github/workflows/verify.yml (единственный workflow): actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4; actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4. SHA разрешены двумя независимыми источниками (git ls-remote + GitHub API /git/ref/tags/v4), object.type=commit -> dereference не требовался. opencode.json mcp: npx-пакетов нет (все type=local через *.cmd wrappers) -> пинить нечего; секции "plugin" нет -> пинить нечего; serena (enabled:false) использует uvx --from git+https://github.com/oraios/serena без ref -> unpinned, оставлено как есть (finding, нужно отдельное решение: git-ref без версии в tag не пиновать). YAML валиден: PyYAML safe_load OK, табов 0.
+(B) redact.ps1:38 (key=value). Паттерн уточнён: (1) границы (?<![A-Za-z0-9])/(?![A-Za-z0-9]); (2) имя api-ключа требует реальный разделитель api[_-]key вместо api[_-]?key (camelCase apiKey/голый apikey больше не матчатся); (3) value-guard (?![A-Za-z_][A-Za-z0-9_.]*\s*\() — значение-вызов (getApiKey(), obj.method()) не маскируется.
+Поведение: "const apiKey = getApiKey();" -> без изменений; api_key=<значение> -> [REDACTED]; password/token/secret (в кавычках и без) -> маскируются; db_password=..., X-Api-Key: -> маскируются; sk-/ghp_/github_pat_/xoxb/AKIA/JWT/Bearer/PEM не ослаблены (отдельные паттерны не трогались).
+Тест: tests/test-pipeline.ps1 добавлен кейс i) "redaction regex -> go-to code kept, secrets masked" (pure-function Redact-Secrets, фикстуры собраны в рантайме). Результат: passed=9 failed=0 total=9, exit 0; кейс h) leak не сломан (PASS). Redact-Secrets идемпотентна (проверено в кейсе).
+Файлы: .github/workflows/verify.yml, .agents/scripts/redact.ps1, tests/test-pipeline.ps1 (3 modified). CRLF: redact.ps1 49 CRLF/0 loneLF, test-pipeline.ps1 338/0; verify.yml сохранил исходный LF (0 CRLF/38 loneLF). PSParser errors=0. Не коммитил. Temp убран.
+SKILLS_LOADED: ["evidence-discipline", "windows-safety", "superpowers-implement"]
+MCP_USED: ["sequential-thinking"]
+COMPLIANCE: true
+STATUS: resolved

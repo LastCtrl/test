@@ -1191,6 +1191,15 @@ COMPLIANCE: true
 STATUS: resolved
 ================================================================================
 
+[2026-09-15T13:45:00] qa-engineer-1 -> team-lead:
+TYPE: update | PRIORITY: medium
+Project: agent-hq
+CONTENT: Независимая приёмка P0-A «native discovery-test» (повторная, после фиксов). ПРОВЕРКИ: (1) & test-discovery.ps1 -> RESULT: PASS, EXIT=0 (20 PASS, 0 FAIL, 0 SKIP, 1 WARN). Агенты 32 source + 2 builtins=34 runtime keys, 32/32 visible; скиллы 31 файл+1 builtin=32 runtime, 31/31 visible; required_skills 128 refs, 0 dangling; WARN=customize-opencode (builtin). (2) & test-vault.ps1 -> 8/8 PASS, EXIT=0. (3) & test-pipeline.ps1 -> 7/7 PASS, EXIT=0. (4) Ручная верификация: opencode debug config -> 34 agent keys, debug skill -> 32 skills вкл clean-code; prompts/README.md не найден (.md в prompts/ нет); clean-code SKILL.md frontmatter name=clean-code, description непустая. (5) Тест read-only: код 452 строки, нет мутаций репо. (6) Exit-logic: exit 1 при FAIL>0 — корректно. Вердикт: ПРИНЯТО, 0 дефектов.
+SKILLS_LOADED: ["evidence-discipline", "windows-safety"]
+MCP_USED: []
+COMPLIANCE: true
+STATUS: resolved
+
 [2026-09-15T13:25:00] qa-engineer-1 -> team-lead:
 TYPE: update | PRIORITY: medium
 CONTENT: P0-B acceptance: sync-agents.ps1 OK, schema validation OK (133 nodes), team-lead* task=object with 28 allows + "*":deny, no team-lead in allow lists (anti-fork-bomb), leaves (dev-1/code-reviewer/qa-engineer) task=string "deny", no blanket "allow" for any agent, all allow entries are valid agent names, other permissions (read/edit/bash/glob/grep/skill) unchanged.
@@ -1272,6 +1281,22 @@ test-discovery.ps1 (9 проверок): агенты 32/32 видимы runtime
 P0-A: миграция ✅, agent-hq.json ✅, schema-валидация ✅, frontmatter ✅, discovery ✅, уникальность имён ✅, required_skills ✅ = ЗАКРЫТ.
 SKILLS_LOADED: []
 MCP_USED: []
+COMPLIANCE: true
+STATUS: resolved
+================================================================================
+[2026-09-15T13:38:02] dev-2-1 -> team-lead:TYPE: update | PRIORITY: medium
+Project: news-bot
+CONTENT: Retry/fallback "анализ почти всегда получается" — реализован. Изменённые файлы: services/analyzer.py (828 -> 898 строк), tests/test_analyzer.py (+275 строк, 6 новых тестов).
+(1) КЛАССИФИКАЦИЯ ОТКАЗОВ: добавлен _last_failure[model] (analyzer.py:100-129) — код причины заполняется в _call_model_once на каждом пути: unknown/timeout/http_5xx/http_4xx/rate_limit/empty/bad_json/network/exception; на успехе сбрасывается (analyzer.py:596). TRANSIENT_FAILURES={timeout,http_5xx,empty,bad_json,network} — только они ретраятся; 429 и прочие 4xx перманентны.
+(2) RETRY-ПРОХОД: analyze_news (analyzer.py:754-864) — цикл for attempt in range(1, MAX_PASSES+1) (MAX_PASSES=2, analyzer.py:101-102). Проход 2 идёт ТОЛЬКО по локальному списку retry_candidates (модели, упавшие транзиентно в проходе 1), с level-1 (analyzer.py:769), после паузы RETRY_PAUSE_SECONDS=3.0 (analyzer.py:791). Гейт бюджета analyzer.py:772: если remaining - пауза < MIN_MODEL_TIME(15) — проход 2 не запускается. Бюджет ANALYSIS_TIMEOUT=100с, последовательность, финальный degraded-фолбэк (_format_simple_list) не тронуты. Все 429 сразу ставят cooldown 300с и в retry не попадают; 5xx/network/empty/bad_json cooldown не ставят.
+(3) _call_model теперь РОВНО ОДНА HTTP-попытка (analyzer.py:470-499): удалён старый внутренний ретрай empty/bad-JSON с level-1 (вместе с _retry_eligible_models/_attempt_start/_should_retry_model/_note_attempt_start), т.к. его роль выполняет проход 2 (проверено grep: эти имена больше нигде не используются).
+(4) ЛОГИ: "Model X failed on pass 1/2: <reason>" (analyzer.py:853), "Model X succeeded on pass N/2 (level=L)" (analyzer.py:844), "Retry pass N/2 over K transiently failed model(s)..." (analyzer.py:782), "Retry pass skipped: ..." (analyzer.py:774). Живое подтверждение из e2e_smoke.log 13:37: "big-pickle failed on pass 1/2: rate_limit" (429, без ретрая) -> "ling-3.0-flash-fin-free succeeded on pass 1/2 (level=2)".
+(5) НЕ ТРОГАЛ: MODELS, MODEL_PROVIDER, PROVIDER_CONFIG, freshness, scheduler, _format_simple_list, RATE_LIMIT_COOLDOWN/EMPTY_STREAK_*.
+(6) ТЕСТЫ (tests/test_analyzer.py:1070-1342, класс TestTransientRetryPass, autouse-фикстура изоляции cooldown-состояния модуля): timeout на 1-м проходе -> успех на retry (не degraded, level 2->1); HTTP 500 -> http_5xx + НЕ _is_rate_limited (нет 300с); 429 -> rate_limit + cooldown + не транзиентна; все модели 429 -> второго прохода нет, ровно 1 вызов на модель, degraded; все падают транзиентно -> 2 прохода и degraded; retry не стартует вне бюджета (asyncio.sleep не вызван). Прогон: py -3 -m pytest tests -q --tb=short => 311 passed, 1 skipped (было 305 passed, 1 skipped), 0 failed.
+(7) ВЕРИФИКАЦИЯ: py -3 scripts/e2e_smoke.py => SUMMARY OK=3 FAIL=0 SKIP=0, exit 0 (analysis length 573 chars, fallback-маркер не найден). Внешних факторов (все free-модели в лимите) не зафиксировано.
+(8) Временных файлов не создавал; откат не требуется (изменения закоммичены не были, git в D:\Тест\news-bot не инициализирован — корень репо D:\Тест без коммитов).
+SKILLS_LOADED: ["superpowers-implement", "evidence-discipline"]
+MCP_USED: ["sequential-thinking", "context7: offline"]
 COMPLIANCE: true
 STATUS: resolved
 ================================================================================

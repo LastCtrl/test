@@ -34,7 +34,13 @@ $ErrorActionPreference = "Stop"
 # Project root is two levels up
 # --------------------------------------------------
 $scriptDir = Split-Path $MyInvocation.MyCommand.Path -Parent
-$projectRoot = Split-Path (Split-Path $scriptDir -Parent) -Parent
+# Portability: prefer an explicit AGENT_HQ_ROOT (tests / alternate checkouts),
+# otherwise derive the repository root from this script's location.
+$projectRoot = if (-not [string]::IsNullOrWhiteSpace($env:AGENT_HQ_ROOT)) {
+    $env:AGENT_HQ_ROOT
+} else {
+    Split-Path (Split-Path $scriptDir -Parent) -Parent
+}
 
 $ProjectsRoot = Join-Path $projectRoot "projects"
 
@@ -58,6 +64,23 @@ if (Test-Path -LiteralPath $taskStatePath) {
     function Revoke-StaleClaims {
         param([int]$TtlSeconds = 900, [string]$StateDir)
         return @()
+    }
+}
+
+# --- P1-2: per-project isolation helper (worktree + CONTEXT-BUFFER boundary).
+# Dot-sourced when present; a minimal fallback keeps the queue working in
+# mirror/temp trees that carry project-queue.ps1 but not the helper.
+$isolationHelperPath = Join-Path $scriptDir "project-worktree.ps1"
+if (Test-Path -LiteralPath $isolationHelperPath) {
+    . $isolationHelperPath
+} else {
+    function Get-ProjectWorktreePath {
+        param([string]$Project, [string]$Root)
+        $base = $null
+        if (-not [string]::IsNullOrWhiteSpace($Root)) { $base = $Root }
+        elseif (-not [string]::IsNullOrWhiteSpace($env:AGENT_HQ_ROOT)) { $base = $env:AGENT_HQ_ROOT }
+        else { $base = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent }
+        return (Join-Path $base ".agents\worktrees\$Project")
     }
 }
 
@@ -256,12 +279,21 @@ function Add-Task {
     $taskId = Get-NextTaskId -Queue $queue
     $now = Get-Now
 
+    # P1-2: bind the task to its project and the project's worktree, so a worker
+    # always knows which isolated checkout the task belongs to.
+    $worktreePath = ""
+    if (Get-Command Get-ProjectWorktreePath -ErrorAction SilentlyContinue) {
+        try { $worktreePath = [string](Get-ProjectWorktreePath -Project $ProjectName -Root $projectRoot) } catch { $worktreePath = "" }
+    }
+
     $taskObj = [PSCustomObject]@{
         id              = $taskId
         title           = $TaskTitle
         priority        = $TaskPriority
         status          = if ($TaskAgent) { "assigned" } else { "queued" }
         assigned_agent  = $TaskAgent
+        project         = $ProjectName
+        worktree        = $worktreePath
         created_at      = $now
         started_at      = $null
         completed_at    = $null

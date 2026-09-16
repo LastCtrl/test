@@ -1779,3 +1779,19 @@ MCP_USED: []
 COMPLIANCE: true
 STATUS: resolved
 ================================================================================
+
+[2026-09-16] dev-1 -> team-lead:
+TYPE: update | PRIORITY: medium
+CONTENT: P1-2 "per-project worktree + per-project CONTEXT-BUFFER + leak-test" реализован.
+МОДЕЛЬ: канонический буфер остаётся projects\<name>\CONTEXT-BUFFER.md (уже создаётся шаблоном .agents\templates\project\CONTEXT-BUFFER.md, миграция не нужна); корневой CONTEXT-BUFFER.md — для системных задач с тегом Project: <name>. Per-project worktree = .agents\worktrees\<name> на ветке project/<name>; если репо без git HEAD — plain-directory stub (идемпотентно). create-project.ps1 создаёт буфер (из шаблона) + worktree сразу; флаг -NoWorktree отключает worktree. project-queue.ps1 пишет в задачу поля project и worktree, связывая задачу с изолированным чекаутом. Граница ФС: Test-ProjectPathBoundary / Test-ProjectContextLeak / Write-ProjectContextBuffer (cross-project запись блокируется, reason "cross-project write blocked: source 'A' != target 'B'").
+ФАЙЛЫ: created .agents\scripts\project-worktree.ps1; modified .agents\scripts\create-project.ps1 (env-root AGENT_HQ_ROOT + вызов New-ProjectWorktree + switch -NoWorktree), .agents\scripts\project-queue.ps1 (env-root + dot-source helper с fallback + поля project/worktree в задаче); created tests\test-project-isolation.ps1.
+ТЕСТ: & tests\test-project-isolation.ps1 -> SUMMARY passed=42 failed=0 total=42, EXIT=0. Изолированный $env:AGENT_HQ_ROOT + temp git-репо; создано 2 проекта; проверено: у каждого свой CONTEXT-BUFFER и свой worktree (разные пути и ветки project/<name>); запись в буфер A не появляется в B; cross-project запись заблокирована; чужой путь детектится (Test-ProjectContextLeak); queue-задача несёт project+worktree; один и тот же task id tq-001 клеймится независимо в scope A и B; тест не трогает реальный репо.
+РЕГРЕСС (все exit 0): test-vault 8/8; test-pipeline 9/9; test-discovery PASS=22 FAIL=0 SKIP=0 WARN=1 RESULT PASS; test-false-done 17/17; test-task-state 5/5; verify-phase 41/41.
+CRLF: project-worktree.ps1 480 CRLF / 0 loneLF; project-queue.ps1 709/0; create-project.ps1 345/0; test-project-isolation.ps1 316/0. BOM: изменённые скрипты сохранили BOM=True (как в HEAD), новые файлы BOM=False.
+Не коммитил. Temp вычищен. Реальный репо не тронут: git worktree list = 30 (без изменений), projects\iso* и .agents\worktrees\iso* отсутствуют.
+NOT ENOUGH EVIDENCE: create-project.ps1 на реальных проектах репо не запускал (только temp-root), чтобы не плодить настоящие worktree; поведение per-project worktree на живых проектах не проверялось.
+SKILLS_LOADED: ["evidence-discipline", "windows-safety", "superpowers-implement"]
+MCP_USED: ["sequential-thinking", "context7: not applicable (PowerShell/git, внешних библиотек нет)", "hermes-atlas-mcp: not needed"]
+COMPLIANCE: true
+STATUS: resolved
+================================================================================

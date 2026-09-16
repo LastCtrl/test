@@ -9,7 +9,11 @@
     [string[]]$Agents,
 
     [Parameter(Mandatory=$false)]
-    [switch]$CreateWorktrees
+    [switch]$CreateWorktrees,
+
+    # P1-2: skip the per-project git worktree (agent worktrees are unaffected).
+    [Parameter(Mandatory=$false)]
+    [switch]$NoWorktree
 )
 
 $ErrorActionPreference = "Stop"
@@ -24,7 +28,13 @@ if ($null -ne $Agents) {
     $Agents = $splitAgents
 }
 
-$baseDir = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
+# Portability: prefer an explicit AGENT_HQ_ROOT (tests / alternate checkouts),
+# otherwise derive the repository root from this script's location.
+$baseDir = if (-not [string]::IsNullOrWhiteSpace($env:AGENT_HQ_ROOT)) {
+    $env:AGENT_HQ_ROOT
+} else {
+    Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
+}
 $projectsDir = Join-Path $baseDir "projects"
 $projectDir = Join-Path $projectsDir $ProjectName
 
@@ -302,6 +312,31 @@ build/
 Thumbs.db
 "@
 Set-Content -Path (Join-Path $projectDir ".gitignore") -Value $gitignore
+
+# ============================================================
+# P1-2: per-project git worktree (isolation boundary)
+# The project gets its own worktree under .agents\worktrees\<name> on branch
+# project/<name>, so workers of different projects never share a checkout.
+# Failures degrade to a warning: the project itself is already usable.
+# ============================================================
+if (-not $NoWorktree) {
+    $isolationHelper = Join-Path $PSScriptRoot "project-worktree.ps1"
+    if (Test-Path -LiteralPath $isolationHelper) {
+        . $isolationHelper
+        try {
+            $worktree = New-ProjectWorktree -Project $ProjectName -Root $baseDir
+            if ($worktree.ok) {
+                Write-Host "  Worktree: $($worktree.path) [$($worktree.mode)]" -ForegroundColor Gray
+            } else {
+                Write-Host "  WARNING: per-project worktree not created: $($worktree.reason)" -ForegroundColor Yellow
+            }
+        } catch {
+            Write-Host "  WARNING: per-project worktree failed: $($_.Exception.Message)" -ForegroundColor Yellow
+        }
+    } else {
+        Write-Host "  WARNING: project-worktree.ps1 not found at $isolationHelper - skipping worktree" -ForegroundColor Yellow
+    }
+}
 
 Write-Host ""
 Write-Host "=== Project created: $projectDir ===" -ForegroundColor Green

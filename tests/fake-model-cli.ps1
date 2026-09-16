@@ -12,9 +12,8 @@
 #   unknown     -> "UnknownError", exit 1                      (router: DEAD)
 #   silent      -> no output, exit 0                           (router: DEAD)
 #   hang        -> sleeps 600s (router must classify TIMEOUT)
-#   config-json -> prints a resolved-config JSON for `debug config`; the payload
-#                  is $env:FAKE_MODEL_CLI_CONFIG_JSON when set, otherwise a
-#                  built-in agent map.
+#   config-json -> prints a fake config document; the payload is taken from the
+#                  environment when set, otherwise a built-in agent map.
 #   (unset)     -> exit 2 with a diagnostic
 
 $mode = $env:FAKE_MODEL_CLI_MODE

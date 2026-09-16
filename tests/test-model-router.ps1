@@ -16,6 +16,10 @@
 #   h) runtime config - opencode debug config fallback (fake `debug config` payload)
 #   i) dot-source     - dot-sourcing defines functions but never runs the CLI or
 #                       clobbers the caller's variables (PS 5.1 gotcha)
+#   j) first key only - BUG-023: Set-AgentModel rewrites the first "model" key and
+#                       leaves every other model key / the rest of the file intact
+#   k) state locking  - BUG-024: lock-guarded read-modify-write, tmp+swap write,
+#                       no lost records with concurrent writers, fail-open warning
 #
 # Exit code: 0 when every case passes, 1 when at least one case fails.
 
@@ -366,6 +370,103 @@ $badAgent = Get-AgentConfiguredModel -Agent "..\..\evil" -Root $Root
 $caseOk = (Write-Check "unsafe agent name resolves to nothing" ([string]::IsNullOrEmpty($badAgent))) -and $caseOk
 
 Close-Case "h) runtime config" $caseOk
+
+# --- j) BUG-023: only the first "model" key is rewritten --------------------
+
+Write-Host ""
+Write-Host "CASE: j) Set-AgentModel rewrites only the first model key (BUG-023)"
+$caseOk = $true
+
+$multiFile = Join-Path $AgentsDir "multi-model.json"
+$multiRaw = "{`r`n" +
+    "    `"name`":  `"multi-model`",`r`n" +
+    "    `"model`":  `"opencode/big-pickle`",`r`n" +
+    "    `"permission`": {`r`n" +
+    "        `"bash`": {`r`n" +
+    "            `"model`":  `"nested/keep-me`"`r`n" +
+    "        }`r`n" +
+    "    },`r`n" +
+    "    `"model_note`":  `"keep-me-too`"`r`n" +
+    "}`r`n"
+[System.IO.File]::WriteAllText($multiFile, $multiRaw, $script:Utf8NoBom)
+
+$multiApply = Set-AgentModel -Agent "multi-model" -Model "opencode/ling-3.0-flash-fin-free" -Root $Root
+$caseOk = (Write-Check "Set-AgentModel succeeds on a multi-model file" ($multiApply.ok -eq $true)) -and $caseOk
+$caseOk = (Write-Check "Set-AgentModel reports the change" ($multiApply.changed -eq $true)) -and $caseOk
+
+$multiAfter = [System.IO.File]::ReadAllText($multiFile, [System.Text.Encoding]::UTF8)
+$multiExpected = $multiRaw.Replace('"model":  "opencode/big-pickle"', '"model":  "opencode/ling-3.0-flash-fin-free"')
+$caseOk = (Write-Check "first model key gets the routed model" ([regex]::Match($multiAfter, '(?m)^\s*"model"\s*:\s*"([^"]*)"').Groups[1].Value -eq "opencode/ling-3.0-flash-fin-free")) -and $caseOk
+$caseOk = (Write-Check "exactly one model key was changed" (([regex]::Matches($multiAfter, '"model"\s*:\s*"opencode/ling-3.0-flash-fin-free"')).Count -eq 1)) -and $caseOk
+$caseOk = (Write-Check "the nested model key is untouched" ($multiAfter -match '"model"\s*:\s*"nested/keep-me"')) -and $caseOk
+$caseOk = (Write-Check "non-model keys are untouched" (($multiAfter -match '"model_note"') -and ($multiAfter -match '"permission"'))) -and $caseOk
+$caseOk = (Write-Check "the file is byte-identical apart from the first key" ($multiAfter -eq $multiExpected)) -and $caseOk
+
+Close-Case "j) first model key only" $caseOk
+
+# --- k) BUG-024: locked, atomic health-state writes --------------------------
+
+Write-Host ""
+Write-Host "CASE: k) health state is lock-guarded and swapped in atomically (BUG-024)"
+$caseOk = $true
+Reset-HealthState
+
+for ($i = 1; $i -le 8; $i++) {
+    $null = Set-ModelHealthResult -Model ("seq/model-" + $i) -Status "DEAD" -Root $Root
+}
+$sequentialMissing = 0
+for ($i = 1; $i -le 8; $i++) {
+    if ($null -eq (Read-StateEntry -Model ("seq/model-" + $i))) { $sequentialMissing++ }
+}
+$caseOk = (Write-Check "8 sequential writes keep all 8 records" ($sequentialMissing -eq 0)) -and $caseOk
+
+# A lock held by another writer must not crash this writer: warn and continue.
+$lockPath = Get-ModelHealthLockPath -Root $Root
+$lockHolder = [System.IO.File]::Open($lockPath, [System.IO.FileMode]::OpenOrCreate, [System.IO.FileAccess]::ReadWrite, [System.IO.FileShare]::None)
+$busyOutput = @(Set-ModelHealthResult -Model "busy/model" -Status "OK" -Root $Root -LockTimeoutMs 100 3>&1)
+$lockHolder.Dispose()
+$busyWarnings = @($busyOutput | Where-Object { $_ -is [System.Management.Automation.WarningRecord] })
+$caseOk = (Write-Check "a busy lock produces a warning instead of an exception" ($busyWarnings.Count -ge 1)) -and $caseOk
+$caseOk = (Write-Check "the record is still written when the lock is unavailable" ($null -ne (Read-StateEntry -Model "busy/model"))) -and $caseOk
+
+$residue = @(Get-ChildItem -LiteralPath $MemoryDir -File -Force | Where-Object { $_.Name -like "*.tmp" -or $_.Name -like "*.bak.*" })
+$caseOk = (Write-Check "the tmp+swap write leaves no residue" ($residue.Count -eq 0)) -and $caseOk
+
+$stateParses = $true
+try {
+    $null = [System.IO.File]::ReadAllText($StatePath, [System.Text.Encoding]::UTF8) | ConvertFrom-Json
+} catch {
+    $stateParses = $false
+}
+$caseOk = (Write-Check "state file stays valid JSON after the swap" $stateParses) -and $caseOk
+
+# Separate processes writing different models must not lose each other's record.
+$workers = @()
+foreach ($worker in 1..4) {
+    $workers += Start-Job -ScriptBlock {
+        param($RouterPath, $JobRoot, $Worker)
+        . $RouterPath
+        $null = Set-ModelHealthResult -Model ("job/model-" + $Worker) -Status "DEAD" -Root $JobRoot
+    } -ArgumentList $Router, $Root, $worker
+}
+Wait-Job -Job $workers -Timeout 60 | Out-Null
+
+$jobMissing = 0
+foreach ($worker in 1..4) {
+    if ($null -eq (Read-StateEntry -Model ("job/model-" + $worker))) { $jobMissing++ }
+}
+$jobsStillRunning = @($workers | Where-Object { $_.State -eq "Running" }).Count
+Remove-Job -Job $workers -Force -ErrorAction SilentlyContinue
+
+$caseOk = (Write-Check "4 concurrent writers all finish" ($jobsStillRunning -eq 0)) -and $caseOk
+$caseOk = (Write-Check "4 concurrent writers leave 4 records" ($jobMissing -eq 0)) -and $caseOk
+$caseOk = (Write-Check "concurrent writers keep the earlier records" (($null -ne (Read-StateEntry -Model "busy/model")) -and ($null -ne (Read-StateEntry -Model "seq/model-8")))) -and $caseOk
+
+$stateJson = [System.IO.File]::ReadAllText($StatePath, [System.Text.Encoding]::UTF8) | ConvertFrom-Json
+$recordCount = @($stateJson.PSObject.Properties).Count
+$caseOk = (Write-Check "no record was lost (8 sequential + 1 busy + 4 concurrent)" ($recordCount -eq 13)) -and $caseOk
+
+Close-Case "k) state locking" $caseOk
 
 # --- summary + cleanup ------------------------------------------------------
 

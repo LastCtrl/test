@@ -185,6 +185,56 @@ function Read-ModelHealthState {
     return $state
 }
 
+# BUG-024: every router process (CLI invocations, probes, later the daemon)
+# shares .memory\model-health.json, so the read-modify-write in
+# Set-ModelHealthResult has to be serialized. The lock is an exclusive handle
+# (FileShare::None) on "<state>.lock": a second opener gets a sharing violation
+# and retries until -LockTimeoutMs. When the lock cannot be taken the action
+# still runs (fail-open + warning): losing one probe result is preferable to
+# hanging the router or the daemon.
+function Get-ModelHealthLockPath {
+    param([string]$Root)
+    return ((Get-ModelHealthPath -Root $Root) + ".lock")
+}
+
+function Invoke-ModelHealthLocked {
+    param(
+        [Parameter(Mandatory = $true)][scriptblock]$Action,
+        [string]$Root,
+        [int]$LockTimeoutMs = 5000
+    )
+    $lockPath = Get-ModelHealthLockPath -Root $Root
+    $lockDir = Split-Path -Parent $lockPath
+    if (-not (Test-Path -LiteralPath $lockDir -PathType Container)) {
+        New-Item -ItemType Directory -Path $lockDir -Force | Out-Null
+    }
+
+    $handle = $null
+    $deadline = (Get-Date).AddMilliseconds($LockTimeoutMs)
+    while ($null -eq $handle) {
+        try {
+            $handle = [System.IO.File]::Open($lockPath, [System.IO.FileMode]::OpenOrCreate, [System.IO.FileAccess]::ReadWrite, [System.IO.FileShare]::None)
+        } catch {
+            # PowerShell wraps the .NET exception, so both levels are inspected:
+            # only contention is worth retrying, anything else (ACL, AV) would
+            # just spin until the deadline.
+            $inner = $_.Exception.InnerException
+            $isContention = ($_.Exception -is [System.IO.IOException]) -or (($null -ne $inner) -and ($inner -is [System.IO.IOException]))
+            if ((-not $isContention) -or ((Get-Date) -ge $deadline)) {
+                Write-Warning "model-health lock not acquired ($lockPath): $($_.Exception.Message) - continuing without an exclusive lock"
+                break
+            }
+            Start-Sleep -Milliseconds 50
+        }
+    }
+
+    try {
+        return & $Action
+    } finally {
+        if ($null -ne $handle) { $handle.Dispose() }
+    }
+}
+
 function Save-ModelHealthState {
     param([hashtable]$State, [string]$Root)
     $path = Get-ModelHealthPath -Root $Root
@@ -195,7 +245,46 @@ function Save-ModelHealthState {
     $ordered = [ordered]@{}
     foreach ($key in @($State.Keys | Sort-Object)) { $ordered[$key] = $State[$key] }
     $json = ConvertTo-Json -InputObject $ordered -Depth 6
-    [System.IO.File]::WriteAllText($path, $json, (New-Object System.Text.UTF8Encoding($false)))
+
+    # BUG-024: the state file is never truncated in place - a sibling temp file is
+    # written first and then swapped in (ReplaceFile/MoveFileEx), so a concurrent
+    # reader sees either the old or the new document, never a half-written one.
+    $encoding = New-Object System.Text.UTF8Encoding($false)
+    $tmpPath = Join-Path $dir ("." + (Split-Path -Leaf $path) + "." + [guid]::NewGuid().ToString("N") + ".tmp")
+    $backupPath = $path + ".bak." + [guid]::NewGuid().ToString("N")
+    try {
+        [System.IO.File]::WriteAllText($tmpPath, $json, $encoding)
+        # A reader holding the destination open can make the swap fail transiently.
+        $swapped = $false
+        foreach ($attempt in 1..5) {
+            try {
+                if (Test-Path -LiteralPath $path -PathType Leaf) {
+                    [System.IO.File]::Replace($tmpPath, $path, $backupPath)
+                } else {
+                    [System.IO.File]::Move($tmpPath, $path)
+                }
+                $swapped = $true
+                break
+            } catch {
+                if ($attempt -eq 5) {
+                    Write-Warning "cannot swap in model-health state ${path}: $($_.Exception.Message)"
+                } else {
+                    Start-Sleep -Milliseconds 50
+                }
+            }
+        }
+        if (-not $swapped) {
+            # Last resort: keep the probe result instead of silently dropping it.
+            try {
+                [System.IO.File]::WriteAllText($path, $json, $encoding)
+            } catch {
+                Write-Warning "cannot write model-health state ${path}: $($_.Exception.Message)"
+            }
+        }
+    } finally {
+        if (Test-Path -LiteralPath $tmpPath) { Remove-Item -LiteralPath $tmpPath -Force -ErrorAction SilentlyContinue }
+        if (Test-Path -LiteralPath $backupPath) { Remove-Item -LiteralPath $backupPath -Force -ErrorAction SilentlyContinue }
+    }
     return $path
 }
 
@@ -222,44 +311,51 @@ function Set-ModelHealthResult {
         [Parameter(Mandatory = $true)][string]$Status,
         [int]$FailThreshold = 0,
         [int]$CooldownMinutes = 0,
-        [string]$Root
+        [string]$Root,
+        [int]$LockTimeoutMs = 5000
     )
     if ($FailThreshold -le 0) { $FailThreshold = $script:DefaultFailThreshold }
     if ($CooldownMinutes -le 0) { $CooldownMinutes = $script:DefaultCooldownMinutes }
 
-    $state = Read-ModelHealthState -Root $Root
-    $previous = $null
-    if ($state.Contains($Model)) { $previous = $state[$Model] }
+    # BUG-024: read-modify-write runs under a cross-process lock; the state is
+    # re-read inside the lock, so two concurrent probes merge instead of the
+    # last writer dropping the other model's record (lost update -> fail-open).
+    $record = Invoke-ModelHealthLocked -Root $Root -LockTimeoutMs $LockTimeoutMs -Action {
+        $state = Read-ModelHealthState -Root $Root
+        $previous = $null
+        if ($state.Contains($Model)) { $previous = $state[$Model] }
 
-    $failCount = 0
-    if ($null -ne $previous) { $failCount = [int]$previous.fail_count }
-
-    # Half-open semantics: an expired cooldown grants a clean probe. A success
-    # closes the breaker, the next failure opens it again immediately.
-    if ($null -ne $previous) {
-        $previousUntil = ConvertTo-RouterDate -Text ([string]$previous.open_until)
-        if (($null -ne $previousUntil) -and ($previousUntil -le (Get-Date))) { $failCount = 0 }
-    }
-
-    $openUntil = ""
-    if ($Status -eq "OK") {
         $failCount = 0
-    } else {
-        $failCount = $failCount + 1
-        if ($failCount -ge $FailThreshold) {
-            $openUntil = Format-RouterTimestamp ((Get-Date).AddMinutes($CooldownMinutes))
-        }
-    }
+        if ($null -ne $previous) { $failCount = [int]$previous.fail_count }
 
-    $record = [pscustomobject]@{
-        model      = $Model
-        status     = $Status
-        checked_at = Format-RouterTimestamp (Get-Date)
-        fail_count = $failCount
-        open_until = $openUntil
+        # Half-open semantics: an expired cooldown grants a clean probe. A success
+        # closes the breaker, the next failure opens it again immediately.
+        if ($null -ne $previous) {
+            $previousUntil = ConvertTo-RouterDate -Text ([string]$previous.open_until)
+            if (($null -ne $previousUntil) -and ($previousUntil -le (Get-Date))) { $failCount = 0 }
+        }
+
+        $openUntil = ""
+        if ($Status -eq "OK") {
+            $failCount = 0
+        } else {
+            $failCount = $failCount + 1
+            if ($failCount -ge $FailThreshold) {
+                $openUntil = Format-RouterTimestamp ((Get-Date).AddMinutes($CooldownMinutes))
+            }
+        }
+
+        $entry = [pscustomobject]@{
+            model      = $Model
+            status     = $Status
+            checked_at = Format-RouterTimestamp (Get-Date)
+            fail_count = $failCount
+            open_until = $openUntil
+        }
+        $state[$Model] = $entry
+        [void](Save-ModelHealthState -State $state -Root $Root)
+        return $entry
     }
-    $state[$Model] = $record
-    [void](Save-ModelHealthState -State $state -Root $Root)
     return $record
 }
 
@@ -489,7 +585,7 @@ function Get-ModelRoute {
 }
 
 # Write the routed model into .opencode\agents\<agent>.json (first "model" key
-# only, indentation preserved) and sync the runtime config afterwards.
+# only - BUG-023 -, indentation preserved) and sync the runtime config afterwards.
 function Set-AgentModel {
     param(
         [Parameter(Mandatory = $true)][string]$Agent,
@@ -518,13 +614,19 @@ function Set-AgentModel {
         return [pscustomobject]@{ ok = $false; file = $agentFile; backup = ""; synced = $false; changed = $false; error = "backup failed: $($_.Exception.Message)" }
     }
 
+    # BUG-023: replace the first match ONLY. The static
+    # [regex]::Replace($text, $pattern, $evaluator) overload has no count
+    # parameter (its 4th argument is RegexOptions, where 1 means IgnoreCase), so
+    # the count-limited overload is taken from a regex instance instead; the rest
+    # of the document stays byte-identical.
     $targetModel = $Model
     $evaluator = [System.Text.RegularExpressions.MatchEvaluator] {
         param($m)
         return $m.Groups[1].Value + '"' + $targetModel + '"'
     }
     try {
-        $updated = [regex]::Replace($raw, $pattern, $evaluator)
+        $regex = New-Object System.Text.RegularExpressions.Regex($pattern)
+        $updated = $regex.Replace($raw, $evaluator, 1)
         [System.IO.File]::WriteAllText($agentFile, $updated, (New-Object System.Text.UTF8Encoding($false)))
     } catch {
         Copy-Item -LiteralPath $backup -Destination $agentFile -Force -ErrorAction SilentlyContinue

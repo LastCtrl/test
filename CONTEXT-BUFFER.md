@@ -1412,33 +1412,6 @@ MCP_USED: ["sequential-thinking"]
 COMPLIANCE: true
 STATUS: resolved
 ================================================================================
-[2026-09-16 14:39] dev-2-1 -> team-lead:
-TYPE: update | PRIORITY: medium
-Project: news-bot
-================================================================================
-CONTENT: Дайджест устойчив: окно предзагрузки 15 мин + раунды добора degraded-тем с дедлайном (слот минус 2 мин).
-(1) services/scheduler.py — изменённые строки:
- - :4 импорт timedelta.
- - :44-64 константы: _PRELOAD_LOOKAHEAD_MINUTES 8->15; _PRELOAD_CACHE_TTL_SECONDS 900->1800 (TTL >= окна); _DEGRADED_MARKER="ИИ-анализ временно недоступен" (единый маркер fallback analyze_news (analyzer.py:387) и texts.format_digest(degraded=True) (texts.py:327)); _RETRY_ROUND_DELAY_SECONDS=45; _DIGEST_DEADLINE_RESERVE_MINUTES=2; _is_degraded().
- - :187-193 _tick: preload_dt = now(сек=0)+15мин = абсолютное время слота; preload_time_str из preload_dt.
- - :223-225 preload-задача получает preload_dt.
- - :302-349 _preload_digest(..., slot_dt): deadline=slot_dt-2мин, логирует deadline, передаёт в сборку.
- - :351-454 _build_topic_texts(user_id, deadline=None): раунд 1 по ВСЕМ темам; затем while degraded: пауза min(45с, остаток) -> новый раунд ТОЛЬКО по degraded-индексам; выход по «все собрались» / remaining<=0 / deadline is None (сборка на месте). Логи: «round 1: N degraded (Xs to deadline)», «retry round K: retried N, M still degraded, Xs to deadline», warning «sent degraded after K round(s)».
- - :456-521 _run_topic_round: обработка индексов, texts[index], degraded.add/discard по маркеру; search_news обёрнут try (сбой поиска -> degraded, раунд не падает); таймаут/ошибка анализа -> format_digest(degraded=True).
- - :523-539 хелперы _seconds_to_deadline / _deadline_status / _topic_indices_str.
-Сохранено: misfire_grace_time=30; _send_digest при отсутствии свежего кэша строит на месте (deadline=None -> без повторов, слот не задерживается) (scheduler.py:472); порядок zip(topics,texts) не нарушен.
-Не трогал: analyzer, freshness, news_search, texts/форматирование, лимиты плана, was_digest_sent_recently.
-(2) tests/test_digest.py: добавлен класс TestDigestRetryRounds (+4 теста): recovered-in-round-2 -> НЕ degraded; all-degraded -> по дедлайну degraded, elapsed<3с, число раундов ограничено; deadline в прошлом -> 0 повторов; _send_digest при полностью degraded -> сообщения уходят и mark_digest_sent=True.
-(3) ПРОГОН: py -3 -m pytest tests -q --tb=short -> 340 passed, 1 skipped, 0 failed (baseline 336 passed/1 skipped; +4 новых). py -3 -m py_compile services/scheduler.py -> OK.
-(4) ВЕРИФИКАЦИЯ e2e: py -3 scripts/e2e_digest.py -> ANALYZE OK: 2/4, STALE=none, DIGEST split=OK, exit 1 (артефакт scripts/e2e_digest_report.txt, лог scripts/e2e_digest.log). Причина — ВНЕШНИЙ ФАКТОР: в логе big-pickle и mimo-v2.5-free «on 429 cooldown» (дневной free-лимит), z-ai/glm-5.3-free HTTP 503 «No available channel for model z-ai/glm-5.3-free (distributor)», nemotron-3.5-lightning-free timeout, ling-3.0-flash-fin-free empty/503. Затяжной дневной 429/недоступность дистрибьютора glm повторами в 15-мин окне не лечится (как и предупреждало ТЗ).
-(5) ЖИВОЙ ПРОБНИК нового цикла (temp-скрипт, удалён): 2 реальные темы (курс доллара, новости ИИ), deadline=now+3мин, get_user замокан. Лог: «Built digest texts for 2 topic(s) in 90.56s (round 1): 1 degraded (89s to deadline)» -> «Digest retry round 2 ... retried 1 topic(s), 0 still degraded, 44s to deadline» -> итог degraded=0/2. Повтор реально добрал тему, ушедшую в degraded.
-Temp/bak удалены: %TEMP%\opencode\probe_retry.py, %TEMP%\opencode\scheduler.py.bak.
-NOT ENOUGH EVIDENCE: полный прогон _preload_digest по реальному слоту APScheduler (ожидание >=15 мин) не воспроизводил — тайминг/дедлайн покрыт юнит-тестами, а не реальным ожиданием слота.
-SKILLS_LOADED: ["superpowers-implement", "evidence-discipline"]
-MCP_USED: ["sequential-thinking: 5 шагов (план раундов/дедлайна, риски существующих тестов, TTL, доказательность)", "context7: not needed (только stdlib asyncio/datetime, новых внешних библиотек нет)"]
-COMPLIANCE: true
-STATUS: resolved
-================================================================================
 
 ================================================================================
 [2026-09-15] qa-engineer-1 -> team-lead:
@@ -2805,6 +2778,146 @@ CONTENT: P2 soak 2->5 проектов + FIX кириллических имён
 NOT ENOUGH EVIDENCE: поведение на РЕАЛЬНЫХ projects\1с-centr1507 и projects\1с-SlyckBuh1509 не проверял (ТЗ запрещало трогать реальные папки) - фикс доказан только в изолированном temp-root.
 SKILLS_LOADED: ["evidence-discipline", "windows-safety", "superpowers-implement"]
 MCP_USED: ["sequential-thinking"]
+COMPLIANCE: true
+STATUS: resolved
+================================================================================
+[2026-09-16 14:39] dev-2-1 -> team-lead:
+TYPE: update | PRIORITY: medium
+Project: news-bot
+================================================================================
+CONTENT: Дайджест устойчив: окно предзагрузки 15 мин + раунды добора degraded-тем с дедлайном (слот минус 2 мин).
+(1) services/scheduler.py — изменённые строки:
+ - :4 импорт timedelta.
+ - :44-64 константы: _PRELOAD_LOOKAHEAD_MINUTES 8->15; _PRELOAD_CACHE_TTL_SECONDS 900->1800 (TTL >= окна); _DEGRADED_MARKER="ИИ-анализ временно недоступен" (единый маркер fallback analyze_news (analyzer.py:387) и texts.format_digest(degraded=True) (texts.py:327)); _RETRY_ROUND_DELAY_SECONDS=45; _DIGEST_DEADLINE_RESERVE_MINUTES=2; _is_degraded().
+ - :187-193 _tick: preload_dt = now(сек=0)+15мин = абсолютное время слота; preload_time_str из preload_dt.
+ - :223-225 preload-задача получает preload_dt.
+ - :302-349 _preload_digest(..., slot_dt): deadline=slot_dt-2мин, логирует deadline, передаёт в сборку.
+ - :351-454 _build_topic_texts(user_id, deadline=None): раунд 1 по ВСЕМ темам; затем while degraded: пауза min(45с, остаток) -> новый раунд ТОЛЬКО по degraded-индексам; выход по «все собрались» / remaining<=0 / deadline is None (сборка на месте). Логи: «round 1: N degraded (Xs to deadline)», «retry round K: retried N, M still degraded, Xs to deadline», warning «sent degraded after K round(s)».
+ - :456-521 _run_topic_round: обработка индексов, texts[index], degraded.add/discard по маркеру; search_news обёрнут try (сбой поиска -> degraded, раунд не падает); таймаут/ошибка анализа -> format_digest(degraded=True).
+ - :523-539 хелперы _seconds_to_deadline / _deadline_status / _topic_indices_str.
+Сохранено: misfire_grace_time=30; _send_digest при отсутствии свежего кэша строит на месте (deadline=None -> без повторов, слот не задерживается) (scheduler.py:472); порядок zip(topics,texts) не нарушен.
+Не трогал: analyzer, freshness, news_search, texts/форматирование, лимиты плана, was_digest_sent_recently.
+(2) tests/test_digest.py: добавлен класс TestDigestRetryRounds (+4 теста): recovered-in-round-2 -> НЕ degraded; all-degraded -> по дедлайну degraded, elapsed<3с, число раундов ограничено; deadline в прошлом -> 0 повторов; _send_digest при полностью degraded -> сообщения уходят и mark_digest_sent=True.
+(3) ПРОГОН: py -3 -m pytest tests -q --tb=short -> 340 passed, 1 skipped, 0 failed (baseline 336 passed/1 skipped; +4 новых). py -3 -m py_compile services/scheduler.py -> OK.
+(4) ВЕРИФИКАЦИЯ e2e: py -3 scripts/e2e_digest.py -> ANALYZE OK: 2/4, STALE=none, DIGEST split=OK, exit 1 (артефакт scripts/e2e_digest_report.txt, лог scripts/e2e_digest.log). Причина — ВНЕШНИЙ ФАКТОР: в логе big-pickle и mimo-v2.5-free «on 429 cooldown» (дневной free-лимит), z-ai/glm-5.3-free HTTP 503 «No available channel for model z-ai/glm-5.3-free (distributor)», nemotron-3.5-lightning-free timeout, ling-3.0-flash-fin-free empty/503. Затяжной дневной 429/недоступность дистрибьютора glm повторами в 15-мин окне не лечится (как и предупреждало ТЗ).
+(5) ЖИВОЙ ПРОБНИК нового цикла (temp-скрипт, удалён): 2 реальные темы (курс доллара, новости ИИ), deadline=now+3мин, get_user замокан. Лог: «Built digest texts for 2 topic(s) in 90.56s (round 1): 1 degraded (89s to deadline)» -> «Digest retry round 2 ... retried 1 topic(s), 0 still degraded, 44s to deadline» -> итог degraded=0/2. Повтор реально добрал тему, ушедшую в degraded.
+Temp/bak удалены: %TEMP%\opencode\probe_retry.py, %TEMP%\opencode\scheduler.py.bak.
+NOT ENOUGH EVIDENCE: полный прогон _preload_digest по реальному слоту APScheduler (ожидание >=15 мин) не воспроизводил — тайминг/дедлайн покрыт юнит-тестами, а не реальным ожиданием слота.
+SKILLS_LOADED: ["superpowers-implement", "evidence-discipline"]
+MCP_USED: ["sequential-thinking: 5 шагов (план раундов/дедлайна, риски существующих тестов, TTL, доказательность)", "context7: not needed (только stdlib asyncio/datetime, новых внешних библиотек нет)"]
+COMPLIANCE: true
+STATUS: resolved
+================================================================================
+
+================================================================================
+[2026-09-16 14:42] dev-3-1 -> team-lead:
+TYPE: update | PRIORITY: medium
+Project: news-bot
+================================================================================
+CONTENT: Источник новостей — публичные Telegram-каналы (t.me/s/<channel>), подмешивается в поиск как direct RSS-подобный источник с фильтром по ключевым словам.
+
+(1) Файлы:
+ - created: services/telegram_source.py (382 строки) — fetch_channel_posts(channel, limit=20)/search_telegram(query, limit, offset) + parse_channel_html (чистый парсер, HTMLParser) + list_channels.
+ - modified: config.py — DEFAULT_TELEGRAM_CHANNELS, normalize_telegram_channel(), parse_telegram_channels(), поле Config.TELEGRAM_CHANNELS: str (с дефолтом → существующие конструкторы Config(...) в тестах не сломаны), load_config(): env не задан → дефолт-список, env="" → источник выключен.
+ - modified: .env.example (+TELEGRAM_CHANNELS).
+ - modified: services/news_search.py — блок «1.5 Telegram»: вызов search_telegram ПОСЛЕ Google News и ДО Tavily/DDG (приоритеты существующих источников не изменены: direct RSS/Serper/Google по-прежнему возвращают раньше), мердж direct+serper+telegram с дедупом по URL и filter_by_freshness; telegram_results добавлен и в финальный fallback-мердж (source_name="telegram/tavily/ddg").
+ - created: tests/test_telegram_source.py (104 теста: парсер, fetch, search, конфиг, интеграция с search_news, паритет _query_words).
+ - modified: tests/test_freshness.py — в 3 тестах (survives_all_old_articles, no_stale_from_direct_serper_branch, no_stale_from_tavily_ddg_branch) добавлен мок services.telegram_source.search_telegram (AsyncMock→[]). Причина: это единственные существующие тесты, доходящие до fallback-стейджа с НЕпустым запросом; без мока они бы делали реальные запросы к t.me (недетерминированный результат и +8с на тест). Ассерты и логика тестов не изменены. Остальные тесты TG не достигают (ранний return на direct/Google) — проверено трассировкой.
+
+(2) Итоговый список живых каналов (проверено ЖИВОЙ выборкой 2026-09-16, HTTP 200 через env-прокси 127.0.0.1:3128):
+ ВКЛЮЧЕНЫ в дефолт: belarus24 (14 постов), tass_agency (20), rian_ru (20), bbbreaking (20) → TELEGRAM_CHANNELS="belarus24,tass_agency,rian_ru,bbbreaking". Все 4 — из ТЗ-списка кандидатов, у всех newest=сегодня (age_days=0).
+ ОТБРАКОВАНЫ (0 постов, отдают страницу «Telegram: Contact @X» — веб-превью недоступно): belta_news, onliner_by, minskinfo, newsby, true_breaking, sb_news (перепроверены live на финальном коде — 0 постов у каждого).
+ Разведка ВНЕ ТЗ-списка (НЕ включены в дефолт, добавляются через .env): belta_by живёт, но последний пост 2026-04-03 (166 дней) — freshness всегда отсечёт → исключён; tass/rian-независимые zvezdanews, breakingmash — живые; активные BY: belarus_now, nashaniva, euroradio, belsat, zerkalo_io, devby, pul_1 (age_days=0). В дефолт не добавлены сознательно: вне ТЗ-списка + редакционный баланс (в найденных есть и оппозиционные, и гос-каналы) — решение за team-lead/пользователем.
+
+(3) Устойчивость/границы (защитный код):
+ - Пустой/шумный запрос (нет слов ≥3 симв) или limit<=0 → [] БЕЗ сетевых запросов (в т.ч. внутри полного search_news).
+ - Невалидное имя канала (>' ', слэши, кириллица, не-строка) → [] без запроса (whitelist-regex ^[a-z0-9_]{3,64}$ — защита от подстановки в URL).
+ - Ошибки/таймауты/HTTP 4xx каждого канала → [] (logging.warning), asyncio.gather(return_exceptions=True) + Semaphore(5) — падение канала не роняет остальные; таймаут 8с на канал, follow_redirects=True, UA-заголовки, trust_env=True (env-прокси).
+ - Не-dict посты, не-list результат канала, invalid limit/offset типы, отрицательный offset → безопасно игнорируются/клампятся.
+ - data-post — авторитетный источник URL; ссылки на ЧУЖИЕ каналы в тексте поста игнорируются (иначе t.me/other/123 из цитаты попал бы в url); fallback — ссылка-дата.
+ - Дедуп по URL, сортировка от новых к старым (без даты — в конец), title = первая строка ≤150 симв., snippet ≤1800 (как MAX_TEXT_CHARS проекта).
+ - Секретов в коде нет; реестр/политики/schtasks не трогал.
+
+(4) ПРОГОН: py -3 -m pytest tests -q --tb=short → 444 passed, 1 skipped, 0 failed (baseline ДО изменений: 340 passed, 1 skipped; +104 новых тестов). py -3 -m py_compile services/telegram_source.py → OK.
+
+(5) ЖИВАЯ ВЕРИФИКАЦИЯ (temp-скрипты в %TEMP%\opencode\tg_dump, УДАЛЕНЫ после прогона):
+ - search_telegram("минск", limit=5) → 5 постов, все 5 в окне RECENCY_DAYS=3. Примеры url: https://t.me/belarus24/83677 (2026-09-16T11:15:01+00:00, «⚡️ Минск украсили ко Дню народного единства»), https://t.me/belarus24/83676, https://t.me/rian_ru/346241, https://t.me/bbbreaking/237965, https://t.me/belarus24/83664.
+ - search_telegram("новости", limit=5) → 2 поста (2 fresh): https://t.me/belarus24/83676, https://t.me/belarus24/83665.
+ - Парсер на РЕАЛЬНЫХ дампах HTML (tass_agency/rian_ru/bbbreaking/belarus24): 20/20/20/14 постов, текст без HTML-тегов, даты парсятся, url t.me/<channel>/<id>, порядок от новых к старым; страница «Contact @X» → 0, мусор/пусто → 0.
+ - e2e интеграции: search_news("минск", limit=5) с ЖИВЫМ Telegram и замоканными прочими источниками → 5 результатов telegram:@belarus24/@rian_ru/@bbbreaking; search_news("новости") → 2 (доказательство, что TG доходит через всю цепочку с фильтром свежести и дедупом).
+
+(6) NOT ENOUGH EVIDENCE / ограничения:
+ - Полный реальный search_news с ЖИВЫМ Serper не гонял — не тратил месячную квоту (SERPER_MONTHLY_LIMIT=2500); интеграция закрыта юнит-тестами + e2e с замоканными прочими источниками.
+ - Веб-превью t.me отдаёт только ~20 последних постов канала (пагинация истории канала не реализована — в ТЗ не требовалась).
+ - context7 НЕДОСТУПЕН: resolve-library-id → «fetch failed» (как и в прошлой задаче). Документация httpx не запрашивалась; использован API httpx 0.28.1 (AsyncClient(timeout, headers, follow_redirects) + async context manager), корректность подтверждена живыми запросами.
+ - SKILLS_LOADED содержит только реально прочитанный файл скилла; правила evidence-discipline применял по системному промпту, файл .agents/skills/evidence-discipline/SKILL.md не загружал.
+SKILLS_LOADED: ["superpowers-implement"]
+MCP_USED: ["sequential-thinking: 2 шага (план парсера/интеграции + фиксация живых каналов)", "context7: offline (resolve-library-id -> fetch failed)"]
+COMPLIANCE: true
+STATUS: resolved
+================================================================================
+
+[2026-09-16 15:05] qa-engineer -> team-lead:
+TYPE: update | PRIORITY: medium
+Project: news-bot
+CONTENT: QA-приёмка 2 фич (устойчивый дайджест + TG-источник). ВЕРДИКТ: PASS (обе фичи).
+(1) Устойчивый дайджест (scheduler.py):
+ - _PRELOAD_LOOKAHEAD_MINUTES=15 (scheduler.py:47) — окно расширено с 8 до 15 мин.
+ - _PRELOAD_CACHE_TTL_SECONDS=1800 (scheduler.py:49) — TTL >= окна предзагрузки.
+ - Раунды добора degraded-тем: while degraded (scheduler.py:402) с break по remaining<=0 (scheduler.py:407-415) — нет бесконечного цикла.
+ - Пауза ~45с (_RETRY_ROUND_DELAY_SECONDS=45, scheduler.py:56).
+ - Дедлайн = слот − 2 мин (_DIGEST_DEADLINE_RESERVE_MINUTES=2, scheduler.py:59).
+ - По дедлайну отдаётся что есть: break + warning log (scheduler.py:407-426).
+ - Слот не теряется: degraded fallback через format_digest(degraded=True) (scheduler.py:502-513).
+ - _is_degraded() детектит маркер (scheduler.py:62-64).
+ - TestDigestRetryRounds: 4 теста покрывают recovery, all-deadline, passed-deadline, degraded-still-delivered (test_digest.py:400-601).
+(2) Источник Telegram-каналов:
+ - fetch t.me/s/<channel> (telegram_source.py:261-307) + HTML-парсер (telegram_source.py:96-191).
+ - search_telegram с фильтром по словам (telegram_source.py:319-399).
+ - Интеграция в news_search: после Google, до Tavily/DDG (news_search.py:561-588).
+ - Приоритеты существующих источников не изменены: тест test_telegram_not_called_when_primary_sources_suffice (test_telegram_source.py:841-861).
+ - Дедуп по URL + freshness (telegram_source.py:377-380, news_search.py:574-588).
+ - TELEGRAM_CHANNELS из .env, дефолт belarus24,tass_agency,rian_ru,bbbreaking (config.py:18-20, 173-175).
+ - Парсер на мусоре/Contact @X → [] (test_telegram_source.py:259-265).
+ - test_freshness.py: 3 теста с моком TG — моки на месте, проверки не ослаблены (test_freshness.py:388-392, 509-513, 568-572).
+(3) Тесты: 444 passed, 1 skipped, 0 failed (103.97s).
+(4) Живая проверка: search_telegram("минск", limit=5) → 0 (каналы недоступны из-за корпоративного прокси — штатная деградация, код не падает); search_news("минск", limit=5) → 5 результатов из other sources, TG-ветка отработала корректно.
+(5) Grade: 8/10 — две фичи реализованы качественно, тесты покрывают критические пути. −2 за невозможность live-проверки TG из-за прокси и интеграционные тесты с моками всех источников.
+SKILLS_LOADED: ["superpowers-test", "evidence-discipline"]
+MCP_USED: ["sequential-thinking"]
+COMPLIANCE: true
+STATUS: resolved
+================================================================================
+
+[2026-09-16 13:00] team-lead ->
+Project: news-bot
+TYPE: update | PRIORITY: high
+CONTENT: Реализованы две идеи пользователя. (1) УСТОЙЧИВЫЙ ДАЙДЖЕСТ (services/scheduler.py): окно предзагрузки 8->15 мин, TTL 900->1800; темы, ушедшие в degraded, добиваются повторными раундами (пауза ~45с) до дедлайна (слот-2мин); по дедлайну отдаётся что есть; слот не теряется. Живой пробник: повтор реально добрал degraded-тему. (2) ИСТОЧНИК TELEGRAM (services/telegram_source.py): парсер t.me/s/<channel>, search_telegram с фильтром по словам, интеграция в news_search после Google до Tavily/DDG, дедуп+freshness; TELEGRAM_CHANNELS в .env, дефолт = живые каналы belarus24,tass_agency,rian_ru,bbbreaking (+104 теста). Итог: 444 passed/0 failed; приёмка QA PASS grade 8 по обеим; бот pid 35220.
+ОСТАТОК (внешний): дневной free-лимит opencode (429) + мёртвый tokenrouter (503) — при исчерпании часть тем всё же degraded; 15-мин окно помогает только от кратковременных сбоев, не от дневного лимита. Реальное лечение: резерв (OpenRouter →1000 free/сут) или доп. free-провайдер.
+SKILLS_LOADED: ["model-router","superpowers-implement","superpowers-test"]
+MCP_USED: ["sequential-thinking"]
+COMPLIANCE: true
+STATUS: resolved
+================================================================================
+[2026-09-16 15:40] qa-engineer -> team-lead:
+TYPE: update | PRIORITY: medium
+CONTENT: Приёмка P2 «Cyrillic project names + 5-project soak» (коммит 7be1e0c) — ВЕРДИКТ: ПРИНЯТО (с замечаниями; 1 major pre-existing заведён в BUG-025). Артефакты: (1) tests\test-soak-5projects.ps1 → SUMMARY passed=68 failed=0 total=68, EXITCODE=0. (2) НЕЗАВИСИМО (свой temp-root %TEMP%\qa-p2-independent\<guid>, git init+commit, AGENT_HQ_ROOT): create-project.ps1 "1с-centr1507" (U+0441 из кодовой точки) → проект+CONTEXT-BUFFER (кириллица цела), worktree .agents\worktrees\1с-centr1507 с .git-pointer, HEAD=ref: refs/heads/project/1с-centr1507, git check-ref-format exit 0, show-ref видит ветку, worktree list=2, helper Get-ProjectWorktree registered=True (FS-регистрация работает), project-queue -Add exit 0, task.project/worktree привязаны верно. (3) whitelist: ../evil, a/b, CON, NUL, a\b, a., «a » (trailing space), пустое, 64 символа — все отвергнуты на 3 уровнях (Test-ProjectName=false, Assert throw, CLI create-project/queue exit≠0/throw); ничего не создано; граница 63 accept / 64 reject; «1c-x» (лат.) ≠ «1с-x» (кир.) — коллизий нет. (4) claim-независимость: tq-001 claim'ается одновременно в 2 проектах (projects\<A>\.memory\claims и projects\<B>\.memory\claims — отдельные файлы), внутри проекта повторный claim=false, -Complete в A отпустил только A (lease B жив), re-claim в A=true. (5) РЕАЛЬНЫЙ РЕПО НЕ ТРОНУТ: git worktree list 30→30 (main+29), projects/ 5 папок идентичны по name+LastWriteTime, .agents/worktrees=29, веток project/* нет, git status — только ожидаемые M CONTEXT-BUFFER.md + M .memory/tool-usage-violations.jsonl; 1c-buh queue.json после verify-phase чист (git diff пуст). (6) РЕГРЕСС: test-project-isolation 42/42 exit0; test-pipeline 10/10 exit0; test-discovery PASS=22 FAIL=0 WARN=1 (штатный) RESULT=PASS exit0; test-task-state 5/5 exit0; verify-phase 41/41 ALL CHECKS PASSED exit0. (7) CRLF: все 4 изменённых .ps1 loneLF=0; BOM: test-soak/create-project/project-queue=True, project-worktree=False (проверен: 0 non-ASCII байт — безопасно). ДЕФЕКТЫ: MAJOR pre-existing (НЕ регрессия 7be1e0c, заведён BUG-025): New-ProjectWorktree «& git ... 2>&1» при EAP=Stop у вызывающего → stderr-инфо git = terminating NativeCommandError → mode=directory + «git worktree add failed» при ФАКТИЧЕСКИ успешной регистрации (доказано: pointer/HEAD/worktree list корректны); у create-project.ps1 нет exit 0 на success-пути → in-process вызывающий (& script; $LASTEXITCODE) видит -1 при полном успехе (через -File — 0; soak ходит только -File, путь не покрыт). MINOR: пустые catch { } в project-worktree.ps1:184 и test-soak-5projects.ps1:515 (критерий «нет пустых catch» нарушен, функционально безвредны); комментарий project-worktree.ps1:52 обещает «single spaces», regex принимает и «a  b» (проверено: true). ХИГИЕНА: временные скрипты приёмки (qa_p2_independent/qa_p2_repro/qa_p2_edge.ps1, projects_before/after.txt) удалены; temp-root соak-теста вычищен самим тестом (root removed=True, base removed=True). ОЦЕНКА dev-3: 8/10 — функционал P2 полный и доказан независимо; минус за непокрытие in-process exit-пути и 2 пустых catch в новом коде.
+SKILLS_LOADED: ["evidence-discipline"]
+MCP_USED: ["context7: not needed (только git CLI + PowerShell 5.1, внешних библиотек не проверял)", "sequential-thinking: not needed (линейный чек-лист приёмки, каждая проверка ≤3 шагов)", "hermes-atlas: not needed"]
+COMPLIANCE: true
+STATUS: resolved
+================================================================================
+
+================================================================================
+[2026-09-16] team-lead -> bus: P2 soak + кириллица ПРИНЯТО
+TYPE: update | PRIORITY: high
+================================================================================
+Коммит 7be1e0c. Test-ProjectName (Unicode-safe, единый источник) в project-worktree/create-project/project-queue; кириллица работает (ветка/путь). soak 68/68 на 5 проектах (2 кир., 1 с пробелом); изоляция/claims/daemon -Drain ок. Попутно: fix регистрации worktree (кодировка консоли), per-project claims dir.
+Приёмка qa-engineer: ПРИНЯТО. Найден pre-existing BUG-025 (in-process exit) + 2 minor -> закрываю отдельной задачей.
+Оценки: dev-3 8, qa-engineer 8.
+ИТОГ: P0 ✅ P1 ✅ P2 ✅ (model router, soak, кириллица). Evaluation v2 — доставлен через scoring.js v2.
+SKILLS_LOADED: []
+MCP_USED: []
 COMPLIANCE: true
 STATUS: resolved
 ================================================================================

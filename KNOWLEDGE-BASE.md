@@ -335,6 +335,19 @@
   - Тест `tests/test-model-router.ps1` CASE k: 8 последовательных записей → 8 записей; удержанный извне лок → WarningRecord (не исключение) и запись всё равно выполнена; после всех swap'ов нет `.tmp`/`.bak` residue, state — валидный JSON; 4 параллельных процесса (`Start-Job`, каждый со своим `-Root`) → 4 записи, прежние записи целы, итого 13 записей (lost update отсутствует).
 
 
+### BUG-025 (P2 soak, QA-приёмка, PRE-EXISTING с P1): create-project.ps1 / New-ProjectWorktree — git-stderr при EAP=Stop даёт ложный «failed» и мусорный $LASTEXITCODE у in-process вызывающего
+- **Симптом 1 (mode-отчёт)**: `New-ProjectWorktree` (`project-worktree.ps1:391`) вызывает `& git @gitArgs 2>&1`; вызывающий `create-project.ps1:19` ставит `$ErrorActionPreference="Stop"` → информационный stderr git («Preparing worktree (new branch...)») превращается в terminating NativeCommandError ДО завершения процесса git → catch выставляет `$exitCode=1` → результат `mode=directory` + `reason="git worktree add failed: ..."`, хотя git реально создал и зарегистрировал worktree (доказательство QA: `.git`-pointer с корректным `gitdir:`, HEAD=`ref: refs/heads/project/<name>`, `git worktree list` содержит запись, ветка в show-ref).
+- **Симптом 2 (exit code)**: у успешного `create-project.ps1` нет явного `exit 0` в конце; при вызове из того же процесса (`& create-project.ps1 ...; if ($LASTEXITCODE -ne 0)`) `$LASTEXITCODE` остаётся **-1** (след сорванной пайплайнации native-команды), т.е. ложный провал при полностью успешном создании. Через `powershell -File` — exit 0 (soak-тест использует только -File и не покрывает этот путь).
+- **Последствия**: (а) оркестратор, проверяющий $LASTEXITCODE после `&` (паттерн из AGENTS.md §11), получит ложную ошибку; (б) настоящая ошибка git неотличима от ложной stderr-тревоги — изоляция P1-2 молча деградирует до обычной директории с `ok=true`.
+- **Воспроизведение (QA 2026-09-16)**: temp-root + git init + commit; `& create-project.ps1 -ProjectName rep-a` → `INPROCESS_LASTEXITCODE=-1`, вывод `[mode: directory]`; `powershell -File ... -ProjectName rep-b` → exit 0, тоже `[mode: directory]`; сырой `& git worktree add ... 2>&1` при EAP=Stop → `RemoteException`, `$LASTEXITCODE=-1`, но `BUT_WORKTREE_REGISTERED=True`; тот же вызов с `2>$null` → exit 0 без исключения.
+- **Рекомендация фиксу**: в `New-ProjectWorktree` на время git-вызова ставить `$ErrorActionPreference='Continue'` (или `2>$null` + чтение $LASTEXITCODE, stderr собирать через Start-Process/`[Diagnostics.Process]`); в `create-project.ps1` добавить явный `exit 0` на success-пути. Затрагивает также `Remove-ProjectWorktree:448-449` (тот же `2>&1` под Stop у вызывающего).
+- **Статус**: OPEN (pre-existing, не регрессия 7be1e0c; найдено при приёмке P2 soak).
+
+### Minor-замечания P2 soak (не заведены как BUG-нумерация, косметика)
+- `project-worktree.ps1:184` и `tests/test-soak-5projects.ps1:515` — пустые `catch { }` (критерий приёмки «нет пустых catch» нарушен; функционально безвредны: 184 — defense-in-depth после уже прошедшей валидации, 515 — cleanup с последующей печатью `root removed=`).
+- Комментарий `project-worktree.ps1:52` обещает «single spaces», но regex `[\p{L}\p{Nd} _\-]` принимает и последовательные пробелы: `Test-ProjectName 'a  b'` → True (проверено). Безопасности не вредит (git-ref: `project/a%20%20b` валиден), но документация расходится с поведением.
+- Границы проверены корректно: 63 символа → accept, 64 → reject; латинская `1c-x` и кириллическая `1с-x` — разные строки/ветки, коллизии нет.
+
 ## Patterns
 
 ### PowerShell encoding pitfalls on Windows

@@ -2930,3 +2930,34 @@ SKILLS_LOADED: ["evidence-discipline"]
 MCP_USED: ["sequential-thinking"]
 COMPLIANCE: true
 STATUS: resolved
+
+================================================================================
+[2026-09-16 15:07] qa-engineer -> team-lead:
+TYPE: update | PRIORITY: medium
+CONTENT: РЕ-РЕВЬЮ f23ab2e (BUG-025 + 2 minors) — ВЕРДИКТ: ПРИНЯТО, новых дефектов нет. (1) BUG-025: Invoke-GitCapture подтверждён в project-worktree.ps1:228 (EAP->Continue на время git, возврат EAP в finally :244-246; New/Remove-ProjectWorktree переведены :441,:497-498); exit 0 в create-project.ps1:379. НЕЗАВИСИМОЕ воспроизведение своим харнессом (%TEMP%\qa-b025-<guid>: git init+commit, AGENT_HQ_ROOT, in-process & create-project): 2 прогона — LASTEXITCODE=0, вывод содержит [mode: git-worktree], строки 'git worktree add failed' нет, Get-ProjectWorktree registered=True branch=project/qa-repro-*, git worktree list=2; REPRO RESULT=PASS 2/2. (2) Пустые catch: project-worktree.ps1:196-200 catch c Write-Verbose (:199); test-soak-5projects.ps1:517-522 catch c Write-Host-диагностикой (:521); cleanup test-project-isolation тоже логирует (:340-347) — молчать перестали. (3) Consecutive spaces: project-worktree.ps1:98 Contains('  ') — факт из своего репро: 'a  b'->False (reason 'only single spaces are allowed'), 'a   b'->False, 'a b'->True; в soak invalidNames 'a  b' — 'wrongly accepted' не печатывалось. (4) Стабильность: test-project-isolation 2x -> 48/48 exit0 (CASE g PASS оба прогона); test-soak-5projects 2x -> 68/68 exit0. (5) Регресс: test-pipeline 10/10 exit0; test-discovery PASS=22 FAIL=0 WARN=1 (штатный) RESULT=PASS exit0; verify-phase 41/41 ALL CHECKS PASSED exit0. (6) РЕПО НЕ ТРОНУТО: git worktree list=30 строк; git status --porcelain -- projects/ пуст. KNOWLEDGE-BASE: запись BUG-025 FIXED подтверждена (:338-350, minors :352-354). Примечание: первый сбой репро (HEAD=128) — артефакт qa-харнесса (git commit -q), в проверяемом коде commit -q отсутствует (grep 0 совпадений); повторный прогон детерминирован PASS. Оценка dev-3: 9 — фикс с 1-й итерации, приёмка без замечаний к дифу.
+SKILLS_LOADED: ["evidence-discipline"]
+MCP_USED: []
+COMPLIANCE: true
+STATUS: resolved
+================================================================================
+
+================================================================================
+[2026-09-16] team-lead -> bus: *** P2 ЗАКРЫТ — ЭТАП P0/P1/P2 ЗАВЕРШЁН ***
+TYPE: update | PRIORITY: high
+================================================================================
+Коммиты 7be1e0c, f23ab2e. Кириллица + soak 5 проектов; BUG-025 (in-process exit) исправлен. Тесты: isolation 48/48, soak 68/68. Ре-ревью ПРИНЯТО.
+Оценки: dev-3 8+9, qa-engineer 8+8.
+==================================================
+ИТОГО ПО ПЛАНУ:
+P0 (A/B/C/D): ✅ ЗАКРЫТ
+P1 (claim/lease, per-project isolation, daemon+pool, tracer/scoring v2, prompt-gate): ✅ ЗАКРЫТ
+P2 (model-router, 5-project soak, кириллица): ✅ ЗАКРЫТ
+Evaluation v2: доставлен через scoring.js v2.
+Go control plane + SQLite: отложен (по решению пользователя) за P0-P2.
+==================================================
+Тесты (все зелёные): vault 8/8, pipeline 10/10, discovery 22/0, false-done 17/17, task-state 5/5, isolation 48/48, daemon 9/9, plugins 26/26, prompt-gate 15/15, model-router 10/10, soak 68/68, verify-phase 41/41.
+SKILLS_LOADED: []
+MCP_USED: []
+COMPLIANCE: true
+STATUS: resolved
+================================================================================

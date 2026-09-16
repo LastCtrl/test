@@ -2249,3 +2249,21 @@ MCP_USED: []
 COMPLIANCE: true
 STATUS: resolved
 ================================================================================
+
+================================================================================
+[2026-09-16] dev-1 -> team-lead:
+TYPE: update | PRIORITY: medium
+Project: agent-hq
+CONTENT: P1-4 tracer/scoring v2 (корреляция) — реализовано, ждёт приёмки qa/code-reviewer.
+  1) Молчаливых проглатываний нет: было 7 пустых catch (tracer 4, scoring 3) -> 0. Все 10 catch в tracer и 13 в scoring репортят (errors.jsonl / console.warn / errors.push), на плагин остаётся 2 документированных defensive-фолбэка (safeString/safeField возвращают нейтральное значение). Ошибка пишется в <tracesDir>\errors.jsonl как {ts, type:"plugin_error", plugin, hook, message, code, stack, stage, ...}; если недоступен и он — console.warn (лимит 20 сообщений), т.е. последний рубеж тоже не молчит.
+  2) tracer v2 (additive, legacy-ключи ts/type/tool/ms/id сохранены): добавлены session_id, message_id, call_id, agent, duration_ms, status ('ok'/'exit:N'/'error' из metadata.exit), error, task_id, attempt_id. agent + message_id подтягиваются из хука chat.message (в tool.execute.* их нет, сверено по @opencode-ai/plugin/dist/index.d.ts:235-258). Побочно починен реальный баг: session.created отдаёт id в properties.info.id, а не properties.sessionID (sdk types.gen.d.ts:493-498) — раньше session_start не писался вообще; live-проверка: свежий opencode run записал session_start/session_end с session_id, id, duration_ms.
+  3) scoring v2: экспортированы чистые функции для тестов — readEvidenceDir, aggregateEvidence, computeTaskScore, parseSelfReports, correlateSelfReports, readTracesDir, summarizeTraces, correlateTracesWithEvidence, collectScoringFacts, buildSessionRecord. Скор опирается на факт: 100 - 25*failed - 10*(attempts-1), verdict pass/warn/fail/no_evidence (не на текст). Корреляция: evidence x traces по task_id (trace_tool_spans/trace_tool_failures в записи), evidence x self-report из CONTEXT-BUFFER.md (task_id / путь .memory/evidence/<id>.json / тег P1-4) -> claimed_status, false_done, unverified. traces.jsonl читается только хвостом (512 КБ; live-файл 1.5 МБ / 20k строк), частичная первая строка отбрасывается, битые строки репортятся.
+  4) tests\test-plugins.mjs (Node ESM): 24/24 PASS, exit 0. Проверены: correlation-поля трейса, status из exit-кода, session-lifecycle, errors.jsonl при сбое записи (traces.jsonl = каталог) и при throw внутри хука (инъецируемые часы), console.warn когда недоступен сам errors.jsonl, hostile-input (throwing Proxy) без падения, статическая проверка «нет пустых catch», агрегация/детерминизм факт-скора, tail-read, false_done/unverified. Temp изолирован (os.tmpdir), удаляется, в репозиторий ничего не пишется.
+  Регресс после правок: test-vault 8/8 (exit 0), test-pipeline 9/9 (exit 0), test-discovery PASS=22 FAIL=0 WARN=1 (exit 0), verify-phase 41/41 ALL CHECKS PASSED (exit 0). Изменены: .opencode\plugins\tracer.js, .opencode\plugins\scoring.js, создан tests\test-plugins.mjs. Не коммичено, temp-файлы убраны.
+  NOT ENOUGH EVIDENCE: корреляция с реальными evidence-файлами не проверена — каталога .memory\evidence пока нет (наполняет poller, P0-C; тест использует фикстуры в temp). Поля task_id/attempt_id берутся из env AGENT_HQ_TASK_ID/AGENT_HQ_ATTEMPT_ID, которые inbox-engine сейчас не экспортирует (grep по .agents\scripts — совпадений нет), поэтому в live-трейсах они пустые.
+  MCP: context7 недоступен в сессии (2 попытки -> fetch failed; cntlm :3128 не слушает) — работал без него и не догадывался вместо доков; sequential-thinking использован для планирования (задача >3 шагов).
+SKILLS_LOADED: ["evidence-discipline", "windows-safety", "superpowers-implement", "plugin-system"]
+MCP_USED: ["sequential-thinking", "context7: offline"]
+COMPLIANCE: true
+STATUS: resolved
+================================================================================

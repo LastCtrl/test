@@ -52,7 +52,7 @@ if (Test-Path -LiteralPath $taskStatePath) {
 } else {
     Write-Warning "task-state.ps1 not found at $taskStatePath - task claims disabled"
     function Release-Task {
-        param([AllowEmptyString()][string]$TaskId, [string]$StateDir)
+        param([AllowEmptyString()][string]$TaskId, [string]$Agent = "", [string]$StateDir)
         return $true
     }
     function Revoke-StaleClaims {
@@ -374,10 +374,12 @@ function Complete-Task {
     if (-not $queue) { exit 1 }
 
     $found = $false
+    $assignedAgent = ""
     foreach ($t in $queue.tasks) {
         if ($t.id -eq $TaskId) {
             $t.status = "done"
             $t.completed_at = Get-Now
+            if ($t.assigned_agent) { $assignedAgent = [string]$t.assigned_agent }
 
             # Release agent if one was assigned. The release result MUST be checked:
             # ignoring it would report the task as done while the agent stays busy.
@@ -420,7 +422,9 @@ function Complete-Task {
 
     # P1-1: the task reached a terminal state -> drop its lease. Idempotent and
     # never fatal: a failure here must not claim the task is still in progress.
-    if (-not (Release-Task -TaskId $TaskId -StateDir $ClaimsDir)) {
+    # RISK-001b: pass the assigned agent so a lease taken by somebody else is not
+    # deleted; an unassigned task keeps the legacy unconditional release.
+    if (-not (Release-Task -TaskId $TaskId -Agent $assignedAgent -StateDir $ClaimsDir)) {
         Write-Warning "Failed to release task claim for '$TaskId' (stale claims will revoke it)"
     }
 
@@ -448,9 +452,11 @@ function Dead-Task {
     if (-not $queue) { exit 1 }
 
     $found = $false
+    $assignedAgent = ""
     foreach ($t in $queue.tasks) {
         if ($t.id -eq $TaskId) {
             $t.status = "dead"
+            if ($t.assigned_agent) { $assignedAgent = [string]$t.assigned_agent }
             $t | Add-Member -MemberType NoteProperty -Name "dead_reason" -Value $TaskReason -Force
             $t | Add-Member -MemberType NoteProperty -Name "dead_at" -Value (Get-Now) -Force
             $found = $true
@@ -469,7 +475,8 @@ function Dead-Task {
     }
 
     # P1-1: dead is terminal -> drop the lease (idempotent, non-fatal).
-    if (-not (Release-Task -TaskId $TaskId -StateDir $ClaimsDir)) {
+    # RISK-001b: owner-guarded release (empty agent = legacy unconditional).
+    if (-not (Release-Task -TaskId $TaskId -Agent $assignedAgent -StateDir $ClaimsDir)) {
         Write-Warning "Failed to release task claim for '$TaskId' (stale claims will revoke it)"
     }
 

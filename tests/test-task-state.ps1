@@ -7,8 +7,10 @@
 # Covered:
 #   a) atomicity       - 4 parallel processes race for one task id -> exactly 1 wins
 #   b) heartbeat       - Update-Heartbeat advances heartbeat_at
-#   c) ttl             - aged lease is detected, revoked, and re-claimable
-#   d) release         - idempotent (including "never claimed")
+#   c) ttl             - aged lease is detected, revoked (retry + diagnostics),
+#                        re-claimable, attempt increments, poller schedules sweep
+#   d) release         - idempotent (including "never claimed"); owner guard
+#                        (a non-owner release is refused)
 #   e) edge cases      - unsafe task id cannot escape the state dir, unknown ids
 #                        return $null/$false, empty stale set returns an empty array
 #
@@ -180,11 +182,35 @@ $staleShort = @(Get-StaleClaims -TtlSeconds 60 -StateDir $StateDir)
 $staleEntry = @($staleShort | Where-Object { $_.task_id -eq $staleId })
 $caseOk = (Write-Check "stale entry carries a positive age_seconds" ($staleEntry.Count -eq 1 -and [int]$staleEntry[0].age_seconds -gt 0)) -and $caseOk
 
-$revoked = @(Revoke-StaleClaims -TtlSeconds 60 -StateDir $StateDir)
-$caseOk = (Write-Check "Revoke-StaleClaims returned the aged lease" (@($revoked | Where-Object { $_.task_id -eq $staleId }).Count -eq 1)) -and $caseOk
+# BUG-019: revoke with bounded retry + diagnostics instead of a silent FAIL on
+# a single transient read failure.
+$revoked = @()
+$revokeTries = 0
+for ($try = 1; $try -le 3; $try++) {
+    $revokeTries = $try
+    $revoked = @(Revoke-StaleClaims -TtlSeconds 60 -StateDir $StateDir)
+    if (@($revoked | Where-Object { $_.task_id -eq $staleId }).Count -eq 1) { break }
+    Start-Sleep -Milliseconds 250
+}
+$revokedAged = (@($revoked | Where-Object { $_.task_id -eq $staleId }).Count -eq 1)
+if (-not $revokedAged) {
+    Write-Host ("    DIAG: revoke returned " + $revoked.Count + " entr(ies) after " + $revokeTries + " attempt(s)")
+    Write-Host ("    DIAG: aged lease file still present = " + (Test-PathLeaf (Get-ClaimFile $staleId)))
+    Write-Host ("    DIAG: aged lease re-scan stale count = " + (@(Get-StaleClaims -TtlSeconds 60 -StateDir $StateDir | Where-Object { $_.task_id -eq $staleId }).Count))
+}
+$caseOk = (Write-Check "Revoke-StaleClaims (poller sweep) returned the aged lease" $revokedAged) -and $caseOk
 $caseOk = (Write-Check "aged lease file removed" (-not (Test-PathLeaf (Get-ClaimFile $staleId)))) -and $caseOk
 $caseOk = (Write-Check "fresh lease survived the revoke" ((Get-Claim -TaskId $freshId -StateDir $StateDir) -ne $null)) -and $caseOk
 $caseOk = (Write-Check "re-claim after revoke succeeds" (Claim-Task -TaskId $staleId -Agent "dev-3" -StateDir $StateDir)) -and $caseOk
+$reclaimed = Get-Claim -TaskId $staleId -StateDir $StateDir
+$caseOk = (Write-Check "re-claim increments attempt to 2" ($null -ne $reclaimed -and [int]$reclaimed.attempt -eq 2)) -and $caseOk
+
+# RISK-001: the poller must schedule the sweep so a crashed worker's lease does
+# not block the message forever. Static check of the real script call-site.
+$pollerPath = Join-Path $RepoRoot ".agents\scripts\inbox-poller.ps1"
+$pollerText = if (Test-PathLeaf $pollerPath) { [System.IO.File]::ReadAllText($pollerPath, [System.Text.Encoding]::UTF8) } else { "" }
+$schedulesSweep = ($pollerText -match 'Invoke-StaleClaimSweep' -and $pollerText -match 'Revoke-StaleClaims')
+$caseOk = (Write-Check "inbox-poller schedules Revoke-StaleClaims sweep" $schedulesSweep) -and $caseOk
 
 $null = Release-Task -TaskId $staleId -StateDir $StateDir
 $null = Release-Task -TaskId $freshId -StateDir $StateDir
@@ -203,6 +229,14 @@ $caseOk = (Write-Check "first release returns true" (Release-Task -TaskId $relId
 $caseOk = (Write-Check "second release returns true" (Release-Task -TaskId $relId -StateDir $StateDir)) -and $caseOk
 $caseOk = (Write-Check "Get-Claim is null after release" ((Get-Claim -TaskId $relId -StateDir $StateDir) -eq $null)) -and $caseOk
 $caseOk = (Write-Check "release of a never-claimed task returns true" (Release-Task -TaskId ("never-" + $relId) -StateDir $StateDir)) -and $caseOk
+
+# RISK-001b: Release-Task must not delete a lease owned by somebody else.
+$ownId = "own-" + [guid]::NewGuid().ToString("N").Substring(0, 8)
+$caseOk = (Write-Check "claim as owner-A succeeds" (Claim-Task -TaskId $ownId -Agent "owner-A" -StateDir $StateDir)) -and $caseOk
+$caseOk = (Write-Check "Release by owner-B is refused (returns false)" ((Release-Task -TaskId $ownId -Agent "owner-B" -StateDir $StateDir) -eq $false)) -and $caseOk
+$caseOk = (Write-Check "foreign lease survives the refused release" ((Get-Claim -TaskId $ownId -StateDir $StateDir) -ne $null)) -and $caseOk
+$caseOk = (Write-Check "Release by the real owner succeeds" ((Release-Task -TaskId $ownId -Agent "owner-A" -StateDir $StateDir) -eq $true)) -and $caseOk
+$caseOk = (Write-Check "lease gone after owner release" ((Get-Claim -TaskId $ownId -StateDir $StateDir) -eq $null)) -and $caseOk
 
 if ($caseOk) { $script:CasePass++ ; Write-Host "PASS d) release" } else { $script:CaseFail++ ; Write-Host "FAIL d) release" }
 

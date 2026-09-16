@@ -74,12 +74,20 @@ if (Test-Path -LiteralPath $taskStateHelperPath) {
 } else {
     Write-Log "⚠️ task-state.ps1 not found at $taskStateHelperPath — task claims DISABLED"
     function Claim-Task {
-        param([AllowEmptyString()][string]$TaskId, [string]$Agent = "", [int]$LeaseSeconds = 900, [string]$StateDir)
+        param([AllowEmptyString()][string]$TaskId, [string]$Agent = "", [int]$LeaseSeconds = 900, [int]$Attempt = 0, [string]$StateDir)
         return $true
     }
     function Release-Task {
-        param([AllowEmptyString()][string]$TaskId, [string]$StateDir)
+        param([AllowEmptyString()][string]$TaskId, [string]$Agent = "", [string]$StateDir)
         return $true
+    }
+    function Update-Heartbeat {
+        param([AllowEmptyString()][string]$TaskId, [string]$StateDir)
+        return $false
+    }
+    function Revoke-StaleClaims {
+        param([int]$TtlSeconds = 900, [string]$StateDir)
+        return @()
     }
 }
 
@@ -245,6 +253,11 @@ if ($env:AGENT_HQ_JOB_TIMEOUT) {
     }
 }
 
+# RISK-001b: a lease must outlive the worst case (two attempts of
+# JobTimeoutSeconds plus overhead); otherwise a long run loses its claim while
+# still working. Update-Heartbeat refreshes it during a run as the second belt.
+$script:ClaimLeaseSeconds = ([int]$script:JobTimeoutSeconds * 2) + 300
+
 # Attach wall-clock timing to an attempt object (ISO 8601 boundaries + duration).
 function Add-AttemptTiming {
     param($attempt, [datetime]$startedAt, [datetime]$finishedAt)
@@ -261,7 +274,7 @@ function Add-AttemptTiming {
 # Run opencode in a background job, capturing stdout/stderr separately and the REAL exit code.
 # Returns: [PSCustomObject]@{ stdout; stderr; exitCode; startedAt; finishedAt; durationMs }  (never a bare string)
 function Invoke-OpencodeAttempt {
-    param([string]$targetAgent, [string]$taskPrompt)
+    param([string]$targetAgent, [string]$taskPrompt, [string]$TaskId = "")
 
     $startedAt = Get-Date
 
@@ -287,7 +300,22 @@ function Invoke-OpencodeAttempt {
         }
     } -ArgumentList $targetAgent, $taskPrompt
 
-    $completed = Wait-Job -Job $job -Timeout $script:JobTimeoutSeconds
+    # Heartbeat the lease while we wait: a single attempt may run almost
+    # $script:JobTimeoutSeconds, so without this the claim could expire
+    # mid-processing (RISK-001b). Wait in slices and refresh between them.
+    $completed = $null
+    $deadline = (Get-Date).AddSeconds($script:JobTimeoutSeconds)
+    while ($true) {
+        $remaining = [int][Math]::Ceiling(($deadline - (Get-Date)).TotalSeconds)
+        if ($remaining -le 0) { break }
+        $slice = [Math]::Min(30, $remaining)
+        $completed = Wait-Job -Job $job -Timeout $slice
+        if ($completed) { break }
+        if (-not [string]::IsNullOrWhiteSpace($TaskId)) {
+            $null = Update-Heartbeat -TaskId $TaskId -StateDir $ClaimsDir
+        }
+    }
+
     if ($completed) {
         $res = Receive-Job -Job $job
         Remove-Job -Job $job -Force -ErrorAction SilentlyContinue
@@ -478,7 +506,7 @@ function Process-InboxFile {
     # P1-1: atomic claim. If another worker already owns this message id, skip it
     # instead of running the same task twice. The body below is intentionally left
     # at its original indentation to keep the diff small (PowerShell ignores it).
-    if (-not (Claim-Task -TaskId $messageId -Agent $targetAgent -StateDir $ClaimsDir)) {
+    if (-not (Claim-Task -TaskId $messageId -Agent $targetAgent -LeaseSeconds $script:ClaimLeaseSeconds -StateDir $ClaimsDir)) {
         Write-Log "Already claimed by another worker — skipping: $messageId"
         return
     }
@@ -510,7 +538,9 @@ function Process-InboxFile {
     $evidenceCommand = "$($script:OpencodeCmd) run --agent $targetAgent"
 
     Write-Log "🚀 Calling opencode run for agent: $targetAgent (timeout: $($script:JobTimeoutSeconds)s)"
-    $attempt1 = Invoke-OpencodeAttempt -targetAgent $targetAgent -taskPrompt $prompt
+    # Refresh the lease right before a possibly long run (RISK-001b).
+    $null = Update-Heartbeat -TaskId $messageId -StateDir $ClaimsDir
+    $attempt1 = Invoke-OpencodeAttempt -targetAgent $targetAgent -taskPrompt $prompt -TaskId $messageId
     $success1 = Test-OpencodeSuccess $attempt1
     $reason1 = if ($success1) { "" } else { Get-AttemptFailureReason $attempt1 }
     $status1 = if ($success1) { "success" } else { "failed" }
@@ -526,7 +556,9 @@ function Process-InboxFile {
     } else {
         # Failed — 1 retry (also with timeout)
         Write-Log "❌ First attempt failed ($reason1), retrying..."
-        $attempt2 = Invoke-OpencodeAttempt -targetAgent $targetAgent -taskPrompt $prompt
+        # Heartbeat between attempts: attempt-1 may have consumed most of the lease.
+        $null = Update-Heartbeat -TaskId $messageId -StateDir $ClaimsDir
+        $attempt2 = Invoke-OpencodeAttempt -targetAgent $targetAgent -taskPrompt $prompt -TaskId $messageId
         $success2 = Test-OpencodeSuccess $attempt2
         $reason2 = if ($success2) { "" } else { Get-AttemptFailureReason $attempt2 }
         $status2 = if ($success2) { "success" } else { "failed" }
@@ -554,12 +586,31 @@ function Process-InboxFile {
     } finally {
         # P1-1: release the claim on every terminal path (success, dead-letter,
         # dry-run) and even on an unexpected error — no permanent lock.
-        $null = Release-Task -TaskId $messageId -StateDir $ClaimsDir
+        # RISK-001b: owner-guarded so a foreign (re-taken) lease is never deleted.
+        $null = Release-Task -TaskId $messageId -Agent $targetAgent -StateDir $ClaimsDir
+    }
+}
+
+# RISK-001: release leases whose heartbeat expired. Without a scheduled call a
+# crashed worker keeps its claim forever, so the message is skipped as
+# "Already claimed" until somebody runs the queue's -StaleCheck by hand.
+function Invoke-StaleClaimSweep {
+    if (-not (Get-Command Revoke-StaleClaims -ErrorAction SilentlyContinue)) { return }
+    try {
+        $revoked = @(Revoke-StaleClaims -TtlSeconds 900 -StateDir $ClaimsDir)
+        foreach ($rc in $revoked) {
+            Write-Log "♻️ Revoked stale claim: task '$($rc.task_id)' (age $($rc.age_seconds)s, owner '$($rc.agent)')"
+        }
+    } catch {
+        Write-Log "⚠️ Stale claim sweep failed: $($_.Exception.Message)"
     }
 }
 
 # Main processing: scan .memory\inbox\{agent}\*.json
 function Process-Inbox {
+    # Schedule the sweep once per poll cycle, before any "Already claimed" skip.
+    Invoke-StaleClaimSweep
+
     $agentDirs = Get-ChildItem $Inbox -Directory | Where-Object { $_.Name -ne ".gitkeep" }
 
     foreach ($agentDir in $agentDirs) {

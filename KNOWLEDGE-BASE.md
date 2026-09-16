@@ -224,6 +224,34 @@
 - **Discovered by**: qa-engineer независимая приёмка P3-D/P3-E, 2026-09-15
 - **Status**: FIXED (2026-09-15) — `applyCosmeticPurchase()` обёрнут в BEGIN→UPDATE xp→INSERT→level→COMMIT, catch→ROLLBACK; unit-тест с PK-конфликтом INSERT подтверждает, что XP не списывается; QA HTTP-проверка: XP консистентен при 200/400/409.
 
+### BUG-019: task-state.ps1 — плавающий FAIL CASE c в test-task-state.ps1 + молчаливый пропуск revoke
+- **Date**: 2026-09-15
+- **Severity**: major (критерий приёмки «5/5 exit 0» не выполнен стабильно)
+- **File**: D:\Тест\agent-hq\.agents\scripts\task-state.ps1:110-112 (catch→$null), :398-402 (фолбэк LastWriteTime), :404-409 (catch без лога); tests\test-task-state.ps1:183-187
+- **Symptom**: Первый (холодный) прогон: `Revoke-StaleClaims` не отозвал состаренный lease → 3 проверки CASE c FAIL, exit 1. Последующие 5 прогонов: 5/5 PASS.
+- **Root cause (вероятный, NOT ENOUGH EVIDENCE для 100%)**: временный сбой чтения файла (AV/индексатор в %TEMP%) → `Read-ClaimData` молча возвращает $null → re-check в `Revoke-StaleClaims` падает на `LastWriteTime`, а у состаренного тестом файла он = «сейчас» (перезаписан Write-AgedLease) → lease считается свежим → `continue` без какого-лога. Второй молчаливый путь: исключение `File::Delete` глотается `catch {}`.
+- **Fix**: (1) логировать причину пропуска/ошибки delete в Revoke-StaleClaims; (2) не считать LastWriteTime «свежестью», если JSON читался с ошибкой — повторить чтение/revoke; (3) в тесте — retry revoke 2-3 раза с короткой паузой либо assert с диагностикой.
+- **Discovered by**: qa-engineer независимая приёмка P1-1 (коммит 084c7d9), 2026-09-15
+- **Status**: FIXED (2026-09-15, dev-3) — см. Resolution.
+- **Resolution (dev-3)**:
+  - `Read-ClaimDataChecked` (task-state.ps1): чтение lease с bounded retry (2-3 попытки × 120-150 ms) и явным исходом `{ok, data, reason, path}`; `Read-ClaimData` — тонкая обёртка над ним (сохранён прежний `$null`-контракт).
+  - `Revoke-StaleClaims`: при сбое чтения JSON `LastWriteTime` больше НЕ используется как «свежесть» — persistent I/O-ошибка отзывается по возрасту stale-скана с `Write-Warning`; ошибка `File::Delete` логируется (был пустой `catch {}`); пропуск «heartbeat свежий» — `Write-Verbose`.
+  - `Get-Claim`: «corrupt»-предупреждение только при реально невалидном JSON; при транзиентной недоступности (окно FileShare.None / AV / индексатор) — молча `$null` (ложный warning устранён).
+  - `Update-Heartbeat`: при транзиентном сбое чтения НЕ пересобирает minimal-lease (не теряет agent/claimed_at), возвращает `$false` + warning.
+  - MINOR #4 (TOCTOU re-check→delete): сужено retry-чтением, комментарий честный («best-effort, small TOCTOU window», без overstated «no lost-update race»).
+  - MINOR #5 (`attempt` всегда 1): `Claim-Task` читает per-task marker `<leaf>.attempt`, который пишет `Revoke-StaleClaims` перед удалением (`-Attempt` переопределяет явно); re-claim после revoke даёт `attempt=2`, маркер очищается на claim/release.
+  - ТЕСТ `tests\test-task-state.ps1` CASE c: revoke с retry (3×, 250 ms) + DIAG-вывод вместо молчаливого FAIL; 5/5 прогонов подряд.
+
+### RISK-001 (P1-1): heartbeat не вызывается в production; stale-revoke не scheduled
+- `Update-Heartbeat` определена (task-state.ps1:239) и тестируется, но call-sites в .agents\scripts — только определения-заглушки; poller обрабатывает сообщение до 2×900s (inbox-poller.ps1:238 JobTimeoutSeconds=900 + retry :529) при TTL lease 900s → lease может протухнуть ДО конца обработки; `Release-Task` без проверки владельца (task-state.ps1:283-298) удалит чужой новый lease.
+- `Revoke-StaleClaims` вызывается только из `project-queue -StaleCheck -Project` (project-queue.ps1:528), нигде не scheduled (grep run-daemons/health-check/run-poller/inbox-poller — 0 hits) → после краха poller сообщение пропускается вечно («Already claimed», inbox-poller.ps1:482) до ручного запуска.
+- **Discovered by**: qa-engineer, 2026-09-15. **Status**: FIXED (2026-09-15, dev-3) — см. Resolution.
+- **Resolution (dev-3)**:
+  - Sweep scheduled: `inbox-poller.ps1` → `Invoke-StaleClaimSweep` вызывается в начале каждого `Process-Inbox` цикла (inbox-poller.ps1:597,612), т.е. ДО skip-ветки «Already claimed». End-to-end проверено: pre-seeded stale lease (age 7200 s, owner `crashed-worker`) → `poller -Once` залогировал `Revoked stale claim: task 'm1' ... owner 'crashed-worker'` и обработал сообщение (outbox создан).
+  - Heartbeat в проде: `Update-Heartbeat` вызывается перед attempt-1, между attempt-1/attempt-2 и в цикле ожидания Job (каждые ≤30 s) — inbox-poller.ps1:315,542,560.
+  - TTL: lease создаётся с `ClaimLeaseSeconds = 2 × JobTimeoutSeconds + 300` (inbox-poller.ps1:259,509) — выше наихудшего времени обработки 2×900 s.
+  - Owner-check: `Release-Task -Agent <owner>` не удаляет чужой lease (возвращает `$false` + warning); poller и project-queue (Complete/Dead) передают владельца; при транзиентном сбое чтения владелец не подтверждается → lease не удаляется.
+
 ## Patterns
 
 ### PowerShell encoding pitfalls on Windows

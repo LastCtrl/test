@@ -19,8 +19,10 @@
 # Safety
 #   - Task ids that are not filename-safe are hashed, so a hostile id such as
 #     '..\..\evil' can never escape the claims directory.
-#   - A lease whose JSON is unreadable is never trusted blindly: staleness falls
-#     back to the file's LastWriteTime, and a corrupt lease is rebuilt on heartbeat.
+#   - A lease whose JSON cannot be read is retried before it is acted on; on a
+#     persistent read failure the stale scan (not a fresh LastWriteTime) decides,
+#     so a transient read glitch can never keep a hung lease alive (BUG-019).
+#   - A corrupt lease is rebuilt on heartbeat.
 
 # Directory this helper was loaded from, captured at dot-source time.
 $TaskStateScriptRoot = $PSScriptRoot
@@ -87,29 +89,156 @@ function Get-ClaimPath {
 }
 
 # ---------------------------------------------------------------------------
-# Read + parse a lease file. Returns the object, or $null when missing/empty or
-# not valid JSON (callers then fall back to file timestamps).
+# Attempt bookkeeping (MINOR #5): the lease's "attempt" must grow when a stale
+# lease is revoked and the task is claimed again. The lease itself is deleted on
+# revoke, so the last attempt is carried over in a tiny sibling marker file
+# (<leaf>.attempt) that the stale scan deliberately ignores (*.claim.json only).
+# ---------------------------------------------------------------------------
+function Get-ClaimAttemptMarkerPath {
+    param(
+        [Parameter(Mandatory = $true)][AllowEmptyString()][string]$TaskId,
+        [string]$StateDir
+    )
+    $dir = Get-TaskStateDir -StateDir $StateDir
+    $leaf = (Get-ClaimFileName -TaskId $TaskId) -replace '\.claim\.json$', ''
+    return (Join-Path $dir "$leaf.attempt")
+}
+
+function Read-ClaimAttemptMarker {
+    param(
+        [Parameter(Mandatory = $true)][AllowEmptyString()][string]$TaskId,
+        [string]$StateDir
+    )
+    $marker = Get-ClaimAttemptMarkerPath -TaskId $TaskId -StateDir $StateDir
+    $read = Read-ClaimDataChecked -Path $marker
+    if (-not $read.ok -or $null -eq $read.data) { return 0 }
+    if (-not $read.data.PSObject.Properties['attempt']) { return 0 }
+    $value = 0
+    if ([int]::TryParse([string]$read.data.attempt, [ref]$value) -and $value -gt 0) { return $value }
+    return 0
+}
+
+function Set-ClaimAttemptMarker {
+    param(
+        [Parameter(Mandatory = $true)][AllowEmptyString()][string]$TaskId,
+        [int]$Attempt,
+        [string]$StateDir
+    )
+    try {
+        $marker = Get-ClaimAttemptMarkerPath -TaskId $TaskId -StateDir $StateDir
+        $dir = Split-Path $marker -Parent
+        if (-not (Test-Path -LiteralPath $dir -PathType Container)) {
+            New-Item -ItemType Directory -Path $dir -Force -ErrorAction Stop | Out-Null
+        }
+        $json = ([PSCustomObject]@{ attempt = [int]$Attempt }) | ConvertTo-Json -Compress
+        [System.IO.File]::WriteAllText($marker, $json, $TaskStateUtf8NoBom)
+    } catch {
+        Write-Warning "Set-ClaimAttemptMarker: task '$TaskId' marker write failed: $($_.Exception.Message)"
+    }
+}
+
+function Clear-ClaimAttemptMarker {
+    param(
+        [Parameter(Mandatory = $true)][AllowEmptyString()][string]$TaskId,
+        [string]$StateDir
+    )
+    try {
+        $marker = Get-ClaimAttemptMarkerPath -TaskId $TaskId -StateDir $StateDir
+        if (Test-Path -LiteralPath $marker -PathType Leaf) {
+            Remove-Item -LiteralPath $marker -Force -ErrorAction SilentlyContinue
+        }
+    } catch {
+        # Marker cleanup is best-effort; a stale marker only over-counts attempts.
+    }
+}
+
+# ---------------------------------------------------------------------------
+# Read + parse a lease file WITH bounded retries and an explicit outcome, so a
+# caller can tell "genuinely missing" apart from "transiently unreadable"
+# (antivirus/indexer or a FileShare.None writer opening the same path).
+# Returns a PSCustomObject:
+#   ok=$true , reason='ok'      -> data = parsed lease
+#   ok=$true , reason='missing' -> no file
+#   ok=$true , reason='empty'   -> file was empty on every try
+#   ok=$true , reason='corrupt' -> file readable but not valid JSON
+#   ok=$false, reason='io: ...' -> unreadable after every retry
+# ---------------------------------------------------------------------------
+function Read-ClaimDataChecked {
+    param(
+        [Parameter(Mandatory = $true)][string]$Path,
+        [int]$Retries = 2,
+        [int]$RetryDelayMs = 120
+    )
+
+    $out = [PSCustomObject]@{
+        ok     = $false
+        data   = $null
+        reason = ""
+        path   = $Path
+    }
+
+    if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) {
+        $out.ok = $true
+        $out.reason = "missing"
+        return $out
+    }
+
+    $attempts = [Math]::Max(1, $Retries + 1)
+    for ($i = 0; $i -lt $attempts; $i++) {
+        $text = $null
+        try {
+            # FileShare.ReadWrite: a concurrent writer must not block the reader
+            # and vice versa (claim correctness never depends on exclusion).
+            $fs = [System.IO.File]::Open($Path, [System.IO.FileMode]::Open, [System.IO.FileAccess]::Read, [System.IO.FileShare]::ReadWrite)
+            try {
+                $reader = New-Object System.IO.StreamReader($fs, $TaskStateUtf8NoBom)
+                try { $text = $reader.ReadToEnd() } finally { $reader.Dispose() }
+            } finally {
+                $fs.Close()
+            }
+        } catch {
+            # Most likely a sharing violation (a CreateNew with FileShare.None in
+            # flight) or an AV/indexer holding the file: retry before giving up.
+            $out.ok = $false
+            $out.reason = "io: " + $_.Exception.Message
+            if ($i -lt ($attempts - 1)) { Start-Sleep -Milliseconds $RetryDelayMs; continue }
+            return $out
+        }
+
+        if ([string]::IsNullOrWhiteSpace($text)) {
+            if ($i -lt ($attempts - 1)) { Start-Sleep -Milliseconds $RetryDelayMs; continue }
+            $out.ok = $true
+            $out.reason = "empty"
+            return $out
+        }
+
+        try {
+            $out.data = $text | ConvertFrom-Json -ErrorAction Stop
+            $out.ok = $true
+            $out.reason = "ok"
+            return $out
+        } catch {
+            # Half-written JSON is possible: retry, then report it as corrupt
+            # (readable, but not parseable) instead of a transient I/O error.
+            if ($i -lt ($attempts - 1)) { Start-Sleep -Milliseconds $RetryDelayMs; continue }
+            $out.ok = $true
+            $out.reason = "corrupt"
+            $out.data = $null
+            return $out
+        }
+    }
+    return $out
+}
+
+# ---------------------------------------------------------------------------
+# Read + parse a lease file. Returns the object, or $null when missing/empty,
+# corrupt, or unreadable after the retries. Thin wrapper over the checked reader
+# so existing callers keep their simple $null contract.
 # ---------------------------------------------------------------------------
 function Read-ClaimData {
     param([Parameter(Mandatory = $true)][string]$Path)
-
-    if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) { return $null }
-
-    try {
-        # FileShare.ReadWrite: a concurrent writer must not block the reader and
-        # vice versa (claim correctness never depends on reader/writer exclusion).
-        $fs = [System.IO.File]::Open($Path, [System.IO.FileMode]::Open, [System.IO.FileAccess]::Read, [System.IO.FileShare]::ReadWrite)
-        try {
-            $reader = New-Object System.IO.StreamReader($fs, $TaskStateUtf8NoBom)
-            try { $text = $reader.ReadToEnd() } finally { $reader.Dispose() }
-        } finally {
-            $fs.Close()
-        }
-        if ([string]::IsNullOrWhiteSpace($text)) { return $null }
-        return ($text | ConvertFrom-Json)
-    } catch {
-        return $null
-    }
+    $read = Read-ClaimDataChecked -Path $Path
+    return $read.data
 }
 
 # ---------------------------------------------------------------------------
@@ -171,6 +300,7 @@ function Claim-Task {
         [Parameter(Mandatory = $true)][AllowEmptyString()][string]$TaskId,
         [string]$Agent = "",
         [int]$LeaseSeconds = $TaskStateDefaultLeaseSeconds,
+        [int]$Attempt = 0,
         [string]$StateDir
     )
 
@@ -189,13 +319,23 @@ function Claim-Task {
 
     $path = Join-Path $dir (Get-ClaimFileName -TaskId $TaskId)
     $now = (Get-Date).ToString("yyyy-MM-ddTHH:mm:ss.fff")
+
+    # MINOR #5: never hard-code attempt=1. An explicit -Attempt wins; otherwise a
+    # previous revoke's marker (if any) is carried forward, so re-claims count up.
+    $attemptValue = 0
+    if ($Attempt -gt 0) {
+        $attemptValue = [int]$Attempt
+    } else {
+        $attemptValue = (Read-ClaimAttemptMarker -TaskId $TaskId -StateDir $StateDir) + 1
+    }
+
     $claim = [ordered]@{
         task_id       = $TaskId
         agent         = $Agent
         claimed_at    = $now
         heartbeat_at  = $now
         lease_seconds = [int]$LeaseSeconds
-        attempt       = 1
+        attempt       = [int]$attemptValue
     }
 
     # --- THE atomic step: CREATE_NEW fails if anyone else already owns the file.
@@ -229,6 +369,8 @@ function Claim-Task {
         Remove-Item -LiteralPath $path -Force -ErrorAction SilentlyContinue
         return $false
     }
+    # Claim succeeded: the carried-over attempt marker has been consumed.
+    Clear-ClaimAttemptMarker -TaskId $TaskId -StateDir $StateDir
     return $true
 }
 
@@ -249,9 +391,17 @@ function Update-Heartbeat {
     $path = Get-ClaimPath -TaskId $TaskId -StateDir $StateDir
     if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { return $false }
 
-    $data = Read-ClaimData -Path $path
+    $read = Read-ClaimDataChecked -Path $path
+    if (-not $read.ok) {
+        # Transient read failure: do NOT rebuild, or a valid lease would lose its
+        # owner/agent fields. Report failure; the caller may retry/revoke later.
+        Write-Warning "Update-Heartbeat: lease for task '$TaskId' is temporarily unreadable: $($read.reason)"
+        return $false
+    }
+    $data = $read.data
     if ($null -eq $data) {
-        # Corrupt lease: rebuild a minimal but valid one so it stays trackable.
+        # Genuinely missing/empty/corrupt lease: rebuild a minimal valid one so
+        # the claim stays trackable.
         $data = [PSCustomObject]@{
             task_id       = $TaskId
             agent         = ""
@@ -285,6 +435,10 @@ function Release-Task {
         # AllowEmptyString: an empty id must reach the $false guard instead of
         # tripping parameter binding (a claim helper returns, it never throws).
         [Parameter(Mandatory = $true)][AllowEmptyString()][string]$TaskId,
+        # Optional owner guard (RISK-001b): when the caller states its agent, a
+        # lease owned by somebody else is never deleted (e.g. a fresh lease taken
+        # after this caller was considered timed out). Empty = legacy behaviour.
+        [string]$Agent = "",
         [string]$StateDir
     )
 
@@ -293,8 +447,28 @@ function Release-Task {
     $path = Get-ClaimPath -TaskId $TaskId -StateDir $StateDir
     if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { return $true }
 
+    if (-not [string]::IsNullOrWhiteSpace($Agent)) {
+        $read = Read-ClaimDataChecked -Path $path
+        if (-not $read.ok) {
+            # Ownership cannot be verified during a transient read failure: keep
+            # the lease (revoke will eventually collect it) instead of risking a
+            # foreign lease deletion.
+            Write-Warning "Release-Task: lease for task '$TaskId' unreadable ($($read.reason)); not releasing"
+            return $false
+        }
+        if ($null -ne $read.data -and $read.data.PSObject.Properties['agent']) {
+            $owner = [string]$read.data.agent
+            if (-not [string]::IsNullOrWhiteSpace($owner) -and $owner -ne $Agent) {
+                Write-Warning "Release-Task: task '$TaskId' is owned by '$owner', not '$Agent' — lease kept"
+                return $false
+            }
+        }
+    }
+
     try { [System.IO.File]::Delete($path) } catch { }
-    return (-not (Test-Path -LiteralPath $path -PathType Leaf))
+    $gone = -not (Test-Path -LiteralPath $path -PathType Leaf)
+    if ($gone) { Clear-ClaimAttemptMarker -TaskId $TaskId -StateDir $StateDir }
+    return $gone
 }
 
 # ---------------------------------------------------------------------------
@@ -313,12 +487,16 @@ function Get-Claim {
     $path = Get-ClaimPath -TaskId $TaskId -StateDir $StateDir
     if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { return $null }
 
-    $data = Read-ClaimData -Path $path
-    if ($null -eq $data) {
-        Write-Warning "Get-Claim: lease for task '$TaskId' is unreadable/corrupt: $path"
-        return $null
+    $read = Read-ClaimDataChecked -Path $path
+    if ($null -ne $read.data) { return $read.data }
+    if ($read.reason -eq "corrupt") {
+        Write-Warning "Get-Claim: lease for task '$TaskId' is corrupt (invalid JSON): $path"
+    } elseif (-not $read.ok) {
+        # Transient unavailability (FileShare.None window, AV/indexer): a "corrupt"
+        # warning here would be a false positive, so stay silent and return $null.
+        Write-Verbose "Get-Claim: lease for task '$TaskId' temporarily unreadable: $($read.reason)"
     }
-    return $data
+    return $null
 }
 
 # ---------------------------------------------------------------------------
@@ -375,7 +553,12 @@ function Get-StaleClaims {
 # ---------------------------------------------------------------------------
 # Revoke-StaleClaims: release every stale lease and return the released list.
 # Re-checks each lease right before deleting, so a heartbeat that landed after
-# the scan keeps its claim (no lost-update race).
+# the scan keeps its claim. NOTE: this is a best-effort check-then-delete with a
+# small TOCTOU window (a heartbeat could still land between the re-check and the
+# Delete) — the window is tiny and a lost re-claim is recoverable, but it is NOT
+# a strictly race-free "no lost-update" guarantee (MINOR #4).
+# A transient read failure is NEVER treated as "fresh" (BUG-019): the scan's age
+# decides, and every skip/failure is logged instead of being swallowed.
 # ---------------------------------------------------------------------------
 function Revoke-StaleClaims {
     param(
@@ -385,27 +568,53 @@ function Revoke-StaleClaims {
 
     $revoked = @()
     $stale = @(Get-StaleClaims -TtlSeconds $TtlSeconds -StateDir $StateDir)
+    $now = Get-Date
 
     foreach ($s in $stale) {
         $path = [string]$s.claim_path
+        $taskId = [string]$s.task_id
         if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { continue }
 
-        $data = Read-ClaimData -Path $path
+        # Bounded retry read: distinguishes a transient sharing violation from a
+        # genuinely stale lease, and never falls back to a fresh LastWriteTime.
+        $read = Read-ClaimDataChecked -Path $path -Retries 3 -RetryDelayMs 150
+
         $hb = $null
-        if ($null -ne $data -and $data.PSObject.Properties['heartbeat_at']) {
-            $hb = ConvertTo-ClaimTime $data.heartbeat_at
+        if ($read.ok -and $null -ne $read.data -and $read.data.PSObject.Properties['heartbeat_at']) {
+            $hb = ConvertTo-ClaimTime $read.data.heartbeat_at
         }
-        if ($null -eq $hb) {
-            try { $hb = (Get-Item -LiteralPath $path -ErrorAction Stop).LastWriteTime }
-            catch { $hb = $null }
+
+        if ($null -ne $hb) {
+            if (($now - $hb).TotalSeconds -le $TtlSeconds) {
+                # Heartbeat landed after the scan -> the owner is alive; keep it.
+                Write-Verbose "Revoke-StaleClaims: task '$taskId' heartbeat is fresh; lease kept"
+                continue
+            }
+        } elseif ($read.ok) {
+            Write-Warning "Revoke-StaleClaims: lease for task '$taskId' is $($read.reason); revoking on stale scan age $($s.age_seconds)s"
+        } else {
+            Write-Warning "Revoke-StaleClaims: lease for task '$taskId' unreadable after retries ($($read.reason)); revoking on stale scan age $($s.age_seconds)s"
         }
-        if ($null -ne $hb -and ((Get-Date) - $hb).TotalSeconds -le $TtlSeconds) { continue }
+
+        # Carry the last attempt over so a re-claim increments it (MINOR #5).
+        $prevAttempt = 1
+        if ($read.ok -and $null -ne $read.data -and $read.data.PSObject.Properties['attempt']) {
+            $parsedAttempt = 0
+            if ([int]::TryParse([string]$read.data.attempt, [ref]$parsedAttempt) -and $parsedAttempt -gt 0) {
+                $prevAttempt = $parsedAttempt
+            }
+        }
+        Set-ClaimAttemptMarker -TaskId $taskId -Attempt $prevAttempt -StateDir $StateDir
 
         try {
             [System.IO.File]::Delete($path)
-            if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { $revoked += $s }
+            if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
+                $revoked += $s
+            } else {
+                Write-Warning "Revoke-StaleClaims: lease for task '$taskId' still present after delete"
+            }
         } catch {
-            # Unreadable/held file: leave it for the next stale cycle.
+            Write-Warning "Revoke-StaleClaims: failed to delete stale lease for task '$taskId': $($_.Exception.Message)"
         }
     }
     return $revoked

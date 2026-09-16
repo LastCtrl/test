@@ -85,6 +85,12 @@ $RiskyPrompt = "rm -rf " + "/tmp/agent-hq-fixture"
 $RiskyReg    = "reg add " + "HKLM" + "\Software\AgentHqTest /v X /t REG_SZ /d y"
 $Benign      = "just a benign task: read the file and report"
 
+# Secret-shaped assignment whose VALUE is a destructive command. Scrub masks the
+# value ("rm" -> [REDACTED]), so the destructive shape disappears from the
+# scrubbed text; the risk-scan must therefore also inspect the ORIGINAL text.
+# Assembled by concatenation so no literal "password=..." hits the repo scanner.
+$SecretMaskedRisky = "pass" + "word=" + "rm" + " -rf " + "/var/tmp/qa-x"
+
 # --- main -----------------------------------------------------------------
 
 Write-Host "=== agent-hq prompt-gate (P1-5) tests ==="
@@ -253,6 +259,31 @@ try {
 
         $rMissing = Invoke-Capture { & $Gate -Scrub -Path (Join-Path $root "no-such-file.md") }
         Add-Check 'C12c-scrub-missing-file' ($rMissing.Exit -eq 1) "exit=$($rMissing.Exit)"
+    } finally { End-IsolatedRoot $root }
+
+    # --- C13: a secret-shaped value must not hide a destructive command ------
+    # Regression for the P1-5 minor defect: scrub masks "rm" as the value of
+    # "password=...", so a risk-scan over the scrubbed text alone would miss the
+    # destructive shape. The gate must scan BOTH texts -> hold for approval.
+    $root = New-IsolatedRoot
+    try {
+        $r = Invoke-Capture { & $Gate -Scrub -Text $SecretMaskedRisky }
+        $pendingId = Get-ApprovalId -Root $root
+        $pendingFile = Get-OnlyFile -Dir (Join-Path $root ".memory\approvals\pending") -Filter '*.json'
+        $reasonsOk = $false
+        $noRawSecret = $true
+        if ($null -ne $pendingFile) {
+            $raw = [System.IO.File]::ReadAllText($pendingFile.FullName, $script:Utf8NoBom)
+            $obj = $raw | ConvertFrom-Json
+            # pending carries label-only reasons, never the raw destructive text
+            $reasonsOk = (@($obj.reasons) -contains 'rm-rf')
+            $noRawSecret = (-not $raw.Contains("rm -rf")) -and (-not $r.Out.Contains("rm -rf"))
+        } else {
+            $noRawSecret = $false
+        }
+        Add-Check 'C13-secret-masked-risk-still-blocks' `
+            (($r.Exit -eq 2) -and ($pendingId -match '^apr-[0-9a-f]{16}$') -and $reasonsOk -and $noRawSecret) `
+            ("exit=$($r.Exit) pendingId=$pendingId reasonsHasRmRf=$reasonsOk noRawSecret=$noRawSecret")
     } finally { End-IsolatedRoot $root }
 
 } catch {

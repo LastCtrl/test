@@ -255,9 +255,21 @@ function Invoke-PromptScrub {
         }
     }
 
+    # P1-5 (fix): risk-scan по ОБОИМ текстам.
+    #   * original — scrub мог замаскировать часть деструктивной команды как
+    #     "значение секрета" (password=rm -rf ... -> password=[REDACTED] -rf ...),
+    #     и тогда риск пропал бы из scrubbed-текста;
+    #   * scrubbed — на случай, если секретоподобный фрагмент сам содержал шаблон.
+    # Причины объединяются с дедупликацией (порядок первого вхождения сохраняется);
+    # в pending попадают только метки-причины, не сырой текст.
     $reasons = @()
     if (-not $scrubAvailable) { $reasons += 'scrub-unavailable' }
-    $reasons += @(Get-PromptRiskReasons -Text $scrubbed)
+    foreach ($r in @(Get-PromptRiskReasons -Text $original)) {
+        if ($reasons -notcontains $r) { $reasons += $r }
+    }
+    foreach ($r in @(Get-PromptRiskReasons -Text $scrubbed)) {
+        if ($reasons -notcontains $r) { $reasons += $r }
+    }
     $risky = ($reasons.Count -gt 0)
 
     # Strict: секрет = жёсткий блок. Scrub недоступен = тоже блок (fail-closed).

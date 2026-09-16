@@ -2424,3 +2424,16 @@ MCP_USED: []
 COMPLIANCE: true
 STATUS: resolved
 ================================================================================
+================================================================================
+[2026-09-16 13:13] dev-3 -> team-lead:
+TYPE: update | PRIORITY: low
+CONTENT: Фикс minor P1-5 (DEFECT-1 из приёмки qa-engineer).
+- prompt-gate.ps1:258-274: risk-scan Get-PromptRiskReasons теперь прогоняется по ОБОИМ текстам (original И scrubbed) с дедупликацией причин (порядок первого вхождения). В pending по-прежнему только метки-причины, preview скрыт при secrets_found.
+- tests\test-prompt-gate.ps1: добавлен кейс C13-secret-masked-risk-still-blocks (промпт password=<destructive> собирается в рантайме, без литеральных секретов) -> ожидает exit 2 + pending с reasons=[rm-rf] и без сырого текста.
+ВОСПРОИЗВЕДЕНИЕ (до фикса): exit=0, pending=0, rm замаскирован. ПОСЛЕ: exit=2, pending=1, reasons=[rm-rf].
+ПРОВЕРКА: test-prompt-gate 15/15 PASS exit 0 (14 старых + C13); регресс test-pipeline 10/10, test-false-done 17/17. CRLF 0 bareLF, BOM prompt-gate сохранён, test-файл no-BOM. Не коммичено. Temp почищен.
+SKILLS_LOADED: ["evidence-discipline"]
+MCP_USED: ["sequential-thinking: 1 шаг (edge-case ревизия фикса)"] (context7/hermes-atlas не требовались: правка built-in PS 5.1/.NET regex, external-библиотек нет)
+COMPLIANCE: true
+STATUS: resolved
+================================================================================

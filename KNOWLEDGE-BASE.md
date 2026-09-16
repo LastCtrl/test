@@ -252,6 +252,14 @@
   - TTL: lease создаётся с `ClaimLeaseSeconds = 2 × JobTimeoutSeconds + 300` (inbox-poller.ps1:259,509) — выше наихудшего времени обработки 2×900 s.
   - Owner-check: `Release-Task -Agent <owner>` не удаляет чужой lease (возвращает `$false` + warning); poller и project-queue (Complete/Dead) передают владельца; при транзиентном сбое чтения владелец не подтверждается → lease не удаляется.
 
+### RISK-002 (P1-2): находки qa-приёмки per-project isolation — minor, не блокирующие
+- **Date**: 2026-09-16, коммит 4d8b50e, verdict ПРИНЯТО
+- **RISK-002a (minor)**: `Remove-ProjectWorktree` (project-worktree.ps1:312-313) делает `git worktree remove --force` + `git branch -D <branch>` — коммиты в ветке `project/<name>` уничтожаются без подтверждения (восстановимы только через reflog). Сейчас вызывается только из cleanup теста; при боевом использовании — риск потери работы. Fix-предложение: `-Force`-гейт или `branch -d` + warning.
+- **RISK-002b (minor)**: leak-guard opt-in: `Write-ProjectContextBuffer` блокирует cross-project только когда передан `-SourceProject` (project-worktree.ps1:351-360); без него любой вызывающий может дописать в чужой буфер (путь выводится из `-Project`, boundary-проверка тривиально проходит). Граница — честность вызывающего агента.
+- **RISK-002c (minor)**: коллизия имён: если проект назовут как agent-worktree (`dev-1`), `Test-ProjectPathBoundary` включает `.agents\worktrees\dev-1` (рабочий чек-аут агента) в границу проекта (project-worktree.ps1:99).
+- **NOT a P1-2 regression (pre-existing)**: кириллические имена проектов отвергаются whitelist'ами `create-project.ps1:42` и `project-queue.ps1:101` — оба существовали ДО 4d8b50e (git show 4d8b50e^: … :32/:78). Существующие `1с-centr1507`/`1с-SlyckBuh1509` были несовместимы с project-queue и раньше; P1-2 их не трогает (проверено: git status чист, worktree list 30→30).
+- **Discovered by**: qa-engineer независимая приёмка P1-2, 2026-09-16. **Status**: open (minor, на усмотрение тимлида).
+
 ## Patterns
 
 ### PowerShell encoding pitfalls on Windows

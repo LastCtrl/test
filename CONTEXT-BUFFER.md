@@ -1795,3 +1795,55 @@ MCP_USED: ["sequential-thinking", "context7: not applicable (PowerShell/git, в�
 COMPLIANCE: true
 STATUS: resolved
 ================================================================================
+
+[2026-09-16 11:15] dev-2-1 -> team-lead:
+TYPE: update | PRIORITY: medium
+Project: news-bot
+CONTENT: Фикс распределения бюджета анализатора (services/analyzer.py). Таймаут на модель теперь СПРАВЕДЛИВАЯ ДОЛЯ остатка бюджета, а не min(REQUEST_TIMEOUT, remaining).
+ФОРМУЛА: per_model = min(PER_MODEL_TIMEOUT_MAX=35.0, remaining / max(1, models_left)), где models_left = len(models) - idx (включая текущую модель текущего прохода). Используется как timeout в asyncio.wait_for вместо min(REQUEST_TIMEOUT=110, remaining).
+ФАЙЛЫ:
+- modified services/analyzer.py:89 — новая константа PER_MODEL_TIMEOUT_MAX: float = 35.0; :119-132 — чистый хелпер _per_model_timeout(remaining, models_left); :745-748 — docstring analyze_news (шаг 7); :831-838 — enumerate(models) + models_left; :864-870 — расчёт per_model + лог "Model %s: per-model timeout %.1fs (budget left %.1fs)"; :872-878 — asyncio.wait_for(timeout=per_model).
+- modified tests/test_analyzer.py (append) — класс TestPerModelBudgetFairShare (5 тестов): доля 100/5=20; потолок 35; хвост 15/1>=MIN_MODEL_TIME; guard models_left<=0; интеграционный — медленная первая модель (timeout) не лишает резерва z-ai/glm-5.3-free попытки + проверка лога.
+НЕ МЕНЯЛ: MODELS/MODEL_PROVIDER, retry (2 прохода, TRANSIENT_FAILURES), cooldown 429→300с, ANALYSIS_TIMEOUT=100, MIN_MODEL_TIME=15, последовательность.
+PYTEST: py -3 -m pytest tests -q --tb=short -> 317 passed, 1 skipped, 0 failed (было 312 passed; +5 новых). py_compile analyzer.py/test_analyzer.py OK.
+ЖИВОЙ E2E: py -3 scripts/e2e_digest.py (E2E_CONC не задавал, default 3) -> ANALYZE OK 3/4 (было 1/4), total=95.2s, exit 1 (одна тема degraded из-за внешнего лимита free).
+ДОХОДИТ ЛИ ДО tokenrouter: ДА, ПОДТВЕРЖДЕНО ЛОГОМ. scripts/e2e_digest.log:113,125,136 — "Model z-ai/glm-5.3-free: per-model timeout 35.0s/26.2s (budget left 63.2s/63.5s/26.2s)" — раньше очередь до резерва не доходила. Справедливость видна: big-pickle 19.9s при budget 99.3s (100/5), nemotron 35.0s (потолок), z-ai 26.2s = remaining/1 на хвосте.
+ВНЕШНИЙ ФАКТОР: z-ai/glm-5.3-free вернул HTTP 503 model_not_found "No available channel for model z-ai/glm-5.3-free under group default (distributor)" — апстрим tokenrouter недоступен, НЕ бюджет. Плюс opencode Zen free: big-pickle и mimo-v2.5-free -> HTTP 429 FreeUsageLimitError (дневной лимит free-tier, внешний). Оба 503/429 транзиентны/с cooldown по существующей логике — не трогал.
+ОГРАНИЧЕНИЯ: git-репо D:\Тест без commits (rollback через git недоступен) — держал временную копию analyzer.py/test_analyzer.py вне репо в temp\opencode, удалил после проверки. Модель 4-й темы degraded — внешний free-лимит, а не регресс.
+SKILLS_LOADED: ["superpowers-implement", "evidence-discipline", "windows-safety"]
+MCP_USED: ["sequential-thinking", "context7: offline (TypeError: fetch failed на resolve/query — сервер недоступен в сессии)", "hermes-atlas-mcp: not needed"]
+COMPLIANCE: true
+STATUS: resolved
+================================================================================
+[2026-09-16] qa-engineer -> team-lead:
+TYPE: update | PRIORITY: medium
+CONTENT: P1-2 приёмка (коммит 4d8b50e) — ВЕРДИКТ: ПРИНЯТО. (1) tests\test-project-isolation.ps1: 42/42 PASS, EXIT=0 (фактический вывод снят). (2) НЕЗАВИСИМАЯ проверка суть на изолированном $env:AGENT_HQ_ROOT (%TEMP%\qa-p12-independent-*, git-init репозиторий): create-project.ps1 создал alphaQA/bravoQA exit=0; буферы разные (projects\alphaQA\CONTEXT-BUFFER.md vs projects\bravoQA\...); worktree .agents\worktrees\{alphaQA,bravoQA} на ветках project/alphaQA, project/bravoQA, зарегистрированы в git worktree list; маркер, записанный в A, отсутствует в B; ФАКТ.возвраты: Write-ProjectContextBuffer(bravo,source=alpha) -> ok=False reason='cross-project write blocked: source 'alphaQA' != target 'bravoQA''; Test-ProjectPathBoundary(bravo,bufA)=False/(bravo,bufB)=True; Test-ProjectContextLeak(bravo,bufA)=True/(bravo,bufB)=False; New-ProjectWorktree повторно -> ok=True created=False 'already exists ... (idempotent)'. (3) Реальный репозиторий НЕ затронут: git worktree list 30->30, projects/ без изменений (5, мусора iso*/alphaQA/bravoQA/ТестПроект = 0), git status пуст до и после. (4) Регресс: test-vault 8/8 exit0; test-pipeline 9/9 exit0; test-discovery PASS=22 FAIL=0 SKIP=0 WARN=1 RESULT PASS exit0; test-false-done 17/17 exit0; test-task-state 5/5 exit0; verify-phase 41/41 exit0. (5) CRLF: project-worktree.ps1 480/0, create-project.ps1 345/0 (BOM), project-queue.ps1 709/0 (BOM), test-project-isolation.ps1 316/0; оба новых файла без BOM — проверено: 0 нон-ASCII байт, для PS 5.1 безопасно. (6) Риски: кириллическое имя проекта -> create-project exit=1 и project-queue -Add exit=1, НО whitelist существовал ДО коммита (4d8b50e^: create-project.ps1:32, project-queue.ps1:78) — НЕ регресс P1-2, существующие 1с-centr1507/1с-SlyckBuh1509 не затронуты. Найденные minor-риски P1-2 (Remove-ProjectWorktree force-deletes branch; leak-guard opt-in без -SourceProject; коллизия имя-проекта=agent-worktree) записаны в KNOWLEDGE-BASE.md RISK-002a/b/c — не блокирующие. Временные артефакты удалены (temp root cleanup=True, qa_*.ps1 удалены).
+SKILLS_LOADED: ["evidence-discipline"]
+MCP_USED: ["context7: not applicable (чистый PowerShell/git, внешних библиотек нет)", "sequential-thinking: not used", "hermes-atlas-mcp: not needed"]
+COMPLIANCE: true
+STATUS: resolved
+================================================================================
+
+[2026-09-15 14:05] team-lead ->
+Project: news-bot
+TYPE: update | PRIORITY: high
+CONTENT: ПОЛНОЦЕННОЕ ТЕСТИРОВАНИЕ + план. Добавлен E2E полного дайджеста scripts/e2e_digest.py (4 темы: поиск+анализ+сборка+сплит, exit 0/1) рядом с scripts/e2e_smoke.py. Найдено и исправлено: (1) одна медленная модель (nemotron reasoning) съедала весь бюджет анализа → введён справедливый per-model бюджет (PER_MODEL_TIMEOUT_MAX=35, min(35, remaining/models_left)) — живой прогон дайджеста 1/4 -> 3/4 OK, до tokenrouter-резерва очередь теперь доходит; (2) гонка _last_failure устранена (локальный sink). Итог: 317 passed/0 failed; e2e_smoke exit 0; e2e_digest: 0 stale, digest split OK. Бот pid 6136. Приёмки PASS grade 8 (fair-share, retry, race).
+ВНЕШНИЙ ФАКТОР: free-модели открытого аккаунта в дневном лимите (429 FreeUsageLimitError у big-pickle/mimo), tokenrouter z-ai/glm-5.3-free = HTTP 503 «No available channel» (мёртв) → при полном исчерпании free часть тем уходит в degraded. Не регресс кода. Для стабильности: пополнить OpenRouter ( → 1000 free/сут) или ждать сброса дневного лимита opencode.
+REVIEWERS: 7/8 работают; code-reviewer переведён на opencode/big-pickle, применится после след. рестарта opencode.
+SKILLS_LOADED: ["model-router","superpowers-implement","superpowers-test"]
+MCP_USED: ["sequential-thinking"]
+COMPLIANCE: true
+STATUS: resolved
+
+================================================================================
+[2026-09-16] team-lead -> bus: P1-2 ЗАКРЫТ (per-project isolation)
+TYPE: update | PRIORITY: high
+================================================================================
+Коммит 4d8b50e. project-worktree.ps1 (New/Get/Remove-ProjectWorktree + boundary/leak-guard + buffer API); create-project.ps1 (+worktree, AGENT_HQ_ROOT); project-queue.ps1 (task.project/worktree). Тест изоляции 42/42. Приёмка qa-engineer: ПРИНЯТО 0 блокеров; minors -> RISK-002a/b/c (force-delete ветки, opt-in guard, коллизия имён).
+Оценки: dev-1 8, qa-engineer 8.
+ОСТАЛОСЬ P1: единый daemon+worker pool, tracer/scoring v2, prompt-gate scrub. Потом P2.
+SKILLS_LOADED: []
+MCP_USED: []
+COMPLIANCE: true
+STATUS: resolved
+================================================================================

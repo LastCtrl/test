@@ -482,6 +482,67 @@ const main = async () => {
     `reports=${JSON.stringify(reports.map((r) => [r.agent, r.status, r.task_ids]))}`
   );
 
+  // BUG-021: the tag channel must catch this repo's human-readable task ids. The
+  // fixture above already carries "P1-4"; this probe also pins the letter-suffix
+  // form ("P0-C"), the letters-dash-digits form ("BUG-020") and the negative case
+  // ("P1-4x" must NOT become a tag). Schema labels ("task_id:") must not be
+  // mistaken for a correlation key either.
+  const tagFixture = [
+    "[10:00] dev-1 -> team-lead:",
+    "TYPE: update | PRIORITY: medium",
+    "CONTENT: P1-4 done, P0-C blocked, also BUG-020 and US-013; P1-4x is not a tag",
+    "task_id: task-bare",
+    "STATUS: resolved",
+  ].join("\n");
+  const tagReport = scoring.parseSelfReports(tagFixture)[0];
+  check(
+    "scoring/self-report-tag-channel",
+    reports[0].tags.includes("P1-4") &&
+      tagReport.tags.includes("P1-4") &&
+      tagReport.tags.includes("P0-C") &&
+      tagReport.tags.includes("BUG-020") &&
+      tagReport.tags.includes("US-013") &&
+      !tagReport.tags.includes("P1-4x") &&
+      tagReport.task_ids.includes("task-bare") &&
+      !tagReport.task_ids.includes("task_id"),
+    `tags=${JSON.stringify(tagReport.tags)}; task_ids=${JSON.stringify(tagReport.task_ids)}`
+  );
+
+  // BUG-021 (minors): a bare "task-x.json" mention (no evidence path) must key on
+  // the file stem and correlate; a claim whose task has NO evidence document at
+  // all must still surface as unverified instead of disappearing.
+  const correlationText = [
+    "[10:00] dev-9 -> team-lead:",
+    "TYPE: update | PRIORITY: medium",
+    "CONTENT: verified task-ok.json",
+    "STATUS: resolved",
+    "",
+    "[10:01] dev-9 -> team-lead:",
+    "TYPE: update | PRIORITY: medium",
+    "CONTENT: TASK_ID: task-bare.json",
+    "STATUS: resolved",
+  ].join("\n");
+  const correlationReports = scoring.parseSelfReports(correlationText);
+  const correlationRows = scoring.correlateSelfReports(aggregates, correlationReports);
+  const bareTokenRow = correlationRows.find((entry) => entry.task_id === "task-ok");
+  const noEvidenceRow = correlationRows.find((entry) => entry.task_id === "task-bare");
+  check(
+    "scoring/correlate-unverified-without-evidence",
+    correlationReports[0].task_ids.includes("task-ok") &&
+      !correlationReports[0].task_ids.includes("task-ok.json") &&
+      bareTokenRow.claimed_status === "resolved" &&
+      bareTokenRow.claimed_by === "dev-9" &&
+      bareTokenRow.unverified === false &&
+      noEvidenceRow &&
+      noEvidenceRow.attempts === 0 &&
+      noEvidenceRow.claimed_status === "resolved" &&
+      noEvidenceRow.claimed_by === "dev-9" &&
+      noEvidenceRow.unverified === true &&
+      noEvidenceRow.false_done === false &&
+      correlationRows.length === aggregates.length + 1,
+    `stem=${JSON.stringify(bareTokenRow)}; no-evidence=${JSON.stringify(noEvidenceRow)}`
+  );
+
   const correlated = scoring.correlateSelfReports(aggregates, reports);
   const corrAbc = correlated.find((a) => a.task_id === "task-abc");
   const corrOk = correlated.find((a) => a.task_id === "task-ok");

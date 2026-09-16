@@ -277,6 +277,40 @@
   - Косметика: tests/test-daemon.ps1 приведён к UTF-8 BOM (как остальные скрипты).
   - Проверка: probe (foreign claim, `-Drain -MaxDurationSeconds 20`): было passes=37/skipped=37/elapsed 21 s → стало passes=1/skipped=1/elapsed 1.2 s, exit 0. Suite: test-daemon 9/9 exit 0, 31.7 s и 30.6 s (два прогона; было ~270 s). Регресс: test-pipeline 9/9 exit 0, test-task-state 5/5 exit 0.
 
+### BUG-021 (P1-4): scoring.js — regex тега не ловит «P1-4 style tag», заявленный в комментарии и self-report
+- **Date**: 2026-09-16 (приёмка коммита 263c9b0)
+- **Severity**: major
+- **File**: .opencode/plugins/scoring.js:220 (regex `/\b([A-Z]{1,3}-\d+(?:-\d+)?)\b/g`), комментарий scoring.js:210 обещает «a P1-4 style tag» как ключ корреляции
+- **Symptom**: `parseSelfReports("CONTENT: done P1-4 and BUG-020 and US-013")` → tags=["BUG-020","US-013"], «P1-4» отсутствует. Regex требует буквы СРАЗУ перед дефисом; в «P1-4» между буквой и дефисом цифра. На реальном CONTEXT-BUFFER.md запись dev-1 (P1-4) даёт tags=[] при task_ids из мусорных токенов (session_id/task_id/attempt_id — ловятся токены-заголовки полей, не значения).
+- **Root cause**: `[A-Z]{1,3}-\d+` ≠ «литера+цифра+дефис+цифра». Тест test-plugins.mjs:455 содержит «P1-4» в фикстуре, но ни одна ассерция tags не проверяет (слово «tags» в тестовом файле отсутствует) → ложное ощущение покрытия.
+- **Impact**: канал корреляции self-report↔evidence по P-стилю (основная human-readable схема имён задач в репо: P1-4, P0-C) нерабочий; false_done/unverified для ссылок вида «P1-4» не срабатывают.
+- **Fix (ТЗ)**: расширить regex до `/\b([A-Z]{1,3}\d*-\d+(?:-\d+)?)\b/g` (или отдельный паттерн `[A-Z]\d+-\d+`); добавить ассерт tags в test-plugins.mjs (P1-4 ловится, P1-4x не ловится); отфильтровать токены-заголовки (task_id/status=... значения не должны попадать в task_ids как имя поля).
+- **Discovered by**: qa-engineer независимая приёмка P1-4 (probe qa_indep_verify.mjs, check selfreport.tag-channel), 2026-09-16. **Status**: FIXED (2026-09-16, dev-1) — см. Resolution.
+- **Resolution (dev-1)**:
+  - `TAG_PATTERN` (.opencode/plugins/scoring.js): `/\b([A-Z]{1,3}\d*-\d+(?:-\d+)?|[A-Z]{1,3}\d+-[A-Z][A-Z0-9]*)\b/g` — ветка 1 ловит «P1-4», «BUG-020», «US-013»; ветка 2 добавлена сверх ТЗ, чтобы закрыть буквенный суффикс из Impact («P0-C»/«P0-D»); «P1-4x» не ловится (граница слова после цифры).
+  - Токены-заголовки (`task_id:`/`session_id:`/`attempt_id:`) больше не попадают в `task_ids` (`CORRELATION_LABEL`); суффикс `.json` нормализуется (`normalizeCorrelationKey`), поэтому «task-x.json» без полного пути коррелирует с evidence-записью `task-x`.
+  - Minor «claim без evidence-файла»: `correlateSelfReports` добавляет синтетическую строку с `attempts: 0` для task_id, который заявлен в self-report, но не имеет evidence-документа → она флагруется как `unverified: true` (раньше такой claim просто исчезал из отчёта). Синтетика строится только по явным `task_ids`, не по тегам.
+  - Проверка на реальном CONTEXT-BUFFER.md: tags записи dev-1 (P1-4) = `["P1-4","P0-C"]`, у qa-приёмки P1-4 = `["P1-4","BUG-021","BUG-022"]`; distinct tags теперь включают P0-A..P3-G/P1-1..P1-5 (до фикса P-стиль не ловился вовсе).
+  - Тесты (`tests/test-plugins.mjs`): новые `scoring/self-report-tag-channel` (P1-4/P0-C/BUG-020/US-013 ловятся, P1-4x — нет, лейбл `task_id` отфильтрован) и `scoring/correlate-unverified-without-evidence`. RESULT 26/26, exit 0.
+  - Побочный эффект (принят): расширенный паттерн ловит и «шумные» теги (UTF-8, SHA-256, UTF8-BOM, D1-D5, SMB1-RDP, ORA-00904) — теги используются только как ключи claim'ов и evidence-строк не создают.
+
+### BUG-022 (P1-4): inbox-engine.ps1 не экспортирует AGENT_HQ_TASK_ID/AGENT_HQ_ATTEMPT_ID → live-трейсы без task-корреляции
+- **Date**: 2026-09-16 (приёмка коммита 263c9b0; gap признан dev-1 в self-report)
+- **Severity**: major
+- **File**: .agents/scripts/inbox-engine.ps1:306-331 (`Invoke-OpencodeAttempt`: параметр `-TaskId` есть, но в env дочернего `opencode run` не кладётся; Start-Job наследует env родителя, которого не существует)
+- **Symptom**: grep `AGENT_HQ_TASK_ID|AGENT_HQ_ATTEMPT_ID` по .agents\scripts — 0 совпадений (только в плагинах tracer.js:43-44/scoring.js:66-67). В live traces.jsonl task_id/attempt_id всегда "" (подтверждено независимым прогоном: span.task_id="").
+- **Impact**: корреляционный слой P1-4 (главная цель задачи) в проде инертен: traces↔evidence join по task_id даёт 0 совпадений; fact_score в performance-записях не собирается (factsForTask(null)→null).
+- **Fix (ТЗ)**: в `Invoke-OpencodeAttempt` передавать в job `$TaskId` и attempt-номер и внутри set `$env:AGENT_HQ_TASK_ID`/`$env:AGENT_HQ_ATTEMPT_ID` перед запуском CLI; тест с fake-opencode.ps1, проверяющий непустые task_id в traces.jsonl.
+- **Сопутствующее (minor, протокол)**: формат self-report AGENTS.md §3.4 не содержит поля task_id → даже после фикса env связь self-report↔evidence держится только на случайных упоминаниях; рекомендовать в ТЗ запись `TASK_ID: <messageId>`. (Формат самоотчёта не менялся: правка AGENTS.md вне рамок этой задачи.)
+- **Discovered by**: qa-engineer независимая приёмка P1-4, 2026-09-16. **Status**: FIXED (2026-09-16, dev-1) — см. Resolution.
+- **Resolution (dev-1)**:
+  - `Invoke-OpencodeAttempt` (.agents/scripts/inbox-engine.ps1) получил параметр `-AttemptId`; `-TaskId` и `-AttemptId` передаются в `Start-Job` через `-ArgumentList`, и внутри джобы ДО запуска CLI выставляются `$env:AGENT_HQ_TASK_ID` / `$env:AGENT_HQ_ATTEMPT_ID`. Если id пуст — унаследованное значение удаляется (`Remove-Item Env:\...`), чтобы воркеру не приписался чужой/устаревший task.
+  - Call-sites attempt-1/attempt-2 передают `-AttemptId "attempt-1"/"attempt-2"` — те же значения, что пишет `Write-AttemptEvidence`, поэтому traces↔evidence join по `task_id`/`attempt_id` сходится.
+  - Существующие хуки не тронуты: `AGENT_HQ_OPENCODE`, `AGENT_HQ_JOB_TIMEOUT`, `$JobTimeoutSeconds`, heartbeat-цикл и timeout-путь без изменений (regression: test-pipeline 10/10 exit 0, test-daemon не затронут).
+  - Тест: `tests/test-pipeline.ps1` кейс j) env correlation + новый режим `envprobe` в `tests/fake-opencode.ps1`. CLI-ребёнок печатает `AGENT_HQ_TASK_ID=<messageId>` и `AGENT_HQ_ATTEMPT_ID=attempt-1`; ассерты и по outbox-response, и по файлу-пробе, записанному самим процессом ребёнка. SUMMARY: passed=10 failed=0, exit 0 (было 9 кейсов; +1 новый).
+  - Сопутствующий minor `.opencode/package.json` → добавлен `"type": "module"`. Оговорка (evidence-discipline): файл в .gitignore (`.opencode/.gitignore:2`), правка локальная и может быть перегенерирована opencode; на Node v24.19.0 предупреждение MODULE_TYPELESS_PACKAGE_JSON не воспроизводится (проверено на typeless-контроле) → NOT ENOUGH EVIDENCE, что правка что-то меняет на текущем рантайме.
+
+
 ## Patterns
 
 ### PowerShell encoding pitfalls on Windows

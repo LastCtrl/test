@@ -304,12 +304,28 @@ function Add-AttemptTiming {
 # Run opencode in a background job, capturing stdout/stderr separately and the REAL exit code.
 # Returns: [PSCustomObject]@{ stdout; stderr; exitCode; startedAt; finishedAt; durationMs }  (never a bare string)
 function Invoke-OpencodeAttempt {
-    param([string]$targetAgent, [string]$taskPrompt, [string]$TaskId = "")
+    param([string]$targetAgent, [string]$taskPrompt, [string]$TaskId = "", [string]$AttemptId = "")
 
     $startedAt = Get-Date
 
     $job = Start-Job -ScriptBlock {
-        param($agent, $taskPrompt)
+        param($agent, $taskPrompt, $correlationTaskId, $correlationAttemptId)
+        # P1-4/BUG-022: export the correlation ids into the worker environment so
+        # the tracer/scoring plugins of the spawned CLI can join traces with the
+        # engine's machine evidence. Start-Job runs in a child process that
+        # inherits the parent env, so setting $env: here (before the CLI starts)
+        # is what the CLI and its plugins will actually read. When the engine has
+        # no id, an inherited value is cleared instead of leaking a stale one.
+        if ($correlationTaskId) {
+            $env:AGENT_HQ_TASK_ID = $correlationTaskId
+        } else {
+            Remove-Item Env:\AGENT_HQ_TASK_ID -ErrorAction SilentlyContinue
+        }
+        if ($correlationAttemptId) {
+            $env:AGENT_HQ_ATTEMPT_ID = $correlationAttemptId
+        } else {
+            Remove-Item Env:\AGENT_HQ_ATTEMPT_ID -ErrorAction SilentlyContinue
+        }
         # Resolve the CLI inside the job: the Start-Job child process inherits env vars.
         $opencodeCmd = if ($env:AGENT_HQ_OPENCODE) { $env:AGENT_HQ_OPENCODE } else { "opencode" }
         $errFile = [System.IO.Path]::GetTempFileName()
@@ -328,7 +344,7 @@ function Invoke-OpencodeAttempt {
         } finally {
             Remove-Item $errFile -Force -ErrorAction SilentlyContinue
         }
-    } -ArgumentList $targetAgent, $taskPrompt
+    } -ArgumentList $targetAgent, $taskPrompt, $TaskId, $AttemptId
 
     # Heartbeat the lease while we wait: a single attempt may run almost
     # $script:JobTimeoutSeconds, so without this the claim could expire
@@ -585,7 +601,7 @@ function Process-InboxFile {
     Write-Log "🚀 Calling opencode run for agent: $targetAgent (timeout: $($script:JobTimeoutSeconds)s)"
     # Refresh the lease right before a possibly long run (RISK-001b).
     $null = Update-Heartbeat -TaskId $messageId -StateDir $ClaimsDir
-    $attempt1 = Invoke-OpencodeAttempt -targetAgent $targetAgent -taskPrompt $prompt -TaskId $messageId
+    $attempt1 = Invoke-OpencodeAttempt -targetAgent $targetAgent -taskPrompt $prompt -TaskId $messageId -AttemptId "attempt-1"
     $success1 = Test-OpencodeSuccess $attempt1
     $reason1 = if ($success1) { "" } else { Get-AttemptFailureReason $attempt1 }
     $status1 = if ($success1) { "success" } else { "failed" }
@@ -606,7 +622,7 @@ function Process-InboxFile {
     Write-Log "❌ First attempt failed ($reason1), retrying..."
     # Heartbeat between attempts: attempt-1 may have consumed most of the lease.
     $null = Update-Heartbeat -TaskId $messageId -StateDir $ClaimsDir
-    $attempt2 = Invoke-OpencodeAttempt -targetAgent $targetAgent -taskPrompt $prompt -TaskId $messageId
+    $attempt2 = Invoke-OpencodeAttempt -targetAgent $targetAgent -taskPrompt $prompt -TaskId $messageId -AttemptId "attempt-2"
     $success2 = Test-OpencodeSuccess $attempt2
     $reason2 = if ($success2) { "" } else { Get-AttemptFailureReason $attempt2 }
     $status2 = if ($success2) { "success" } else { "failed" }

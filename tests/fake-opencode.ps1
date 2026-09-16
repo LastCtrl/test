@@ -15,6 +15,10 @@
 #                   When FAKE_OPENCODE_TRACK_DIR is set, every invocation drops one
 #                   JSON record (agent, startedAt, finishedAt, delayMs, pid) there,
 #                   so a test can measure how many runs actually overlapped.
+#   envprobe     -> prints AGENT_HQ_TASK_ID / AGENT_HQ_ATTEMPT_ID as seen in the
+#                   worker environment, then success, exit 0. When
+#                   FAKE_OPENCODE_ENV_TRACK_DIR is set, one "<task>|<attempt>" file
+#                   per invocation is written there (P1-4/BUG-022 correlation probe).
 
 $mode = $env:FAKE_OPENCODE_MODE
 
@@ -96,6 +100,29 @@ switch ($mode) {
                 # A probe failure must never break the fixture itself.
             }
         }
+        exit 0
+    }
+    "envprobe" {
+        # P1-4/BUG-022 probe: report the correlation env the inbox engine exported
+        # to this worker. The values are echoed on stdout (the poller stores it in
+        # the outbox response) and appended to FAKE_OPENCODE_ENV_TRACK_DIR, so a
+        # test can assert the task/attempt ids really reached the child process.
+        $taskId = if ($env:AGENT_HQ_TASK_ID) { $env:AGENT_HQ_TASK_ID } else { "<unset>" }
+        $attemptId = if ($env:AGENT_HQ_ATTEMPT_ID) { $env:AGENT_HQ_ATTEMPT_ID } else { "<unset>" }
+        Write-Output ("AGENT_HQ_TASK_ID=" + $taskId)
+        Write-Output ("AGENT_HQ_ATTEMPT_ID=" + $attemptId)
+        if ($env:FAKE_OPENCODE_ENV_TRACK_DIR) {
+            try {
+                if (-not (Test-Path -LiteralPath $env:FAKE_OPENCODE_ENV_TRACK_DIR -PathType Container)) {
+                    New-Item -ItemType Directory -Path $env:FAKE_OPENCODE_ENV_TRACK_DIR -Force | Out-Null
+                }
+                $probeFile = Join-Path $env:FAKE_OPENCODE_ENV_TRACK_DIR ([guid]::NewGuid().ToString("N") + ".txt")
+                [System.IO.File]::WriteAllText($probeFile, ($taskId + "|" + $attemptId), (New-Object System.Text.UTF8Encoding($false)))
+            } catch {
+                # A probe failure must never break the fixture itself.
+            }
+        }
+        Write-Output "STATUS: resolved"
         exit 0
     }
     default {

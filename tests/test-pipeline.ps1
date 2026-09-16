@@ -65,7 +65,7 @@ function Set-CaseEnv {
 }
 
 function Clear-CaseEnv {
-    foreach ($name in @("AGENT_HQ_ROOT", "AGENT_HQ_OPENCODE", "FAKE_OPENCODE_MODE", "AGENT_HQ_JOB_TIMEOUT")) {
+    foreach ($name in @("AGENT_HQ_ROOT", "AGENT_HQ_OPENCODE", "FAKE_OPENCODE_MODE", "FAKE_OPENCODE_ENV_TRACK_DIR", "AGENT_HQ_JOB_TIMEOUT")) {
         Remove-Item -Path ("Env:\" + $name) -ErrorAction SilentlyContinue
     }
 }
@@ -233,6 +233,40 @@ function Test-RedactionCase {
     return $all
 }
 
+# P1-4/BUG-022: the engine must export AGENT_HQ_TASK_ID / AGENT_HQ_ATTEMPT_ID into
+# the worker environment, otherwise the tracer/scoring correlation layer of the
+# spawned CLI records empty task ids and joins nothing.
+function Test-EnvCorrelationCase {
+    param([string]$Root)
+    Set-CaseEnv -Root $Root -Mode "envprobe"
+    $env:FAKE_OPENCODE_ENV_TRACK_DIR = Join-Path $Root ".memory\envprobe"
+    $id = New-InboxMessage -Root $Root
+    Invoke-PollerOnce
+
+    $all = $true
+
+    $outboxFile = Join-Path $Root (".memory\outbox\" + $id + ".json")
+    $outboxExists = Test-PathLeaf $outboxFile
+    $all = (Write-Check ("outbox\" + $id + ".json created") $outboxExists) -and $all
+    if ($outboxExists) {
+        $msg = Read-JsonFile $outboxFile
+        $response = [string]$msg.response
+        $all = (Write-Check "worker saw AGENT_HQ_TASK_ID=<messageId>" ($response.Contains("AGENT_HQ_TASK_ID=" + $id))) -and $all
+        $all = (Write-Check "worker saw AGENT_HQ_ATTEMPT_ID=attempt-1" ($response.Contains("AGENT_HQ_ATTEMPT_ID=attempt-1"))) -and $all
+    }
+
+    # Out-of-band proof from the child process itself (one file per invocation).
+    $trackDir = Join-Path $Root ".memory\envprobe"
+    $probeFiles = @(Get-ChildItem -LiteralPath $trackDir -Filter "*.txt" -File -ErrorAction SilentlyContinue)
+    $all = (Write-Check "worker wrote exactly one env probe" ($probeFiles.Count -eq 1)) -and $all
+    if ($probeFiles.Count -eq 1) {
+        $probe = (Get-Content -LiteralPath $probeFiles[0].FullName -Raw -Encoding UTF8).Trim()
+        $all = (Write-Check "env probe file holds '<messageId>|attempt-1'" ($probe -eq ($id + "|attempt-1"))) -and $all
+    }
+
+    return $all
+}
+
 # P0-D (regex refine): Redact-Secrets is a pure function, so it is exercised
 # directly instead of through the poller. It must leave ordinary go-to-code
 # alone while still masking real key=value credentials.
@@ -325,6 +359,7 @@ Invoke-Case "f) errormarker -> dead-letter (error marker)"           { param($r)
 Invoke-Case "g) timeout -> dead-letter (timeout/124)"                { param($r) Test-FailureCase -Root $r -Mode "timeout"     -ReasonPattern "124|TIMEOUT" -JobTimeout "3" }
 Invoke-Case "h) leak -> redacted in dead-letter"                     { param($r) Test-RedactionCase -Root $r }
 Invoke-Case "i) redaction regex -> go-to code kept, secrets masked"  { Test-RedactionRegexCase }
+Invoke-Case "j) env correlation -> task/attempt ids exported to worker" { param($r) Test-EnvCorrelationCase -Root $r }
 
 $total = $script:CasePass + $script:CaseFail
 Write-Host ""

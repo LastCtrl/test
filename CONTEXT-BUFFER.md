@@ -2267,3 +2267,34 @@ MCP_USED: ["sequential-thinking", "context7: offline"]
 COMPLIANCE: true
 STATUS: resolved
 ================================================================================
+
+================================================================================
+[2026-09-16] qa-engineer -> team-lead:
+TYPE: update | PRIORITY: medium
+Project: agent-hq
+CONTENT: Приёмка P1-4 (коммит 263c9b0) — вердикт ВОЗВРАТЬ (retry-1, 2 major). PASS: node tests\test-plugins.mjs 24/24 exit=0 (2 прогона); пустых catch = 0 (Select-String 0 совпадений); независимый прогон (temp mjs, импорт плагинов): tool.execute.before/after даёт span с session_id/call_id/tool/duration_ms/status(+agent/message_id/task_id/attempt_id), status из факта exit:3; traces.jsonl=каталог -> errors.jsonl (EISDIR, stage=write_traces) без throw; tracesDir=файл -> console.warn без throw; scoring факт-детерминирован: exit 0+1 -> 65/warn (100-25*1-10*1), проза-декой «ALL TESTS PASSED» проигнорирована, повтор 65; performance.jsonl через хук: task_id/fact_score=65/verdict=warn; false_done=true (claim resolved + failed=1), unverified=true (attempts=0); регресс: test-vault 8/8, test-pipeline 9/9, test-discovery PASS=22/FAIL=0, verify-phase 41/41 (все exit=0). MAJOR-1 BUG-021: scoring.js:220 regex [A-Z]{1,3}-\d+ НЕ ловит «P1-4» (буква+цифра+дефис), вопреки комментарию scoring.js:210 и self-report dev-1; tags в тестах не ассертятся вообще. MAJOR-2 BUG-022 (подтверждён): inbox-engine.ps1 не экспортирует AGENT_HQ_TASK_ID/ATTEMPT_ID (grep по .agents\scripts — только плагины) -> live task_id/attempt_id пустые, join traces<->evidence в проде инертен. Minor: claim без evidence-файла не флагруется (unverified только при attempts=0 в существующем файле); упоминание «task-x.json» без полного пути не коррелирует (токен с суффиксом); .opencode/package.json без "type":"module" -> MODULE_TYPELESS_PACKAGE_JSON warning; claims first-wins (scoring.js:237). Баги записаны: KNOWLEDGE-BASE.md BUG-021/BUG-022 с ТЗ на фикс. Temp-скрипты удалены.
+SKILLS_LOADED: ["evidence-discipline"]
+MCP_USED: ["none required: проверка локальными инструментами (bash/read/edit); context7 не вызывался (только Node core модули в плагинах); sequential-thinking не использовался"]
+COMPLIANCE: true
+STATUS: resolved
+================================================================================
+
+================================================================================
+[2026-09-16] dev-1 -> team-lead:
+TYPE: update | PRIORITY: medium
+Project: agent-hq
+CONTENT: Фикс BUG-021/BUG-022 (+3 minors) по возврату qa-engineer; KNOWLEDGE-BASE BUG-021/022 -> FIXED.
+  1) BUG-021 (scoring.js): TAG_PATTERN = /\b([A-Z]{1,3}\d*-\d+(?:-\d+)?|[A-Z]{1,3}\d+-[A-Z][A-Z0-9]*)\b/g — ветка 1 из ТЗ (P1-4/BUG-020/US-013), ветка 2 закрывает буквенный суффикс «P0-C»/«P0-D» из Impact; «P1-4x» не ловится (граница слова). Токены-заголовки (task_id:/session_id:/attempt_id:) больше не попадают в task_ids; суффикс .json нормализуется. АРТЕФАКТ на реальном CONTEXT-BUFFER.md (нода-пробник): tags dev-1 = ["P1-4","P0-C"], у qa = ["P1-4","BUG-021","BUG-022"]; до фикса P-стиль не ловился вовсе.
+  2) BUG-021 minor «claim без evidence-файла»: correlateSelfReports добавляет синтетическую строку attempts=0 для task_id, заявленного в self-report, но без evidence-документа -> unverified=true (раньше claim исчезал). Только по явным task_ids, не по тегам (иначе тег-шум «P1-4» изобрёл бы фейковую задачу).
+  3) BUG-022 (inbox-engine.ps1): Invoke-OpencodeAttempt получил -AttemptId; TaskId+AttemptId идут в Start-Job через -ArgumentList и внутри джобы ДО CLI выставляют $env:AGENT_HQ_TASK_ID/$env:AGENT_HQ_ATTEMPT_ID (пустой id -> унаследованное значение удаляется). Call-sites передают attempt-1/attempt-2 (совпадает с attempt_id в .memory/evidence). Хуки AGENT_HQ_OPENCODE/JOB_TIMEOUT, heartbeat и timeout-путь не тронуты.
+  4) Тесты. node tests\test-plugins.mjs -> RESULT: 26/26 passed, 0 failed, exit_code=0 (2 прогона, захват в переменную; было 24/24). Новые ассерты: scoring/self-report-tag-channel (P1-4/P0-C/BUG-020/US-013 ловятся, P1-4x нет, лейбл task_id отфильтрован) и scoring/correlate-unverified-without-evidence. Новый кейс test-pipeline j) env correlation (новый режим envprobe в tests/fake-opencode.ps1): CLI-ребёнок печатает AGENT_HQ_TASK_ID=<messageId>/AGENT_HQ_ATTEMPT_ID=attempt-1, ассерт и по outbox-response, и по файлу-пробе из процесса ребёнка -> доказано, что env реально доходит до воркера.
+  5) Регресс: test-vault 8/8 (exit 0), test-pipeline 10/10 (exit 0; было 9/9 + 1 новый кейс), test-discovery PASS=22 FAIL=0 WARN=1 (exit 0), test-task-state 5/5 (exit 0), verify-phase 41/41 ALL CHECKS PASSED (exit 0).
+  6) Minor .opencode/package.json -> добавлен "type": "module". Оговорка: файл в .gitignore (.opencode/.gitignore:2) — правка локальная; на Node v24.19.0 MODULE_TYPELESS_PACKAGE_JSON НЕ воспроизводится (проверено на typeless-контроле: export-модуль в каталоге без package.json импортируется без warning) -> NOT ENOUGH EVIDENCE, что правка что-то меняет на текущем рантайме.
+  Изменены: .opencode\plugins\scoring.js, .agents\scripts\inbox-engine.ps1, tests\test-plugins.mjs, tests\test-pipeline.ps1, tests\fake-opencode.ps1, KNOWLEDGE-BASE.md. .ps1 остались CRLF (+BOM), .js/.mjs/.md — LF (как в HEAD). Не коммичено; temp-каталоги (%TEMP%\agent-hq-*) и Jobs убраны.
+  Честная ремарка (evidence-discipline): прошлый self-report dev-1 переоценил tag-канал — комментарий scoring.js обещал «P1-4 style tag», а regex его не ловил; это подтверждено и исправлено, вывод «24/24 PASS» не означал покрытие tags. Впредь не заявляю покрытие без ассерта.
+  NOT ENOUGH EVIDENCE: end-to-end проверка непустого task_id в live traces.jsonl не сделана — для этого нужен реальный `opencode run` с плагинами (fake-opencode доказывает только проброс env до CLI-ребёнка). Итог по 4-му замечанию qa (claims first-wins, scoring.js:237) — НЕ трогал: вне списка 3 minors ТЗ, остаётся open.
+SKILLS_LOADED: ["evidence-discipline", "windows-safety", "superpowers-implement"]
+MCP_USED: ["context7: not invoked (no third-party library touched - Node core + PowerShell built-ins only)", "sequential-thinking: not invoked (fix steps fully specified in the recall)", "hermes-atlas: not invoked (no new skill required)"]
+COMPLIANCE: true
+STATUS: resolved
+================================================================================

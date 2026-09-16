@@ -185,6 +185,21 @@ export const computeTaskScore = (aggregate = {}) => {
 // Self-report (claims) correlation
 // ---------------------------------------------------------------------------
 
+// "task_id:" / "session_id:" are schema labels, not correlation keys; matching
+// them would pollute task_ids with the header word itself.
+const CORRELATION_LABEL = /^(?:task|msg|message|attempt|session)[-_]?ids?$/i;
+
+// Evidence task ids never carry the ".json" suffix (the file name is only the
+// fallback when a document has no task_id), so a bare "task-x.json" mention must
+// be keyed on the stem to join with the record.
+const normalizeCorrelationKey = (raw) => safeString(raw).replace(/\.json$/i, "");
+
+// Tag-shaped correlation keys as they are actually written in this repo:
+// "BUG-020"/"US-013" (letters-dash-digits) and the human-readable task ids
+// "P1-4" / "P0-C" (letter+digit before the dash, optional letter suffix) - but
+// never "P1-4x". BUG-021: the old [A-Z]{1,3}-\d+ missed both "P1-4" and "P0-C".
+const TAG_PATTERN = /\b([A-Z]{1,3}\d*-\d+(?:-\d+)?|[A-Z]{1,3}\d+-[A-Z][A-Z0-9]*)\b/g;
+
 // Parse CONTEXT-BUFFER.md agent entries: header line "[TIME] agent -> team-lead:"
 // followed by TYPE/STATUS/CONTENT fields. Claims are only compared with facts,
 // they never feed the score directly.
@@ -192,6 +207,10 @@ export const parseSelfReports = (text) => {
   const reports = [];
   const lines = safeString(text).split(/\r?\n/);
   const header = /^\[[^\]]*\]\s+([\w.\-]+)\s*(?:->|→|-->)\s*([\w.\-]+)\s*:\s*$/;
+  const addTaskId = (report, raw) => {
+    const key = normalizeCorrelationKey(raw);
+    if (key && !report.task_ids.includes(key)) report.task_ids.push(key);
+  };
   let current = null;
   for (const rawLine of lines) {
     const line = rawLine.trim();
@@ -209,15 +228,17 @@ export const parseSelfReports = (text) => {
     // Correlation keys a self-report can carry: an explicit task_id field, an
     // evidence path mention, a P1-4 style tag or a task-/msg-/attempt- token.
     for (const idMatch of line.matchAll(/task[_\- ]?id\s*[:=]\s*([A-Za-z0-9._\-]+)/gi)) {
-      if (!current.task_ids.includes(idMatch[1])) current.task_ids.push(idMatch[1]);
+      addTaskId(current, idMatch[1]);
     }
     for (const pathMatch of line.matchAll(/\.memory[\\/]evidence[\\/]([A-Za-z0-9._\-]+)\.json/gi)) {
-      if (!current.task_ids.includes(pathMatch[1])) current.task_ids.push(pathMatch[1]);
+      addTaskId(current, pathMatch[1]);
     }
     for (const tokenMatch of line.matchAll(/\b((?:task|msg|attempt|session)[-_][A-Za-z0-9._-]+)\b/gi)) {
-      if (!current.task_ids.includes(tokenMatch[1])) current.task_ids.push(tokenMatch[1]);
+      const key = normalizeCorrelationKey(tokenMatch[1]);
+      if (!key || CORRELATION_LABEL.test(key)) continue;
+      addTaskId(current, key);
     }
-    for (const tagMatch of line.matchAll(/\b([A-Z]{1,3}-\d+(?:-\d+)?)\b/g)) {
+    for (const tagMatch of line.matchAll(TAG_PATTERN)) {
       if (!current.tags.includes(tagMatch[1])) current.tags.push(tagMatch[1]);
     }
   }
@@ -228,16 +249,25 @@ export const parseSelfReports = (text) => {
 // Join facts with claims. `false_done` = the agent claimed success while the
 // machine evidence proves at least one failure; `unverified` = the claim has no
 // evidence behind it at all.
+//
+// A claim that names a task with NO evidence document gets a synthetic
+// zero-attempt row: otherwise the most suspicious claim of all (work claimed as
+// done while nothing was ever recorded for it) simply vanished from the report.
+// Synthetic rows are only derived from explicit task ids - loose tag mentions
+// ("P1-4") are meant to annotate a task, not to invent one.
 export const correlateSelfReports = (aggregates, reports) => {
   const claims = new Map();
+  const claimedTaskIds = new Set();
   for (const report of reports || []) {
     const status = safeString(safeField(report, "status"));
     const claimed = CLAIMED_RESOLVED.has(status) ? "resolved" : status;
-    for (const key of [...(safeField(report, "task_ids") || []), ...(safeField(report, "tags") || [])]) {
+    const taskIds = safeField(report, "task_ids") || [];
+    for (const key of [...taskIds, ...(safeField(report, "tags") || [])]) {
       if (!claims.has(key)) claims.set(key, { agent: safeString(safeField(report, "agent")), claimed_status: claimed });
     }
+    for (const key of taskIds) claimedTaskIds.add(key);
   }
-  return (aggregates || []).map((aggregate) => {
+  const correlated = (aggregates || []).map((aggregate) => {
     const claim = claims.get(aggregate.task_id);
     const merged = { ...aggregate };
     merged.claimed_status = claim ? claim.claimed_status : "";
@@ -246,6 +276,27 @@ export const correlateSelfReports = (aggregates, reports) => {
     merged.unverified = Boolean(claim) && claim.claimed_status === "resolved" && aggregate.attempts === 0;
     return merged;
   });
+  const knownTaskIds = new Set(correlated.map((entry) => safeString(entry.task_id)));
+  for (const taskId of [...claimedTaskIds].sort()) {
+    if (knownTaskIds.has(taskId)) continue;
+    const claim = claims.get(taskId);
+    correlated.push({
+      task_id: taskId,
+      attempts: 0,
+      failed: 0,
+      succeeded: 0,
+      exit_codes: [],
+      statuses: [],
+      agents: claim && claim.agent ? [claim.agent] : [],
+      duration_ms_total: 0,
+      evidence_file: "",
+      claimed_status: claim ? claim.claimed_status : "",
+      claimed_by: claim ? claim.agent : "",
+      false_done: false,
+      unverified: Boolean(claim) && claim.claimed_status === "resolved",
+    });
+  }
+  return correlated;
 };
 
 // ---------------------------------------------------------------------------

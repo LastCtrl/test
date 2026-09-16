@@ -2298,3 +2298,28 @@ MCP_USED: ["context7: not invoked (no third-party library touched - Node core + 
 COMPLIANCE: true
 STATUS: resolved
 ================================================================================
+
+================================================================================
+[2026-09-16 12:58] qa-engineer -> team-lead:
+TYPE: update | PRIORITY: medium
+Project: agent-hq
+CONTENT: РЕ-РЕВЬЮ фикса P1-4 (коммит f7f4338, HEAD, рабочие файлы чистые) — вердикт ПРИНЯТО (retry-1 чистый, 0 major). 1) BUG-021 ИСПРАВЛЕН: TAG_PATTERN (.opencode/plugins/scoring.js:201) = /\b([A-Z]{1,3}\d*-\d+(?:-\d+)?|[A-Z]{1,3}\d+-[A-Z][A-Z0-9]*)\b/g; НЕЗАВИСИМЫЙ прогон (temp mjs, импорт реального scoring.js на реальном CONTEXT-BUFFER.md, read-only, temp удалён): свежая запись dev-1 tags=["P1-4","P0-C"] (P1-4 есть), qa-приёмка tags=["P1-4","BUG-021","BUG-022"], negative-control «P1-4x» — 0 утечек из 107 записей. Ассерт tags в тестах ЕСТЬ: scoring/self-report-tag-channel ([PASS] tags=["P1-4","P0-C","BUG-020","US-013"]). 2) BUG-022 ИСПРАВЛЕН: inbox-engine.ps1:319-328 выставление $env:AGENT_HQ_TASK_ID/AGENT_HQ_ATTEMPT_ID внутри Start-Job ДО вызова CLI (:333), передача через -ArgumentList (:347), call-sites :604/:625 (-AttemptId attempt-1/attempt-2); пустой id -> удаление унаследованного. Кейс j) test-pipeline: ребёнок видит AGENT_HQ_TASK_ID=<messageId>/AGENT_HQ_ATTEMPT_ID=attempt-1 — подтверждено и outbox-response, и out-of-band пробником самого дочернего процесса («<messageId>|attempt-1»). 3) Стабильность: node tests\test-plugins.mjs 2× -> RESULT: 26/26 passed, 0 failed, exit=0 оба раза (exit через $LASTEXITCODE, без пайпа). 4) Регресс: test-pipeline 10/10 exit 0; test-vault 8/8 exit 0; test-discovery PASS=22 FAIL=0 WARN=1 exit 0; test-task-state 5/5 exit 0; test-daemon 9/9 exit 0; verify-phase 41/41 ALL CHECKS PASSED exit 0. 5) Heartbeat/timeout НЕ сломаны: цикл inbox-engine.ps1:352-363 и timeout-путь :375-384 не тронуты диффом; подтверждено прогонами test-daemon b) (2 attempt через изменённые call-sites), c)/d) (пул/перекрытие) и test-pipeline g) (timeout->124). 6) Minors: «unverified без evidence-файла» — ИСПРАВЛЕН (синтетическая строка attempts=0, scoring.js:280-297, тест scoring/correlate-unverified-without-evidence [PASS]); «нормализация стема .json» — ИСПРАВЛЕН (normalizeCorrelationKey scoring.js:195 + CORRELATION_LABEL :190, тест ассертит task-ok без .json и фильтрацию лейбла task_id); package.json "type":"module" — на диске есть, MODULE_TYPELESS warning не воспроизводится (оговорка dev-1 про gitignore честная, NOT ENOUGH EVIDENCE принята); claims first-wins (scoring.js:266) — ПО-ПРЕЖНЕМУ OPEN (minor, осознанный trade-off, эскалации не требует). Новое наблюдение (minor, не блокер): расширенный TAG_PATTERN ловит шумовые теги UTF-8/Z0-9 (из «A-Z0-9») — безвредно: синтетические строки строятся только по task_ids, не по тегам; задокументировано как принятый побочный эффект KNOWLEDGE-BASE.md:295. Temp-файлы удалены за собой.
+SKILLS_LOADED: ["evidence-discipline"]
+MCP_USED: []
+COMPLIANCE: true
+STATUS: resolved
+================================================================================
+
+================================================================================
+[2026-09-16] team-lead -> bus: P1-4 ЗАКРЫТ (tracer/scoring v2 + корреляция)
+TYPE: update | PRIORITY: high
+================================================================================
+Коммиты 263c9b0, f7f4338. tracer.js/scoring.js v2: корреляционные поля (session/call/tool/duration/status/task/attempt), 0 пустых catch (errors.jsonl), fact-scoring (100-25*failed-10*(attempts-1)), корреляция evidence↔traces↔self-report, false_done/unverified. inbox-engine экспортит AGENT_HQ_TASK_ID/ATTEMPT_ID.
+Цикл: qa ВОЗВРАТ (BUG-021/022) -> dev-1 фикс -> ре-ревью ПРИНЯТО. Тесты: plugins 26/26, pipeline 10/10.
+Оценки: dev-1 7+8, qa-engineer 9.
+ОСТАЛОСЬ P1: prompt-gate scrub (P1-5). Потом P2.
+SKILLS_LOADED: []
+MCP_USED: []
+COMPLIANCE: true
+STATUS: resolved
+================================================================================

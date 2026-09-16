@@ -630,10 +630,11 @@ PowerShell падает с ScriptContainedMaliciousContent (AMSI/Kaspersky false
 Применено ВРУЧНУЮ (без прогона генератора): opencode.json мигрирован agents->agent (30), мёртвые ключи вынесены в agent-hq.json, external_directory сужен до D:\Тест\agent-hq\**; hook починен (../ fallback) и установлен в .git/hooks; portability (AGENTS_HQ_ROOT) в 10 скриптах; evidence-discipline скилл + AGENTS §12.
 НУЖНО: исключение AV/ИТ для D:\Тест\agent-hq\.agents\scripts\*.ps1 ЛИБО реструктуризация генератора (разбить на мелкие скрипты).
 SKILLS_LOADED: []
-MCP_USED: ["sequential-thinking"]
+MCP_USED: []
 COMPLIANCE: true
 STATUS: resolved
 ================================================================================
+
 
 [TIME] qa-engineer -> team-lead:
 TYPE: update | PRIORITY: medium
@@ -1844,6 +1845,119 @@ TYPE: update | PRIORITY: high
 ОСТАЛОСЬ P1: единый daemon+worker pool, tracer/scoring v2, prompt-gate scrub. Потом P2.
 SKILLS_LOADED: []
 MCP_USED: []
+COMPLIANCE: true
+STATUS: resolved
+================================================================================
+[2026-09-16] team-lead-2 (acting dev) -> team-lead:
+TYPE: update | PRIORITY: medium
+Project: pong-advanced
+CONTENT: UX-полиш клиентских зон (левел-ап, фильтры магазина, пресеты меню, мобильная вёрстка, offline-retry, полиш итога). Сервер/игровые файлы не тронуты.
+ - Левел-ап: metaView.ts:365 detectLevelUp (уровень до матча точно = levelFromXp(xp - xpGained), fallback — user.level, снятый ДО POST; нет числового xp → null), metaView.ts:412 formatResultAutoHideHint; App.ts:390 buildLevelUpBanner («УРОВЕНЬ N!» + прогресс-бар), App.ts:420 showMatchSummary (баннер + тост ⭐), App.ts:491 finishMatch (снимок prevLevel до reportMatch).
+ - Магазин: metaView.ts:513-672 чистая логика (shopItemStatus:513, isShopItemAffordable:527, shopOwnedCountText:548, filterShopItems:558, sortShopItems:577, applyShopFilters:601, parseShopFilters:618, serializeShopFilters:648; админ = весь каталог как owned); shop.ts:70 SHOP_FILTERS_KEY='pong-shop-filters-v1' (+shop.ts:110 запись), shop.ts:263 buildToolbar (Тип/Редкость/Сортировка/«только доступные»/«только купленные» + ADMIN-нота), shop.ts:497 renderList + shop.ts:566 счётчик «куплено X/115 · показано N из M»; фильтрация без повторных запросов к API (кэш в состоянии модуля).
+ - Пресеты: новый src/client/menuPresets.ts (MENU_PRESETS:73, presetControlState:147 — иммутабельная копия, presetMatchesState:174 для подсветки); index.html:31-39 (preset-row + ids preset-classic/crazy/hardcore); App.ts:1395 menuControlsSnapshot, App.ts:1437 applyMenuPreset (клик по option-кнопкам переиспользует штатный обработчик и его логику видимости групп, ползунки через dispatch('input')), App.ts:1470 bindPresetButtons; ориентация/соперник пресетом не трогаются.
+ - Мобильная вёрстка: styles.css:1521 «ПРЕСЕТЫ МЕНЮ», styles.css:1545 «ЛЕВЕЛ-АП В ИТОГЕ МАТЧА», styles.css:1597 «ФИЛЬТРЫ МАГАЗИНА», styles.css:1676 «МОБИЛЬНАЯ ВЁРСТКА (360–480px)» — full-bleed панель со скроллом, тап-таргеты ≥40-44px, сетка магазина 2 колонки, лидерборд/достижения/итог сжаты, fallback 100dvh.
+ - Offline: shop.ts:201 buildRetryBlock (и при пустом каталоге), profile.ts:211 retry при недоступной статистике, App.ts:824-840 roomListErrorShown → showError один раз + статус, toasts.ts:159 dropQueuedInfoToasts (showError вытесняет неактуальную очередь info-тостов).
+ - Полиш итога: App.ts:420-478 иконки достижений отдельными классами (App.ts:463), hint «окно закроется через 7 с», App.ts:366 bindResultAutoHideCancel — клик по панели отменяет авто-скрытие; дублей запросов нет (guard в matchReport + один showMatchSummary на матч).
+ - Тесты: +38 (metaView +6 detectLevelUp/formatResultAutoHideHint, tests/unit/shop-filters.test.ts 18, tests/unit/menu-presets.test.ts 12, toasts +2).
+ПРОВЕРКИ (все на D:\Тест\pong-advanced): 1) npx tsc --noEmit — exit 0; 2) npm run build — exit 0; 3) npm test — 23 files / 437 passed, 1 error = EADDRINUSE :3333 baseline (было 367 тестов); 4) npm run lint — 15e/47w (лимит 17e/47w; в моих файлах 0 новых ошибок, 4 any в App.ts и 1 warning shop.ts — унаследованный стиль проекта); 5) npx playwright test — 6/6 passed, id меню целы. Доп. мобильный смоук (временный spec, удалён): 390x844 и 360x640 — 0 pageerror, нет горизонтального overflow, скролл есть, тап-таргеты ≥40px, пресет Хардкор выставил crazy/wall/shield on/500/0.8/8 бонусов, тулбар магазина + счётчик 3/115, сетка ≤2 колонок; итог матча с подменённым ответом /api/stats — баннер «УРОВЕНЬ 2!», «до уровня 3: 200 XP», bar 33%, достижение с иконкой, авто-скрытие отменяется по клику; offline-проверка (context.setOffline) — все 4 экрана меты показывают «Повторить», 0 pageerror.
+NOT VERIFIED: прод-сценарий левел-апа на живом ответе нового сервера (запущенный :3333 держит старый серверный dist) — проверено юнит-тестами + DOM-прогон с подменённым fetch.
+SKILLS_LOADED: ["superpowers-implement"]
+MCP_USED: ["sequential-thinking"]
+COMPLIANCE: true
+STATUS: resolved
+================================================================================
+[2026-09-16 11:22] team-lead-1 (acting dev) -> team-lead:
+TYPE: update | PRIORITY: medium
+Project: pong-advanced
+CONTENT: Полиш 5 задач в зоне игровой логики/сервера (D:\Тест\pong-advanced). Файлы и точки:
+ 1) DECOY «фейк-двойник» (B4): constants.ts:32,50 (decoy в POWERUP_TYPES_LOCAL, цвет #8aa2ff), constants.ts:154-167 (DECOY_DURATION=4, DECOY_ALPHA=0.6, DECOY_ALPHA_OPPONENT=0.9, DECOY_SYMBOL='\u29C9', DECOY_LABEL='DECOY', DECOY_DESCRIPTION для справки); physics.ts:314,335,365 createDecoyBall/stepDecoyBall/tickDecoyBall — ОДИН общий код для клиента и сервера (зеркальный спавн, своё движение с отражением от стен, без голов/коллизий с ракетками); types.ts BallState.decoy/decoyTimer + GameState.decoyBall/decoyOwner; LocalGame.ts:95-97,207-209,470-475,671-685 (поле, сброс в start, тик+истечение, case 'decoy' → spawnDecoy, getState 893-894); server/index.ts:189-191,420-421,603-607,723-728,960-961,1021-1023,2046-2047,280 (Room.decoyBall/Owner, spawnDecoy, тик, applyPowerUp, buildGameState, сброс в createRoom/startRoom, дефолтный пул crazy = [...POWERUP_TYPES_LOCAL] = прежние 8 + decoy); Renderer.ts:65-88,792-806 (рендер двойника: владелец localPaddleId===decoyOwner → alpha 0.6, соперник → 0.9; тот же ball-paint, что у настоящего мяча; символ/подпись бонуса из constants). classic бонусы не спавнит вообще (гейт по mode: LocalGame.ts:546, server/index.ts:812).
+ 2) powerups_collected: LocalGame.ts:120 (счётчик powerupsCollected, сброс в start:209), 630 (инкремент при подборе локальным игроком p1), 903 (getState); matchReport.ts:112-114,128-135,141-147,186-190 (powerupsCollectedSeen + trackPowerups(max-seen) + сброс в beginMatch + fallback в payload); App.ts:77,976 (сэмплинг st.powerupsCollected в renderLoop).
+ 3) max_combo 4p: LocalGame4.ts:69,74,206,274,308 (public maxCombo, сэмпл пика combo p1 в tick, отдача в getState); App.ts:1066 (trackCombo(st.maxCombo) в renderLoop 4p).
+ 4) LAN-rematch по завершённой комнате: server/index.ts:2104-2117 (join-game больше НЕ отвечает 'Game already ended' — пускает гостя, отвечает state:'ended'), types.ts:233-247 (опциональное state в JoinGameResponse), server/index.ts:1065-1072 (buildJoinGameResponse), 2130-2135 (комментарий+гарантия: start-game на ended → startRoom с полным сбросом: счёт/победитель/endedAt/таймеры/бонусы/двойник/мяч/интервал), App.ts:871-887 (клиент показывает «Игра завершена, ждём рематч» + тост вместо ошибки).
+ 5) Микро-перф без смены поведения: AI.ts:84,183-208 (axisInfo пишет в переиспользуемый this.axis, 0 аллокаций на тик; intercept принимает AxisInfo), Renderer.ts:65-95 (POWERUP_SYMBOLS/POWERUP_LABELS/PADDLE4_COLORS вынесены из кадра на уровень модуля), LocalGame.ts:427 и server/index.ts:687 (литерал ['p1','p2'] → PADDLE_SIDES из constants).
+ ТЕСТЫ (+32 новых): tests/unit/localgame-decoy.test.ts (20: константы/спавн/зеркальность/движение/истечение 4с/перезапуск таймера/сброс в новом матче/нет гола/нет коллизии с ракетками/тик null/2 подбора→счётчик 2/гейт classic-crazy/physics-помощники), tests/unit/match-report.test.ts (+2: trackPowerups max-seen+reset; интеграция LocalGame → payload powerups_collected=2), tests/unit/localgame4.test.ts (+2: maxCombo пик/сброс), tests/unit/server.test.ts (+10: decoy в пуле/applyPowerUp/тик/без гола/buildGameState/сброс в startRoom, ended→state:'ended' в join-ack, startRoom на ended сбрасывает счёт-победителя-таймеры-ult-магнит-мяч и перезапускает tick-интервал; мок constants/physics обновлён под decoy).
+ ПРОВЕРКИ (D:\Тест\pong-advanced): 1) npx tsc --noEmit — exit 0; 2) npm run build — exit 0 (dist/client пересобран: dist/client/game/LocalGame.js:1-18 DECOY_DURATION/decoyBall, dist/client/matchReport.js:94 trackPowerups); 3) npm test — 23 files / 439 passed (baseline был 367; +32 моих, остальное — параллельный агент меты/UI), 1 error = известный baseline (EADDRINUSE :3333 + mock COSMETIC_CATALOG); 4) npm run lint — 14e/46w по всему проекту (≤15e/46w; в моих src-файлах новых ошибок 0, убрал ставший лишним импорт POWERUP_TYPES в server/index.ts; оставшиеся any в Renderer.ts:439,515,1303,1386 и PADDLE_SPEED в physics.ts:11 — унаследованный стиль, не мой дифф); 5) npx playwright test — 6/6 passed (line reporter).
+ НЕ ТРОГАЛ (чужая зона, передать UI-агенту): index.html — нет кнопки data-powerup="decoy" в блоке бонусов (custom-режим сможет выбрать decoy только после её добавления; в crazy бонус уже есть по дефолтному пулу), help.ts — строка справки не добавлена (текст готов: constants.ts DECOY_DESCRIPTION/DECOY_SYMBOL/DECOY_LABEL, help.ts:87-90 по образцу magnet), styles.css/roomSettingsView.ts/shop/profile/toasts/metaView/user.ts/db/**.
+ NOT VERIFIED (честно): живой LAN-рематч на :3333 не проверял — прод-PID 12484 держит дореформенный серверный dist, рестарт запрещён ТЗ; серверная часть #4 подтверждена юнит-тестами (buildJoinGameResponse/startRoom) и E2E только на клиентской совместимости (клиент читает res.state опционально, старый сервер поле не шлёт — деградация без ошибок). Визуальный смоук двойника (alpha 0.6 vs 0.9) не снимал через canvas-пиксели, проверено структурно (рендер-код + юнит-тесты состояния).
+SKILLS_LOADED: ["superpowers-implement"]
+MCP_USED: ["sequential-thinking"]
+COMPLIANCE: true
+STATUS: resolved
+================================================================================
+[2026-09-16 11:28] dev-2 -> team-lead:
+TYPE: update | PRIORITY: medium
+Project: pong-advanced
+CONTENT: DECOY-тумблер в кастомных настройках + описание в справке (D:\Тест\pong-advanced).
+ 1) index.html:131 — в .powerup-grid секции «Бонусы» (index.html:121-132) добавлена кнопка <button class="btn powerup-toggle" data-powerup="decoy" style="--pu-color:#8aa2ff">⧉ <span>Фейк-двойник</span></button> (плюс комментарий index.html:130). Символ ⧉ сверен по кодпоинту = U+29C9 = DECOY_SYMBOL (constants.ts:160), цвет #8aa2ff = POWERUP_COLORS_LOCAL.decoy (constants.ts:50); label «Фейк-двойник». Тумблеры рендерятся СТАТИЧЕСКИ из index.html (не из constants), поэтому источник данных править не потребовалось — добавлен обычный data-powerup. Коллектор App.ts:700-702 (collectActivePowerups → document.querySelectorAll('.powerup-toggle.active') + dataset.powerup) подхватывает новый id без правок App.ts (запрещён); обработчики App.ts:1726-1742: «Все» = все .powerup-toggle (decoy включится), «Сброс» = хардкод 5 базовых (decoy выключится). Дефолт не сломан: новая кнопка БЕЗ класса active → набор по умолчанию остаётся 5 базовых.
+ 2) help.ts:1-6 — импортированы DECOY_DESCRIPTION/DECOY_LABEL/DECOY_SYMBOL из ../shared/constants.js (текст не дублируется); help.ts:93-98 — в секцию «Бонусы» после magnet добавлен item { label: `Фейк-двойник (${DECOY_LABEL})`, desc: DECOY_DESCRIPTION, symbol: DECOY_SYMBOL, color: POWERUP_COLORS_LOCAL.decoy }. Число секций не менялось (item, не секция) → help.test.ts:101 (7 секций) и :108 (descs===chips) остаются зелёными.
+ 3) styles.css — правка НЕ требовалась: класс .powerup-toggle переиспользован, общие стили styles.css:713-718 (базовые) и 726-729 (.active через var(--pu-color)) + grid авто-flow 2 колонки (styles.css:708, 480px→1fr styles.css:791-794) применяются автоматически; --pu-color задан inline. Файл не изменён.
+ 4) Тесты — обновление ожиданий не потребовалось: нет тестов, считающих число .powerup-toggle в index.html или число бонусов в help (help.test.ts проверяет только 7 секций / chips>10). menu-presets/room-settings-view тестируют свои модули, не HTML.
+ ПРОВЕРКИ (D:\Тест\pong-advanced): 1) npx tsc --noEmit — exit 0; 2) npm run build — exit 0 (postbuild скопировал index.html в dist, т.к. serve статикой); 3) npm test — Test Files 23 passed / Tests 439 passed, 1 error = известный baseline (Unhandled Rejection: mock COSMETIC_CATALOG + EADDRINUSE :3333); 4) npm run lint — 14 errors/46 warnings (= baseline, не хуже); 5) npx playwright test — 6/6 passed (line reporter). Доп-смоук прода: GET http://localhost:3333/ → 200 и в HTML присутствует data-powerup="decoy"; GET http://localhost:3333/help.js → 200 и содержит DECOY_DESCRIPTION (прод-PID 12484 НЕ рестартился, отдаёт пересобранный dist статикой). Артефакты дифа: dist/client/index.html:130-131, dist/client/help.js:1,76-79.
+ NOT VERIFIED / ВНЕ ЗОНЫ: src/client/menuPresets.ts:37-46 ALL_POWERUP_IDS (комментарий: «совпадает с data-powerup в index.html») не обновлён — файл вне моей зоны (ТЗ: «.ts логики правит параллельный агент; .ts кроме help.ts не трогать»). Следствие: применение пресетов «Безумие»/«Хардкор» (controls.powerups = ALL_POWERUP_IDS) снимет decoy, хотя игровой crazy-пул его содержит; «Все» и ручной клик decoy включают. Рекомендация: добавить 'decoy' в ALL_POWERUP_IDS (menu-presets.test.ts:84-85 сравнивает с ALL_POWERUP_IDS.length, а не хардкодит число → +1 в оба массива тесты не сломает). Живой визуальный смоук help-оверлея в браузере не снимал (проверено чтением DOM-структуры + сборкой dist/help.js).
+SKILLS_LOADED: ["superpowers-implement"]
+MCP_USED: ["sequential-thinking"]
+COMPLIANCE: true
+STATUS: resolved
+================================================================================
+
+================================================================================
+[2026-09-16 11:35] dev-3 -> team-lead:
+TYPE: update | PRIORITY: medium
+Project: pong-advanced
+CONTENT: Техгигиена dev-3 (D:\Тест\pong-advanced). Прод :3333 (PID 12484) НЕ трогал — жив, /api/health 200. index.html/styles.css/help.ts не трогал.
+
+1) EADDRINUSE/тестовый порт (корень: index.ts авто-стартовал сервер при импорте):
+- src/server/index.ts:7 — import { pino } from 'pino' (было `import pino` + `(pino as any)` → runtime named-import проверен отдельным node-процессом).
+- src/server/index.ts:2257 resolvePort() — PORT=0 теперь валиден (раньше `|| 3333` съедал 0).
+- src/server/index.ts:2269 `export async function initApp(port = resolvePort()): Promise<number>` — возвращает фактический порт (listen(0) → эфемерный), reject на ошибку listen.
+- src/server/index.ts:2293 `export async function stopServer()` — закрытие листенера для afterAll.
+- src/server/index.ts:2307 isTestRunner() (VITEST==='true' || NODE_ENV==='test'), :2311-2320 — авто-старт пропускается под тест-раннером; для прод/dev авто-старт сохранён + .catch→exit(1).
+- tests/unit/meta.test.ts:16/74/81-83 и tests/unit/security-fixes.test.ts:13/76/83-84 — вместо фикс. 3457/3461 → initApp(0) + чтение реального порта + afterAll stopServer(). Фикс. портов в тестах больше нет.
+- runtime-проверка прод-старта: `node dist/server/index.js` с PORT=0 → "Server starting on http://0.0.0.0:6882", процесс жив (убит вручную); с PORT=3333 (занят продом) → корректный лог "Fatal: server failed to start" и exit.
+- Артефакты удалены: tests/unit/{server,physics}.test.{js,js.map,d.ts,d.ts.map} (8 мёртвых файлов от старого tsc).
+
+2) Линт: 14 errors → 0 errors (eslint exit 0). Было 46 warnings → стало 48. Исправлено по коду:
+- App.ts:88-97 LanSocket + типизированный io/socket (было 3 any); :874/1115 res: JoinGameResponse/CreateGameResponse (2 any); :1322/1338 guard'ы socket, :1368/1800 socket?.emit.
+- Input.ts:7-9 InputSocket вместо any×2.
+- Renderer.ts:38 RenderState (GameState + paddles4), :456 getState, :532 renderFrame state, :1320 p: PaddleState, :1403 pu: PowerUpState (4 any); :689-693 String() для fillText.
+- Effects.ts:376 processState(state: GameState) (1 any).
+- server/index.ts:8 pino без any; удалена мёртвая local isAdminUser (была error+warning).
+- physics.ts: удалён неиспользуемый import PADDLE_SPEED (error+warning).
+Рост warnings на +4 относительно 46 — это НОВЫЕ ложные срабатывания базового `no-unused-vars` на именах rest-параметров моих TS-интерфейсов (App.ts:89/90/95 args, Input.ts:7 args). Все 48 warnings — ложные срабатывания базового правила на: (а) именах параметров в сигнатурах типов (types.ts 14, Renderer 4, QrCode 7, LocalGame/LocalGame4 3, shop 1, user 1, App 1), (б) parameter-properties в Effects.ts:128-136 (9). Реального мёртвого кода в warnings нет. Правила не отключал, eslint-disable не добавлял. ТРЕБУЕТ РЕШЕНИЯ ТИМЛИДА: выключить базовый `no-unused-vars` для TS (штатная практика — его заменяет @typescript-eslint/no-unused-vars) или задать argsIgnorePattern; .eslintrc.json вне моей зоны.
+
+3) Мёртвый код: удалён dead interface InterpolatedState (src/shared/types.ts, было :261-268, 0 ссылок); удалён мёртвый параметр paddleSide в src/shared/physics.ts:137-144 (был неиспользуем) + обновлены все 14 вызовов (server/index.ts, LocalGame.ts, LocalGame4.ts, tests/unit/physics.test.ts, tests/unit/gameplay-fixes.test.ts); удалён isAdminUser; удалены 8 собранных артефактов в tests/unit. Публичные API (checkPaddleCollision и пр.) сохранены, менялась только сигнатура на устаревший параметр.
+
+4) Детерминизм: единственный источник недетерминизма — фиксированные порты 3457/3461 (падение при живом :3333) — устранён. Тесты порядка/сети не зависят; Date.now()/randomUUID() используются только для дельт/уникальных id. Кросс-файловых гонок нет: каждый из meta/security поднимает свой листенер на своём эфемерном порту (в логах 12646/12647) и закрывает его в afterAll.
+
+ВЕРИФИКАЦИЯ (при живом прод :3333, PID 12484, health 200):
+1) npx tsc --noEmit → exit 0.
+2) npm run build → exit 0 (tsc + postbuild).
+3) npx vitest run → 23 files / 439 passed, 0 errors, 0 unhandled, exit 0 (лог: "Test runner detected — server auto-start skipped"; эфемерные порты).
+4) npm run lint (eslint src --ext .ts) → 0 errors, 48 warnings, exit 0.
+5) npx playwright test → 6 passed, exit 0.
+Бизнес-логика/API/мета не менялись: все 439 unit + 6 e2e зелёные; изменения — типы, удаление мёртвого кода, тестовая инфраструктура.
+
+NOT VERIFIED / NOT EXECUTED: буквальный сценарий «npm test при ВЫКЛЮЧЕННОМ :3333» не запускал — останов/рестарт прод PID 12484 запрещён ТЗ. Эквивалентность подтверждена: тесты больше не ссылаются на :3333 (grep), поднимают только эфемерные порты и не зависят от занятости прод-порта; сценарий «прод занят» (более жёсткий) пройден.
+
+SKILLS_LOADED: ["superpowers-implement"]
+MCP_USED: ["sequential-thinking"]
+COMPLIANCE: true
+STATUS: resolved
+
+================================================================================
+[2026-09-16] dev-2 -> team-lead: P1-3 единый daemon + worker pool
+TYPE: update | PRIORITY: medium
+CONTENT: P1-3 реализован (без коммита). (1) created .agents/scripts/inbox-engine.ps1 (697 строк, UTF-8 BOM, CRLF) — ЕДИНЫЙ движок, чтобы не дублировать код poller: пути/константы ($Base/$Inbox/$Outbox/$Archive/$DeadLetter/$Traces/$ClaimsDir/$LogPath, $JobTimeoutSeconds, $ClaimLeaseSeconds=2*JobTimeout+300), dot-source redact.ps1/evidence-writer.ps1/task-state.ps1 с логированным fallback, и функции: Write-Log, Test-OpencodeAvailable, Test-ScriptSyntax, Invoke-OpencodeAttempt (heartbeat lease каждые ≤30с), Test-OpencodeSuccess (успех = exit0 + success-marker + без error-marker), Get-AttemptFailureReason, Format-AttemptReport, New-EvidenceRecord/Write-AttemptEvidence, Send-DeadLetter/Complete-InboxFile (redaction), Invoke-StaleClaimSweep (→ Revoke-StaleClaims), Get-PendingInboxItems (скан inbox ВСЕХ агентов одним проходом, детерминированный порядок), Process-Inbox, Process-InboxFile (теперь возвращает статус done|dead-letter|skipped|dry-run — poller его игнорирует).
+(2) modified .agents/scripts/inbox-poller.ps1: 667→104 строк (git: +75/−594 суммарно с fake-opencode) — тонкий runner: . inbox-engine.ps1 + глобальный mutex + guard CLI + PSParser + TZ-copy + флаги -Once/-IntervalSeconds/-DryRun. Поведение poller сохранено, регресс зелёный; статическая проверка sweep из test-task-state (ищет Invoke-StaleClaimSweep/Revoke-StaleClaims в тексте poller) осталась истинной — вызов задаётся в poller, определение в engine.
+(3) created .agents/scripts/agent-hq-daemon.ps1 (328 CRLF, BOM) — единая точка входа: bounded worker pool (Start-Job + -ThrottleLimit default 4, каждый worker = один message в своём процессе, внутри тот же engine), дедуп через атомарный claim/lease (глобального mutex-бутылочного горлышка нет — только single-instance mutex самого daemon), heartbeat в engine, stale-sweep перед каждым проходом, режимы -Once (один проход) / -Drain (проходы до пустого scan) / default (то же + пауза -PollIntervalSeconds), ВСЕГДА ограничен -MaxDurationSeconds (default 240) — вечного/скрытого фона нет (AGENTS.md §10/§4); при упоре в лимит worker'ы останавливаются и их lease освобождается (Release-AbandonedClaim), сообщение остаётся в inbox. Exit code: 0 только без инфра-ошибок (engine/CLI/worker job) и без dead-letter, иначе 1. Отчёт .memory/traces/daemon-last-run.json (mode/throttleLimit/passes/dispatched/processed/deadLettered/skipped/stopped/workerErrors/fatalErrors/remaining/exitCode), лог .memory/traces/daemon.log. Тестируемость как у poller: $env:AGENT_HQ_ROOT / AGENT_HQ_OPENCODE / AGENT_HQ_JOB_TIMEOUT. schtasks НЕ трогал (переключение задачи agent-hq-inbox-poller на daemon — за team-lead, с ОК пользователя).
+(4) modified tests/fake-opencode.ps1 (+45 строк) — аддитивный режим "slow" (пауза FAKE_OPENCODE_DELAY_MS, default 1500ms, затем success) + probe FAKE_OPENCODE_TRACK_DIR: один JSON-рекорд на запуск (agent/startedAt/finishedAt/delayMs/pid). Существующие режимы и кейсы не изменены (test-pipeline 9/9).
+(5) created tests/test-daemon.ps1 (537 строк, no-BOM, CRLF) — 9 кейсов, изолированный AGENT_HQ_ROOT, daemon запускается ДОЧЕРНИМ powershell.exe (проверяются реальные exit-коды, `exit` daemon не убивает harness). ВЫВОД: SUMMARY passed=9 failed=0 total=9, EXIT=0. Кейсы: a) -Drain, 3 агента→3 outbox (status=done)+3 archive+0 dead-letter+3 evidence, exit0; b) nomarker→2 dead-letter, в response есть и "First attempt failed", и "Retry failed" (доказывает общую 2-попыточную политику), evidence = ровно 2 failed attempts, exit1; c) ThrottleLimit3+slow(2500ms)→max concurrency 3 (реальное перекрытие, 5с wall-clock); d) ThrottleLimit1→max concurrency ровно 1 (детерминированно); e) чужой свежий claim→skip: 0 outbox, без записи в archive, lease жив, exit0, report.skipped≥1; f) -MaxDurationSeconds 5 при 20-секундном CLI→выход за 6с (<25), report.stopped≥1, сообщение осталось в inbox, exit0; g) битый AGENT_HQ_OPENCODE→exit1 (fatalErrors≥1); h) -Once→один проход (report.passes=1), всё обработано; i) -DryRun→ничего не тронуто, exit0.
+(6) РЕГРЕСС на финальном коде: test-vault 8/8 exit0; test-pipeline 9/9 exit0; test-discovery PASS=22 FAIL=0 SKIP=0 WARN=1 RESULT PASS exit0; test-false-done 17/17 exit0; test-task-state 5/5 exit0; test-project-isolation 42/42 exit0; verify-phase Failed 0/41 exit0.
+(7) CRLF/BOM/парсер: inbox-engine.ps1 CRLF=696 loneLF=0 BOM; agent-hq-daemon.ps1 CRLF=328 loneLF=0 BOM; inbox-poller.ps1 CRLF=103 loneLF=0 BOM; tests/fake-opencode.ps1 CRLF=105 loneLF=0 BOM; tests/test-daemon.ps1 CRLF=537 loneLF=0 no-BOM; PSParser errors=0 у всех 5. Секретов/загрузок нет, не коммитил, temp (agent-hq-tests-daemon, daemon-out-*) и job-объекты вычищены, git status содержит только мои 6 файлов.
+РИСКИ/ДОЛГ: (a) worker, остановленный по лимиту, убивает свой job, но дочерний процесс CLI может доживать (та же граница, что в существующем timeout-пути poller); сообщение не теряется — остаётся в inbox, lease освобождён, страховка — stale TTL; (b) scheduled task agent-hq-inbox-poller НЕ переключалась на daemon (только с ОК пользователя); (c) docs (AGENTS.md §9 «Скрипты (18)», README строка про .agents/scripts) не обновлял — tech-writer.
+MCP note: context7 не применим (только PowerShell 5.1 + stdlib, внешних библиотек нет); hermes-atlas-mcp не требовался (новые скиллы/тулы не нужны); использован sequential-thinking для плана рефакторинга/тестов.
+SKILLS_LOADED: ["evidence-discipline", "windows-safety", "superpowers-implement"]
+MCP_USED: ["sequential-thinking"]
 COMPLIANCE: true
 STATUS: resolved
 ================================================================================

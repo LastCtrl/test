@@ -11,6 +11,10 @@
 #   nomarker     -> stdout without a success marker, exit 0
 #   errormarker  -> stdout with an error marker, exit 0
 #   leak         -> stdout with fake secrets but no success marker, exit 0 (must be redacted in dead-letter)
+#   slow         -> sleeps FAKE_OPENCODE_DELAY_MS (default 1500) then success, exit 0.
+#                   When FAKE_OPENCODE_TRACK_DIR is set, every invocation drops one
+#                   JSON record (agent, startedAt, finishedAt, delayMs, pid) there,
+#                   so a test can measure how many runs actually overlapped.
 
 $mode = $env:FAKE_OPENCODE_MODE
 
@@ -51,6 +55,47 @@ switch ($mode) {
         $fakeSk    = "s" + "k-" + "ABCDEFGHIJKLMNOPQRSTUVWX"
         Write-Output ("token=" + $fakeToken)
         Write-Output $fakeSk
+        exit 0
+    }
+    "slow" {
+        # Concurrency probe for the daemon worker pool: the run takes a known time,
+        # then reports its own start/finish window in a per-invocation file (one file
+        # per run => concurrent runs never contend for the same file).
+        $delayMs = 1500
+        $parsedDelay = 0
+        if ($env:FAKE_OPENCODE_DELAY_MS) {
+            if ([int]::TryParse($env:FAKE_OPENCODE_DELAY_MS, [ref]$parsedDelay) -and $parsedDelay -gt 0) {
+                $delayMs = $parsedDelay
+            }
+        }
+
+        $agentName = ""
+        for ($i = 0; $i -lt ($args.Count - 1); $i++) {
+            if ($args[$i] -eq "--agent") { $agentName = [string]$args[$i + 1] }
+        }
+
+        $startedAt = Get-Date
+        Start-Sleep -Milliseconds $delayMs
+        Write-Output "TASK done.`nSTATUS: resolved"
+
+        if ($env:FAKE_OPENCODE_TRACK_DIR) {
+            try {
+                if (-not (Test-Path -LiteralPath $env:FAKE_OPENCODE_TRACK_DIR -PathType Container)) {
+                    New-Item -ItemType Directory -Path $env:FAKE_OPENCODE_TRACK_DIR -Force | Out-Null
+                }
+                $record = [ordered]@{
+                    agent      = $agentName
+                    startedAt  = $startedAt.ToString("o")
+                    finishedAt = (Get-Date).ToString("o")
+                    delayMs    = $delayMs
+                    pid        = $PID
+                }
+                $recordFile = Join-Path $env:FAKE_OPENCODE_TRACK_DIR ([guid]::NewGuid().ToString("N") + ".json")
+                [System.IO.File]::WriteAllText($recordFile, ($record | ConvertTo-Json -Compress), (New-Object System.Text.UTF8Encoding($false)))
+            } catch {
+                # A probe failure must never break the fixture itself.
+            }
+        }
         exit 0
     }
     default {

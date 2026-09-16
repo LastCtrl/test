@@ -70,3 +70,4 @@ opencode.local.json
 *.apikey
 .env*
 *.enc
+.memory/*.lock

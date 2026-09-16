@@ -10,6 +10,13 @@
 # Layout (root = $env:AGENT_HQ_ROOT or <repo>):
 #   <root>\projects\<name>\CONTEXT-BUFFER.md   <- canonical project buffer
 #   <root>\.agents\worktrees\<name>            <- project worktree (branch project/<name>)
+#
+# Naming: Test-ProjectName (below) is the single whitelist shared with
+# create-project.ps1 / project-queue.ps1. It accepts Unicode letters (Cyrillic
+# included), digits, '_', '-' and spaces, while rejecting path traversal,
+# Windows-invalid characters, reserved device names and trailing spaces/dots.
+# Only a git ref name is transformed (a space there is percent-encoded as %20);
+# the worktree path and the CONTEXT-BUFFER always keep the original name.
 
 # NOTE: no top-level param() block on purpose. Dot-sourcing a script that
 # declares parameters would bind (and reset) same-named variables in the
@@ -37,13 +44,78 @@ function Get-ProjectIsolationRoot {
     return (Get-Location).Path
 }
 
-function Assert-ProjectName {
-    param([Parameter(Mandatory = $true)][string]$ProjectName)
-    if ($ProjectName -notmatch '^[a-zA-Z0-9_\-]+$') {
-        throw "Invalid project name '$ProjectName': allowed chars are a-zA-Z0-9_-"
+# --- Project-name validation (SINGLE source of truth) -----------------------
+# Used by this helper, create-project.ps1 and project-queue.ps1 so the whitelist
+# can never drift between the three entry points.
+#
+# Allowed : Unicode letters (\p{L} - Cyrillic/Latin/...), digits (\p{Nd}), '_',
+#           '-' and single spaces (real repositories contain names that start
+#           with a Cyrillic letter, e.g. "1c-centr1507" where the "c" is the
+#           Cyrillic "es" - see tests/test-soak-5projects.ps1).
+# Blocked : path separators and every Windows-invalid character (the char class
+#           itself: / \ . : * ? " < > |), a leading space or dot, a trailing
+#           space, '..' (path traversal), reserved device names
+#           (CON/PRN/AUX/NUL/COM1..9/LPT1..9) and names longer than 63 chars.
+#
+# Test-ProjectName is a pure predicate (never throws) so callers can decide
+# between exit 1 (CLI) and throw (queue helper). Pass [ref]$Reason to get a
+# human-readable explanation.
+$ProjectNamePattern = '^[\p{L}\p{Nd}](?:[\p{L}\p{Nd} _\-]{0,62})$'
+$ProjectNameMaxLength = 63
+$ReservedProjectNames = @(
+    'CON', 'PRN', 'AUX', 'NUL',
+    'COM1', 'COM2', 'COM3', 'COM4', 'COM5', 'COM6', 'COM7', 'COM8', 'COM9',
+    'LPT1', 'LPT2', 'LPT3', 'LPT4', 'LPT5', 'LPT6', 'LPT7', 'LPT8', 'LPT9'
+)
+
+function Test-ProjectName {
+    param(
+        [Parameter(Mandatory = $true)][AllowEmptyString()][string]$ProjectName,
+        [ref]$Reason
+    )
+
+    if ($null -ne $Reason) { $Reason.Value = "" }
+
+    if ([string]::IsNullOrWhiteSpace($ProjectName)) {
+        if ($null -ne $Reason) { $Reason.Value = "name is empty or whitespace" }
+        return $false
+    }
+    if ($ProjectName.Length -gt $ProjectNameMaxLength) {
+        if ($null -ne $Reason) { $Reason.Value = "name is longer than $ProjectNameMaxLength characters" }
+        return $false
+    }
+    if ($ProjectName -notmatch $ProjectNamePattern) {
+        if ($null -ne $Reason) {
+            $Reason.Value = "only letters (any language), digits, '_', '-' and single spaces are allowed; " +
+                "the name must start with a letter or a digit and must not contain / \ . : * ? "" < > |"
+        }
+        return $false
+    }
+    if ($ProjectName.Contains('..')) {
+        if ($null -ne $Reason) { $Reason.Value = "'..' is not allowed (path traversal)" }
+        return $false
+    }
+    if ($ProjectName.EndsWith(' ') -or $ProjectName.EndsWith('.')) {
+        if ($null -ne $Reason) { $Reason.Value = "the name must not end with a space or a dot" }
+        return $false
+    }
+    if ($ReservedProjectNames -contains $ProjectName.ToUpperInvariant()) {
+        if ($null -ne $Reason) { $Reason.Value = "'$ProjectName' is a reserved Windows device name" }
+        return $false
     }
     return $true
 }
+
+function Assert-ProjectName {
+    param([Parameter(Mandatory = $true)][string]$ProjectName)
+    $nameReason = ""
+    if (-not (Test-ProjectName -ProjectName $ProjectName -Reason ([ref]$nameReason))) {
+        throw "Invalid project name '$ProjectName': $nameReason"
+    }
+    return $true
+}
+
+# --- git invocation -----------------------------------------------------------
 
 # Normalise a path for case-insensitive comparison (absolute, backslashes).
 function Get-NormalizedPath {
@@ -83,9 +155,22 @@ function Get-ProjectWorktreePath {
     return $full
 }
 
+# Branch for a project worktree. A git ref may not contain a space, so a space is
+# percent-encoded as %20 (git rejects an unencoded space inside a ref name itself:
+# measured exit code 128). '%' cannot appear in a project name (see
+# Test-ProjectName), so the mapping is injective: two different projects can
+# never end up sharing one branch. Names without spaces keep the historical
+# "project/<name>" form verbatim (Cyrillic included), so existing branches and
+# all current worktrees stay unchanged.
 function Get-ProjectWorktreeBranch {
     param([string]$Project)
-    return ("project/" + $Project)
+
+    if ($Project -notmatch '[^\p{L}\p{Nd}_\-]') {
+        return ("project/" + $Project)
+    }
+    # Only a space can reach this branch (the whitelist rejects every other
+    # character that git forbids in a ref), so encoding the space is enough.
+    return ("project/" + $Project.Replace(' ', '%20'))
 }
 
 # True when $Path lives inside projects\<Project>\ or .agents\worktrees\<Project>\.
@@ -139,6 +224,11 @@ function Test-GitBranchExists {
 }
 
 # Parse `git worktree list --porcelain` into { Path, Branch } objects.
+# NOTE: for non-ASCII (Cyrillic) paths this listing is NOT reliable - PowerShell
+# 5.1 decodes native-command stdout with the console code page, so the path comes
+# back as mojibake. Registration is therefore resolved from the filesystem by
+# Get-ProjectWorktreeRegistration (see Get-LinkedWorktreeInfo); this function is
+# kept for diagnostics.
 function Get-RepositoryWorktrees {
     param([string]$Root)
     $result = @()
@@ -166,14 +256,60 @@ function Get-RepositoryWorktrees {
     return $result
 }
 
+# Read what a linked git worktree points at, straight from the filesystem:
+#   <worktree>\.git  -> "gitdir: <repo>\.git\worktrees\<id>"
+#   <id>\HEAD        -> "ref: refs/heads/<branch>"
+# Both files are raw UTF-8, so a Cyrillic branch/path survives. This deliberately
+# avoids parsing the stdout of `git worktree list`: PowerShell 5.1 decodes native
+# command output with the console code page (cp866/cp1251 here), which turns a
+# real Cyrillic path into mojibake and made the worktree look "not registered"
+# (a bug caught by tests/test-soak-5projects.ps1).
+function Get-LinkedWorktreeInfo {
+    param([string]$WorktreePath)
+
+    $info = [PSCustomObject]@{ linked = $false; git_dir = ""; branch = "" }
+    $dotGit = Join-Path $WorktreePath ".git"
+    if (-not (Test-Path -LiteralPath $dotGit -PathType Leaf)) { return $info }
+
+    $pointer = ""
+    try { $pointer = [System.IO.File]::ReadAllText($dotGit, (New-Object System.Text.UTF8Encoding($false))) } catch { return $info }
+
+    $pointerMatch = [regex]::Match($pointer, 'gitdir:\s*(\S.*)')
+    if (-not $pointerMatch.Success) { return $info }
+
+    $gitDir = $pointerMatch.Groups[1].Value.Trim()
+    if ([string]::IsNullOrWhiteSpace($gitDir)) { return $info }
+    if (-not [System.IO.Path]::IsPathRooted($gitDir)) { $gitDir = Join-Path $WorktreePath $gitDir }
+    if (-not (Test-Path -LiteralPath $gitDir -PathType Container)) { return $info }
+
+    $info.linked = $true
+    $info.git_dir = [System.IO.Path]::GetFullPath($gitDir)
+
+    $headFile = Join-Path $gitDir "HEAD"
+    if (Test-Path -LiteralPath $headFile -PathType Leaf) {
+        $head = ""
+        try { $head = [System.IO.File]::ReadAllText($headFile, (New-Object System.Text.UTF8Encoding($false))) } catch { $head = "" }
+        $headMatch = [regex]::Match($head.Trim(), '^ref:\s*refs/heads/(.+)$')
+        if ($headMatch.Success) { $info.branch = $headMatch.Groups[1].Value.Trim() }
+    }
+    return $info
+}
+
 function Get-ProjectWorktreeRegistration {
     param([string]$Project, [string]$Root)
     $base = Get-ProjectIsolationRoot -Root $Root
     $path = Get-ProjectWorktreePath -Project $Project -Root $base
-    $wanted = Get-NormalizedPath -Path $path
-    $match = @(Get-RepositoryWorktrees -Root $base | Where-Object { (Get-NormalizedPath -Path $_.Path) -ieq $wanted })
-    if ($match.Count -eq 0) { return $null }
-    return $match[0]
+    if (-not (Test-Path -LiteralPath $path -PathType Container)) { return $null }
+
+    $info = Get-LinkedWorktreeInfo -WorktreePath $path
+    if (-not $info.linked) { return $null }
+
+    # It must be a worktree of THIS repository, not of some other checkout.
+    $worktreesRoot = [System.IO.Path]::GetFullPath((Join-Path $base ".git\worktrees")).TrimEnd('\') + '\'
+    if (-not (($info.git_dir.TrimEnd('\') + '\').StartsWith($worktreesRoot, [System.StringComparison]::OrdinalIgnoreCase))) {
+        return $null
+    }
+    return [PSCustomObject]@{ Path = $path; Branch = $info.branch }
 }
 
 # --- public API ------------------------------------------------------------
@@ -432,8 +568,9 @@ if ($CliList) {
             try {
                 $items += Get-ProjectWorktree -Project $dir.Name -Root $base
             } catch {
-                # A legacy directory whose name is not a valid project id (e.g.
-                # non-ASCII) must not abort the whole listing.
+                # A directory whose name is not a valid project id (traversal,
+                # reserved device name, ...) must not abort the whole listing.
+                # Names with Cyrillic letters ARE valid and take the normal path.
                 $items += [PSCustomObject]@{
                     project           = $dir.Name
                     path              = ""

@@ -38,11 +38,36 @@ $baseDir = if (-not [string]::IsNullOrWhiteSpace($env:AGENT_HQ_ROOT)) {
 $projectsDir = Join-Path $baseDir "projects"
 $projectDir = Join-Path $projectsDir $ProjectName
 
-# Security: whitelist project name + path traversal guard
-if ($ProjectName -notmatch '^[a-zA-Z0-9_\-]+$') {
-    Write-Host "ERROR: Invalid project name '$ProjectName': allowed chars are a-zA-Z0-9_-" -ForegroundColor Red
+# Security: project-name whitelist lives in project-worktree.ps1 (single source,
+# shared with project-queue.ps1) and is loaded here BEFORE anything is created.
+# It accepts Cyrillic/Latin letters, digits, '_', '-' and spaces, and rejects
+# path traversal, Windows-invalid characters, reserved device names and
+# trailing spaces/dots.
+$isolationHelperPath = Join-Path $PSScriptRoot "project-worktree.ps1"
+$isolationHelperLoaded = $false
+if (Test-Path -LiteralPath $isolationHelperPath -PathType Leaf) {
+    . $isolationHelperPath
+    if (Get-Command Test-ProjectName -ErrorAction SilentlyContinue) {
+        $isolationHelperLoaded = $true
+    }
+}
+
+$nameReason = ""
+$nameValid = $false
+if ($isolationHelperLoaded) {
+    $nameValid = Test-ProjectName -ProjectName $ProjectName -Reason ([ref]$nameReason)
+} else {
+    # Degraded fallback (helper file missing): never weaker than the old rule.
+    $nameValid = ($ProjectName -match '^[a-zA-Z0-9_\-]+$')
+    if (-not $nameValid) {
+        $nameReason = "allowed chars are a-zA-Z0-9_- (fallback: project-worktree.ps1 not found at $isolationHelperPath)"
+    }
+}
+if (-not $nameValid) {
+    Write-Host "ERROR: Invalid project name '$ProjectName': $nameReason" -ForegroundColor Red
     exit 1
 }
+
 $projFull = [System.IO.Path]::GetFullPath($projectDir)
 $rootFull = [System.IO.Path]::GetFullPath($projectsDir).TrimEnd('\') + '\'
 if (-not $projFull.StartsWith($rootFull, [System.StringComparison]::OrdinalIgnoreCase)) {
@@ -316,17 +341,17 @@ Set-Content -Path (Join-Path $projectDir ".gitignore") -Value $gitignore
 # ============================================================
 # P1-2: per-project git worktree (isolation boundary)
 # The project gets its own worktree under .agents\worktrees\<name> on branch
-# project/<name>, so workers of different projects never share a checkout.
+# project/<name> (only a space is percent-encoded as %20 there, because git refs
+# forbid a space), so workers of different projects never share a checkout.
+# The helper was already dot-sourced above for validation.
 # Failures degrade to a warning: the project itself is already usable.
 # ============================================================
 if (-not $NoWorktree) {
-    $isolationHelper = Join-Path $PSScriptRoot "project-worktree.ps1"
-    if (Test-Path -LiteralPath $isolationHelper) {
-        . $isolationHelper
+    if ($isolationHelperLoaded) {
         try {
             $worktree = New-ProjectWorktree -Project $ProjectName -Root $baseDir
             if ($worktree.ok) {
-                Write-Host "  Worktree: $($worktree.path) [$($worktree.mode)]" -ForegroundColor Gray
+                Write-Host "  Worktree: $($worktree.path) [mode: $($worktree.mode); branch: $($worktree.branch)]" -ForegroundColor Gray
             } else {
                 Write-Host "  WARNING: per-project worktree not created: $($worktree.reason)" -ForegroundColor Yellow
             }
@@ -334,7 +359,7 @@ if (-not $NoWorktree) {
             Write-Host "  WARNING: per-project worktree failed: $($_.Exception.Message)" -ForegroundColor Yellow
         }
     } else {
-        Write-Host "  WARNING: project-worktree.ps1 not found at $isolationHelper - skipping worktree" -ForegroundColor Yellow
+        Write-Host "  WARNING: project-worktree.ps1 not found at $isolationHelperPath - skipping worktree" -ForegroundColor Yellow
     }
 }
 

@@ -51,7 +51,9 @@ $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
 # Explicit -StateDir is derived from THIS script's root so the queue and its
 # leases always live under the same tree. A missing helper degrades to no-op
 # stubs (queue management keeps working) instead of aborting the run.
-$ClaimsDir = Join-Path $projectRoot ".memory\claims"
+# NOTE the leases live PER PROJECT (projects\<name>\.memory\claims): task ids are
+# only unique inside a project ('tq-001' exists in every queue), so one shared
+# claims directory made a tq-001 lease of project A collide with project B.
 $taskStatePath = Join-Path $scriptDir "task-state.ps1"
 if (Test-Path -LiteralPath $taskStatePath) {
     . $taskStatePath
@@ -70,6 +72,8 @@ if (Test-Path -LiteralPath $taskStatePath) {
 # --- P1-2: per-project isolation helper (worktree + CONTEXT-BUFFER boundary).
 # Dot-sourced when present; a minimal fallback keeps the queue working in
 # mirror/temp trees that carry project-queue.ps1 but not the helper.
+# The helper also owns Test-ProjectName / Assert-ProjectName - the single
+# source of the project-name whitelist (Unicode-safe, Cyrillic included).
 $isolationHelperPath = Join-Path $scriptDir "project-worktree.ps1"
 if (Test-Path -LiteralPath $isolationHelperPath) {
     . $isolationHelperPath
@@ -81,6 +85,14 @@ if (Test-Path -LiteralPath $isolationHelperPath) {
         elseif (-not [string]::IsNullOrWhiteSpace($env:AGENT_HQ_ROOT)) { $base = $env:AGENT_HQ_ROOT }
         else { $base = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent }
         return (Join-Path $base ".agents\worktrees\$Project")
+    }
+    # Degraded fallback: never weaker than the old ASCII-only rule.
+    function Assert-ProjectName {
+        param([Parameter(Mandatory = $true)][string]$ProjectName)
+        if ($ProjectName -notmatch '^[a-zA-Z0-9_\-]+$') {
+            throw "Invalid project name '$ProjectName': allowed chars are a-zA-Z0-9_- (fallback: project-worktree.ps1 not found)"
+        }
+        return $true
     }
 }
 
@@ -97,16 +109,26 @@ $PriorityOrder = @{
 # --------------------------------------------------
 function Get-QueuePath {
     param([string]$ProjectName)
-    # Security: whitelist project name + path traversal guard
-    if ($ProjectName -notmatch '^[a-zA-Z0-9_\-]+$') {
-        throw "Invalid project name '$ProjectName': allowed chars are a-zA-Z0-9_-"
-    }
+    # Security: project-name whitelist (single source in project-worktree.ps1)
+    Assert-ProjectName -ProjectName $ProjectName | Out-Null
     $full = [System.IO.Path]::GetFullPath((Join-Path $ProjectsRoot "$ProjectName\queue.json"))
     $rootFull = [System.IO.Path]::GetFullPath($ProjectsRoot).TrimEnd('\') + '\'
     if (-not $full.StartsWith($rootFull, [System.StringComparison]::OrdinalIgnoreCase)) {
         throw "Path traversal detected: '$ProjectName' escapes projects root"
     }
     return $full
+}
+
+# --------------------------------------------------
+# Helper: Get the PER-PROJECT claims directory.
+# Task ids are only unique inside a project (every queue starts at tq-001), so
+# leases must be scoped per project; a shared <root>\.memory\claims let a tq-001
+# lease of one project block/release the same id of another project.
+# --------------------------------------------------
+function Get-ProjectClaimsDir {
+    param([string]$ProjectName)
+    Assert-ProjectName -ProjectName $ProjectName | Out-Null
+    return (Join-Path (Join-Path $ProjectsRoot $ProjectName) ".memory\claims")
 }
 
 # --------------------------------------------------
@@ -456,7 +478,7 @@ function Complete-Task {
     # never fatal: a failure here must not claim the task is still in progress.
     # RISK-001b: pass the assigned agent so a lease taken by somebody else is not
     # deleted; an unassigned task keeps the legacy unconditional release.
-    if (-not (Release-Task -TaskId $TaskId -Agent $assignedAgent -StateDir $ClaimsDir)) {
+    if (-not (Release-Task -TaskId $TaskId -Agent $assignedAgent -StateDir (Get-ProjectClaimsDir -ProjectName $ProjectName))) {
         Write-Warning "Failed to release task claim for '$TaskId' (stale claims will revoke it)"
     }
 
@@ -508,7 +530,7 @@ function Dead-Task {
 
     # P1-1: dead is terminal -> drop the lease (idempotent, non-fatal).
     # RISK-001b: owner-guarded release (empty agent = legacy unconditional).
-    if (-not (Release-Task -TaskId $TaskId -Agent $assignedAgent -StateDir $ClaimsDir)) {
+    if (-not (Release-Task -TaskId $TaskId -Agent $assignedAgent -StateDir (Get-ProjectClaimsDir -ProjectName $ProjectName))) {
         Write-Warning "Failed to release task claim for '$TaskId' (stale claims will revoke it)"
     }
 
@@ -564,7 +586,10 @@ function Invoke-StaleCheck {
 
     # P1-1: release claim leases whose heartbeat expired. This is independent of
     # the queue retry logic below: a crashed worker must not keep a task locked.
-    $revokedClaims = @(Revoke-StaleClaims -TtlSeconds 900 -StateDir $ClaimsDir)
+    # Scoped to THIS project's claims dir: the shared <root>\.memory\claims also
+    # holds bus-message leases of the inbox engine, which a project-level stale
+    # sweep must never touch.
+    $revokedClaims = @(Revoke-StaleClaims -TtlSeconds 900 -StateDir (Get-ProjectClaimsDir -ProjectName $ProjectName))
     foreach ($rc in $revokedClaims) {
         Write-Output "Task '$($rc.task_id)' stale claim revoked (age $($rc.age_seconds)s)"
     }

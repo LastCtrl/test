@@ -1408,7 +1408,34 @@ CONTENT: P0-D "redact payload/stdout/stderr/secrets" - реализовано.
 ТЕСТЫ: tests/test-pipeline.ps1 => passed=8 failed=0 total=8, exit 0 (7 старых + h). Доп. end-to-end payload-check: "password=[REDACTED] and [REDACTED]".
 CRLF: redact.ps1 / inbox-poller.ps1 / test-pipeline.ps1 / fake-opencode.ps1 = CRLF, loneLF=0; BOM сохранён (poller+fake UTF8-BOM, остальные no-BOM). Temp удалён. Не коммитил.
 SKILLS_LOADED: ["evidence-discipline", "windows-safety", "superpowers-implement"]
-MCP_USED: ["sequential-thinking", "context7: n/a (нет внешней библиотеки, только нативный PS 5.1 regex)"]
+MCP_USED: ["sequential-thinking"]
+COMPLIANCE: true
+STATUS: resolved
+================================================================================
+[2026-09-16 14:39] dev-2-1 -> team-lead:
+TYPE: update | PRIORITY: medium
+Project: news-bot
+================================================================================
+CONTENT: Дайджест устойчив: окно предзагрузки 15 мин + раунды добора degraded-тем с дедлайном (слот минус 2 мин).
+(1) services/scheduler.py — изменённые строки:
+ - :4 импорт timedelta.
+ - :44-64 константы: _PRELOAD_LOOKAHEAD_MINUTES 8->15; _PRELOAD_CACHE_TTL_SECONDS 900->1800 (TTL >= окна); _DEGRADED_MARKER="ИИ-анализ временно недоступен" (единый маркер fallback analyze_news (analyzer.py:387) и texts.format_digest(degraded=True) (texts.py:327)); _RETRY_ROUND_DELAY_SECONDS=45; _DIGEST_DEADLINE_RESERVE_MINUTES=2; _is_degraded().
+ - :187-193 _tick: preload_dt = now(сек=0)+15мин = абсолютное время слота; preload_time_str из preload_dt.
+ - :223-225 preload-задача получает preload_dt.
+ - :302-349 _preload_digest(..., slot_dt): deadline=slot_dt-2мин, логирует deadline, передаёт в сборку.
+ - :351-454 _build_topic_texts(user_id, deadline=None): раунд 1 по ВСЕМ темам; затем while degraded: пауза min(45с, остаток) -> новый раунд ТОЛЬКО по degraded-индексам; выход по «все собрались» / remaining<=0 / deadline is None (сборка на месте). Логи: «round 1: N degraded (Xs to deadline)», «retry round K: retried N, M still degraded, Xs to deadline», warning «sent degraded after K round(s)».
+ - :456-521 _run_topic_round: обработка индексов, texts[index], degraded.add/discard по маркеру; search_news обёрнут try (сбой поиска -> degraded, раунд не падает); таймаут/ошибка анализа -> format_digest(degraded=True).
+ - :523-539 хелперы _seconds_to_deadline / _deadline_status / _topic_indices_str.
+Сохранено: misfire_grace_time=30; _send_digest при отсутствии свежего кэша строит на месте (deadline=None -> без повторов, слот не задерживается) (scheduler.py:472); порядок zip(topics,texts) не нарушен.
+Не трогал: analyzer, freshness, news_search, texts/форматирование, лимиты плана, was_digest_sent_recently.
+(2) tests/test_digest.py: добавлен класс TestDigestRetryRounds (+4 теста): recovered-in-round-2 -> НЕ degraded; all-degraded -> по дедлайну degraded, elapsed<3с, число раундов ограничено; deadline в прошлом -> 0 повторов; _send_digest при полностью degraded -> сообщения уходят и mark_digest_sent=True.
+(3) ПРОГОН: py -3 -m pytest tests -q --tb=short -> 340 passed, 1 skipped, 0 failed (baseline 336 passed/1 skipped; +4 новых). py -3 -m py_compile services/scheduler.py -> OK.
+(4) ВЕРИФИКАЦИЯ e2e: py -3 scripts/e2e_digest.py -> ANALYZE OK: 2/4, STALE=none, DIGEST split=OK, exit 1 (артефакт scripts/e2e_digest_report.txt, лог scripts/e2e_digest.log). Причина — ВНЕШНИЙ ФАКТОР: в логе big-pickle и mimo-v2.5-free «on 429 cooldown» (дневной free-лимит), z-ai/glm-5.3-free HTTP 503 «No available channel for model z-ai/glm-5.3-free (distributor)», nemotron-3.5-lightning-free timeout, ling-3.0-flash-fin-free empty/503. Затяжной дневной 429/недоступность дистрибьютора glm повторами в 15-мин окне не лечится (как и предупреждало ТЗ).
+(5) ЖИВОЙ ПРОБНИК нового цикла (temp-скрипт, удалён): 2 реальные темы (курс доллара, новости ИИ), deadline=now+3мин, get_user замокан. Лог: «Built digest texts for 2 topic(s) in 90.56s (round 1): 1 degraded (89s to deadline)» -> «Digest retry round 2 ... retried 1 topic(s), 0 still degraded, 44s to deadline» -> итог degraded=0/2. Повтор реально добрал тему, ушедшую в degraded.
+Temp/bak удалены: %TEMP%\opencode\probe_retry.py, %TEMP%\opencode\scheduler.py.bak.
+NOT ENOUGH EVIDENCE: полный прогон _preload_digest по реальному слоту APScheduler (ожидание >=15 мин) не воспроизводил — тайминг/дедлайн покрыт юнит-тестами, а не реальным ожиданием слота.
+SKILLS_LOADED: ["superpowers-implement", "evidence-discipline"]
+MCP_USED: ["sequential-thinking: 5 шагов (план раундов/дедлайна, риски существующих тестов, TTL, доказательность)", "context7: not needed (только stdlib asyncio/datetime, новых внешних библиотек нет)"]
 COMPLIANCE: true
 STATUS: resolved
 ================================================================================
@@ -2664,6 +2691,120 @@ TYPE: update | PRIORITY: high
 ИТОГ: P0 ✅, P1 ✅, P2 model-router ✅. Осталось P2: evaluation v2, soak 2->5 проектов.
 SKILLS_LOADED: []
 MCP_USED: []
+COMPLIANCE: true
+STATUS: resolved
+================================================================================
+================================================================================
+[2026-09-16 14:06] team-lead-1 (acting dev) -> team-lead:
+TYPE: update | PRIORITY: high
+Project: pong-advanced
+CONTENT: MAJOR "ghost в LAN не расходуется" закрыт — паритет клиент/сервер по построению (shared-хелпер), +8 серверных и +7 shared-тестов.
+(1) SHARED-ФИКС: src/shared/physics.ts:370-392 — новый export consumeGhostPass(ball, orientation, receiver): чистый (при полном пересечении внешней кромки ракетки-получателя возвращает НОВЫЙ мяч с ghost=false/ghostPasses=0/ghostTimer=0, вход не мутируется; строгие >r / <r), :399-405 — export receiverFor(ball, orientation) (общий выбор получателя). Линии: горизонталь p1 x+r<CONST_PADDLE_OFFSET, p2 x-r>FIELD_W-CONST_PADDLE_OFFSET; вертикаль p1 y+r<10 (VERTICAL_PADDLE_LINE :363), p2 y-r>FIELD_H-10. Импорт :35 PADDLE_OFFSET as CONST_PADDLE_OFFSET из constants.ts: в physics.ts:614 уже есть локальный export const PADDLE_OFFSET=24 (для AI) — чтобы не плодить второй источник правды, геометрия ghost берётся из constants (той же константы, по которой ставятся ракетки в LocalGame.freshPaddle и createRoom). Это обнаружено диагностикой: с локальным дублем линия в мок-окружении расходилась с расстановкой ракеток.
+(2) КЛИЕНТ: src/client/game/LocalGame.ts:62-63 импорт; :526 receiverFor; :568-570 	his.ball = consumeGhostPass(this.ball, this.orientation, receiver); private consumeGhostPass/clearGhost удалены (поведение 1:1 — те же линии и строгие сравнения).
+(3) СЕРВЕР: src/server/index.ts:128-129 импорт; :800 receiverFor; :842-845 вызов consumeGhostPass сразу после ОБЕИХ проверок коллизий и до clampBallToWalls (тот же порядок, что в LocalGame:568-572). До фикса (server/index.ts:806-845 старая версия) ghostPasses не декрементировался/не сбрасывался → мяч проходил сквозь ракетки все GHOST_DURATION=2с вместо одного прохода (help.ts).
+(4) ТЕСТЫ: tests/unit/server.test.ts:196 мок physics.js переведён на async importOriginal (иначе реальный consumeGhostPass в tick = undefined; остальные функции остались прежними vi.fn-заглушками) + новый describe :1101 «Server — GHOST: один проход сквозь ракетку (LAN-паритет)» — 8 тестов: :1137 непересечённая линия → получатель не отбивает, ghost жив; :1158 ПОЛНОЕ пересечение линии p2 → ghost=false/passes=0/timer=0 (ядро фикса); :1170 не-получатель (p1) при активном ghost отбивает как обычно; :1189 после потреблённого прохода следующий контакт — обычный отскок; :1213 вертикаль dy>0 → p2 (граница ровно y-r=590 не срабатывает, 591 срабатывает); :1242 вертикаль dy<0 → p1; :1269 мяч ушёл назад (получатель сменился) — проход не расходуется задним числом; :1280 истёкший ghostTimer снимает эффект без прохода. tests/unit/gameplay-fixes.test.ts:455 describe «Fix 2.1 — GHOST: один проход (shared consumeGhostPass)» — 7 тестов: :464/:479/:487/:505 все 4 геометрии + строгие границы (на линии — тот же объект, +1px — сброс) и иммутабельность входа; :523 no-op guards (нет ghost / passes=0 / receiver=undefined → тот же объект); :540 receiverFor (4 комбинации); :547 LocalGame-паритет: пока по shared-критерию не пересечено — ghost обязан быть жив, сброс ровно на тике пересечения.
+(5) constants.ts:1039-1047 — устаревший doc-комментарий legendary приведён к факту: «19 предметов = 1 legacy paddle_plasma (3000) + 18 с ценой из лестницы (7 палитровых glow-ракеток + 8 тематических ракеток + 3 тематических мяча/следа), массив 18 значений до 9650 XP (было "до 9500"), индекс клампится на последнюю цену». ОТКЛОНЕНИЕ ОТ ТЗ (evidence): ТЗ просило «18»; проверка реального каталога (tsx-скрипт по COSMETIC_CATALOG) дала ровно 19 legendary (16 paddle_skin + 3 ball/trail), а 18 — это длина LEGENDARY_PRICES. Написано фактическое 19 (иначе это был бы ложный док-комментарий); код не менялся.
+(6) ПРОВЕРКИ (все 5 — на незатронутом прод-сервере :3333, PID 21340 жив с 13:45, HTTP 200; НЕ рестартился): 1) npx tsc --noEmit → exit 0; 2) npm run build → exit 0 (артефакт: dist/shared/physics.js:250 export consumeGhostPass, dist/server/index.js:547 вызов); 3) npx vitest run → Test Files 26 passed, Tests 527 passed, exit 0, unhandled нет (до фикса в файле было 512 тестов); 4) npm run lint → exit 0, 0 errors / 0 warnings (eslint src); 5) npx playwright test → 6 passed (9.6s), exit 0. ОГОВОРКА: один промежуточный прогон vitest показал "25 files + Unhandled Error"/exit -1 — это артефакт моей команды (Select-Object -First 6 закрыл stdout node → пайплайн убит), а не дефект: два последующих полных прогона с Out-File дали 26/26, 527, exit 0. E2E шли против уже запущенного прод-процесса (в его памяти старый код — перезапуск за тимлидом); сборка dist обновлена.
+(7) ХИРУРГИЯ/ГИГИЕНА: временный диагностический тест tests/unit/tmp-ghost-probe.test.ts удалён (в tests/unit нет tmp*); temp-файлы %TEMP%\opencode удалены. 
+px prettier --check "tests/**/*.ts" → 17 файлов тестов не отформатированы, но это PRE-EXISTING (скрипты format/lint покрывают только src) — новые строки держал ≤80. Реестр/GPO/schtasks не трогал, секреты не использовал.
+SKILLS_LOADED: ["superpowers-implement", "evidence-discipline"]
+MCP_USED: ["sequential-thinking", "context7: offline (resolve-library-id → fetch failed)"]
+COMPLIANCE: true
+STATUS: resolved
+================================================================================
+[2026-09-16 14:14] team-lead-1 (acting dev) -> team-lead:
+TYPE: update | PRIORITY: high
+Project: pong-advanced
+CONTENT: БАГ ЮЗЕРА «4p: мяч летит в пустоту к выбывшему» закрыт — сторона выбывшего игрока стала СТЕНОЙ (полная упругость), +9 тестов.
+(1) src/client/game/LocalGame4.ts:
+ - :24-38 — SIDES4 (left,right,top,bottom) + SIDE_OWNER4 (left=p1,right=p2,top=p3,bottom=p4); PaddleSide4 теперь export.
+ - :196-202 — wallSides(): список сторон, чьи владельцы выбыли (источник правды для рендера).
+ - :204-217 — checkGoal4(): гол по мёртвой стороне не засчитывается НИКОГДА (guard this.alive.has(id)); живая сторона — гол/eliminate как было.
+ - :225-245 — private reflectFromDeadWalls(ball): если владелец стороны мёртв, мяч зажимается РОВНО на кромке поля (x=r / x=FIELD_W-r / y=r / y=FIELD_H-r) и инвертируется перпендикулярная компонента (dx=|dx| / dx=-|dx| / dy=|dy| / dy=-|dy|). Скорость НЕ меняется (полная упругость), GOAL_MARGIN недостижим → гол + resetBall для мертвеца физически невозможны. Зажим закрывает кейс «игрок выбыл, когда мяч уже был за границей» → возврат в поле за 1 тик. Две смежные мёртвые стороны (углы) обрабатываются последовательно → корректное диагональное отражение.
+ - :280 — вызов в tick() СРАЗУ после moveBall и ДО checkGoal4 (иначе был бы ложный eliminate мертвеца + сброс мяча в центр); порядок с paddle-collision: clamp стоит раньше, до столкновений.
+ - :338, :374 — getState() отдаёт wallSides → App.ts:1142 прокидывает объект в renderLoop без правки App (проверено чтением App.ts:1139-1150).
+(2) src/client/game/Renderer.ts (только 4p-отрисовка, существующий рендер не тронут):
+ - :40-47 — RenderState.wallSides?: string[] (аддитивное опциональное поле; при отсутствии стены не рисуются).
+ - :603-611 — WALL_SIDE_BAND=10 (мировые единицы) + WALL_SIDE_OWNER (тот же маппинг, что в LocalGame4).
+ - :626-641 — export wallSideBandRect(side): чистая геометрия полосы внутри поля.
+ - :657-... — drawWallSides(): барьер = тёмная подложка + тонировка цветом выбывшего (PADDLE4_COLORS) + стальная диагональная штриховка (анимированный drift) + пульсирующая светящаяся кромка. Отличимо от живой голевой зоны (у живой барьера нет). Новых глобальных переменных/сайд-эффектов нет.
+ - :859-869 — вызов после арены, до центральной линии/ракеток/мяча; рендер 2p/LAN-ветка не затронута (условие на state.wallSides).
+(3) tests/unit/localgame4.test.ts:205-320 — новый describe «выбывшая сторона становится стеной (4p)», 9 тестов (файл 15 → 24): (а) мяч влево к мёртвому p1 → dx>0, x=r, x≠FIELD_W/2, state=playing, alive=3, playSound('eliminate') НЕ вызван; (а2) под углом вправо к мёртвому p2 → dx инвертирован, dy=0.5 сохранён, x=FIELD_W-r; (b) живая сторона по-прежнему голевая → eliminate + sound + wallSides=['left']; (в) после вылета p1 и p3 (через реальный tick) wallSides=['left','top'], обе мёртвые стороны отбивают, живые right/bottom голевые → вылет вправо устраняет p2, победитель p4, state=ended; (г) анти-застревание: мяч в момент вылета игрока уже ЗА границей (x=-5) → за 1 тик возвращён (x≥r, dx>0), далее 30 тиков: x строго растёт, 0 разворотов dx, alive=3, звука eliminate нет; угол 2 смежных мёртвых сторон → обе компоненты инвертированы, координаты = r; полная упругость → ball.speed не изменился; (рендер-контракт) wallSideBandRect для всех 4 сторон лежит внутри поля и накрывает плоскость отскока (BALL_RADIUS / FIELD-BALL_RADIUS), мусорная сторона → null.
+(4) ВЕРИФИКАЦИЯ (все 5; прод :3333 PID 21340 НЕ рестартился — HTTP 200, StartTime 13:45:13 не менялся):
+ 1) npx tsc --noEmit → exit 0.
+ 2) npm run build → exit 0 (tsc + postbuild copy).
+ 3) npx vitest run → Test Files 27 passed, Tests 555 passed, exit 0, Unhandled Error нет (мой файл отдельно: localgame4.test.ts 24/24 passed, exit 0).
+ 4) npm run lint → exit 0, 0 errors / 0 warnings (eslint src).
+ 5) npx playwright test → 6 passed (9.1s), exit 0, в т.ч. «starts local 4-player game with canvas content».
+ Прочие проверки: eslint по моим зонам (LocalGame4.ts, Renderer.ts, localgame4.test.ts) → exit 0; 2 prettier-ошибки в моём коде найдены и исправлены; tsc-ошибка shop.ts:427 buildPriceRow в первом прогоне и 6 падений meta/security-fixes — ПАРАЛЛЕЛЬНЫЙ агент (экономика/магазин) в момент правок, к финалу всё зелёное (tsc 0, lint 0, 555/555). Unhandled EBUSY (vitest v8-кэш в %TEMP%) наблюдался только в промежуточном прогоне и не связан с задачей.
+(5) ГРАНИЦЫ/ГИГИЕНА: server/**, constants.ts, shop.ts, metaView.ts, App.ts, мета-файлы НЕ трогались; src/shared/types.ts менять не потребовалось (поле wallSides живёт в возвращаемом типе getState + RenderState — без кросс-зонного риска). temp-файлы: логи %TEMP%\opencode удалены, в репо временных файлов не создавал. Реестр/GPO/schtasks/секреты не трогались. NOT ENOUGH EVIDENCE: подсказка в help.ts про 4p-стены не обновлялась (help.ts вне моей зоны); визуальную проверку барьера в браузере с реально выбывшим игроком не делал — покрыто геометрическим рендер-контрактом (unit) и e2e-смоуком 4p-запуска.
+SKILLS_LOADED: ["superpowers-implement"]
+MCP_USED: ["sequential-thinking: 1 вызов (1 шаг — план: порядок reflect→paddle→checkGoal4, кейсы границы/угла/анти-джиттера, контракт рендера)"]
+COMPLIANCE: true
+STATUS: resolved
+================================================================================
+================================================================================
+[2026-09-16 14:14] dev-1 -> team-lead:
+TYPE: update | PRIORITY: high
+Project: pong-advanced
+CONTENT: XP-буст + недельная акция «всё по 100» (сервер + клиент + тесты). Всё сделано, 5 проверок зелёные, прод :3333 (PID 21340) не рестартился.
+
+(1) XP-буст — src/server/meta.ts:3-9, 20-42:
+ - XP_WIN 100->250, XP_DRAW 30->80, XP_LOSS 10->30 (meta.ts:3-5).
+ - XP_PER_GOAL=15, XP_GOALS_CAP=30 (meta.ts:7,9) + export xpForGoals(goals) (meta.ts:23-28): floor(goals)*15, cap 30 голов = 450 XP, мусор/NaN/отрицательные -> 0.
+ - xpForResult(wins,draws,losses,goalsFor=0) (meta.ts:34-43) = базовая награда + xpForGoals; старый 3-аргументный вызов сохранён (обратная совместимость). levelFromXp не менялся.
+ - Числа в файле — без магических констант, cap явный: 30*15=450 ≤ 450 XP.
+
+(2) Акция — src/shared/constants.ts:1443-1492 (только ДОБАВЛЕНО в конец файла; POWERUP-веса, SHAPED_PADDLE_PROFILES, генерация COSMETIC_CATALOG не тронуты):
+ - export interface SaleConfig (constants.ts:1451-1460) + export const SALE (constants.ts:1463-1468): { active: true, price: 100, endsAt: '2026-09-23T00:00:00.000Z' (7 дней от 2026-09-16), label: 'АКЦИЯ' }.
+ - export function isSaleActive(now = Date.now()) (constants.ts:1474-1482) — детерминируемая по now (non-finite now -> false).
+ - export function effectivePrice(originalPrice, now = Date.now()) (constants.ts:1484-1492): при активной акции цена = min(каталог, 100); бесплатные и дешёвые НЕ дорожают (0 -> 0, 50 -> 50). Это скидка «не дороже 100»: иначе «Бесплатно»-предметы превратились бы в платные и сломали бы onlyAffordable/«Получить». Явно отражено в комментарии constants.ts:1445-1450.
+
+(3) Сервер — src/server/index.ts:
+ - GET /api/cosmetics (index.ts:1671-1700): отдаёт price = effectivePrice(цена каталога), originalPrice = цена каталога, sale = saleActive && price < originalPrice (index.ts:1678-1688). Порядок/стиль ответа (id/type/name/.../style) не изменён.
+ - POST /api/users/:id/cosmetics (index.ts:1820-1876): catalogPrice из БД (index.ts:1825), price = effectivePrice(catalogPrice) (index.ts:1828); 400 Insufficient XP считается от ЭФФЕКТИВНОЙ цены (index.ts:1851-1857, added originalPrice в тело), списание идёт той же величиной -> XP в минус не уходит (проверено: 100 XP -> покупка 100 -> xp 0; 99 XP -> 400 required:100, баланс 99 не изменён). Админ по-прежнему бесплатно (ветка не тронута), в успешный ответ добавлены originalPrice/sale (index.ts:1872-1873).
+ - POST /api/stats (index.ts:1529): xpForResult(w, draws, l, gf) — награда за голы включена в xp/level/xpGained (xpGained = finalXp - xpBefore, поэтому клиент получает буст автоматически).
+
+(4) Клиент:
+ - src/client/metaView.ts: CosmeticApiItem + originalPrice?/sale? (metaView.ts:32-35); чистые функции discountPercent (metaView.ts:139-146), formatSaleEndsAt (metaView.ts:147-155, UTC -> не зависит от таймзоны), saleBannerText (metaView.ts:157-165), ShopPriceInfo + shopPriceInfo(item, now) (metaView.ts:119-137, 172-197). Скидка показывается только если она реально есть (originalPrice > price) И акция активна на момент now; старый сервер без originalPrice -> скидки нет.
+ - src/client/shop.ts: normalizeCosmetic пробрасывает originalPrice/sale (shop.ts:166-171); buildPriceRow (shop.ts:405-420) — бейдж «АКЦИЯ −X%» + <s> зачёркнутая старая цена (inline text-decoration, CSS не трогал) + новая цена; buildSaleBanner (shop.ts:423-429) + вставка баннера «АКЦИЯ: всё по 100 до 23.09.2026» под балансом (shop.ts:613-614). Счётчик/фильтры/сортировка не менялись: affordable считает по item.price, а он с сервера = эффективная цена.
+
+(5) Тесты:
+ - tests/unit/sale.test.ts (НОВЫЙ, 16 тестов): isSaleActive до/во время/после (инжект now: DURING 2026-09-16T12:00Z, AFTER 2026-09-23T00:00Z, 2027), мусор now; effectivePrice 500->100/5000->100/101->100 во время, 0->0 и 50->50 (не дорожает), после — цена каталога; shopPriceInfo (100/500, 80%, '100 XP'/'500 XP'/'АКЦИЯ −80%'), после акции скидки нет, бесплатное, старый сервер без originalPrice, мусор; discountPercent границы; saleBannerText + formatSaleEndsAt.
+ - tests/unit/meta.test.ts: XP-математика обновлена (xpForResult 250/80/30, xpForGoals 15/гол + cap 450, xpForResult+голы) + серверные тесты: «отдаёт цену акции (100) и исходную цену каталога» (meta.test.ts:487-503: neon price 100 / originalPrice 500 / sale true, classic 0/0/false; в общем тесте по каждому предмету originalPrice === xpCost каталога и price === effectivePrice), покупка (meta.test.ts:505-...: 0 и 99 XP -> 400 required 100 (available 99, баланс не изменён), ровно 100 XP -> 200 xp_spent 100 xp 0, затем 600 -> 200 xp 500 originalPrice 500 sale true); XP-ожидания stats пересчитаны: win+5 голов+first_blood+perfect = 625 (xpGained 625), повтор = 950 (+325), loss = 485 (+60), draw = 125 (level 2).
+ - ВНЕ заявленной зоны, минимально: tests/unit/security-fixes.test.ts:8 (импорт effectivePrice) и :144-155 — ожидание xp_spent 500 заменено на effectivePrice(500) (тест про атомарность покупки, а не про цену; иначе красный из-за акции). Другие файлы тестов не трогал.
+
+(6) ВЕРИФИКАЦИЯ (5/5, прод :3333 PID 21340 не рестартился — /api/health 200, StartTime 13:45:13 неизменен):
+ 1) npx tsc --noEmit -> exit 0.
+ 2) npm run build -> exit 0 (tsc + postbuild). Повторно после фикса форматирования — exit 0.
+ 3) npx vitest run -> Test Files 27 passed, Tests 555 passed, exit 0, unhandled нет (мой новый файл: sale.test.ts 16/16; meta.test.ts 26/26). Базовая линия была 527 — прирост за счёт sale.test.ts (+16) и правок meta.test.ts, плюс файлы параллельного агента (555 на момент финального прогона).
+ 4) npm run lint -> exit 0, 0 errors / 0 warnings (eslint src; 2 prettier-ошибки в metaView.ts нашёл и исправил сам).
+ 5) npx playwright test -> 6 passed (9.2s), exit 0.
+ Доп. артефакт (temp-скрипт в %TEMP%\opencode, удалён): реальный HTTP-прогон на эфемерном порту через dist -> GET /api/cosmetics paddle_neon {price:100, originalPrice:500, sale:true}; paddle_classic {price:0, originalPrice:0, sale:false}; shopPriceInfo -> {priceText:'100 XP', originalText:'500 XP', badgeText:'АКЦИЯ −80%'}; saleBannerText -> «АКЦИЯ: всё по 100 до 23.09.2026»; POST покупки при 100 XP -> 200 {xp_spent:100, xp:0}; при 99 XP -> 400 {required:100, available:99}; POST /api/stats win+5 голов -> xp 425, xpGained 425, level 3.
+
+(7) ГРАНИЦЫ/ОГОВОРКИ: LocalGame4.ts, Renderer.ts, index.html, App.ts, styles.css, profile/leaderboard/toasts/user, db/** — НЕ трогал (styles.css не правил: зачёркивание сделано элементом <s> + inline text-decoration; новые классы sale-badge/cosmetic-price-sale/shop-sale-banner существуют только как имена, без CSS-правил — визуально бейдж будет обычным текстом до отдельной задачи по стилям, функциональность/данные корректны). Секреты/GPO/реестр/schtasks не трогал. Temp-файлы: probe удалён, в репо временных файлов не создавал; dist пересобран (прод-процесс его в память уже загрузил, поэтому прод не затронут). Замечание для ревью: серверные тесты на акцию привязаны к реальным часам (акция до 2026-09-23) — это прямо требование ТЗ (price=100 в GET), после истечения окна их надо будет перевести на инжект now. NOT ENOUGH EVIDENCE: «опыта побольше» как балансная настройка не калибровалась (нет целевого времени прокачки) — взяты ровно заказанные числа; визуальная проверка бейджа/зачёркивания в браузере не делалась (css вне зоны), покрыто чистыми функциями + e2e-смоуком.
+SKILLS_LOADED: ["superpowers-implement"]
+MCP_USED: ["sequential-thinking: 4 шага (план правок, риски существующих тестов, порядок работ)", "context7: offline (resolve-library-id -> fetch failed)"]
+COMPLIANCE: true
+STATUS: resolved
+================================================================================
+================================================================================
+[2026-09-16 14:38] dev-3 -> team-lead:
+TYPE: update | PRIORITY: medium
+================================================================================
+CONTENT: P2 soak 2->5 проектов + FIX кириллических имён проектов (репо D:\Тест\agent-hq).
+(1) FIX whitelist (единый источник): .agents/scripts/project-worktree.ps1:52-53 (паттерн $ProjectNamePattern = '^[\p{L}\p{Nd}](?:[\p{L}\p{Nd} _\-]{0,62})$' + $ReservedProjectNames), :63-95 (Test-ProjectName: пустое/длина>63/недопустимые символы/'..'/замыкающий пробел или точка/reserved CON,PRN,AUX,NUL,COM1..9,LPT1..9), :97-107 (Assert-ProjectName делегирует Test-ProjectName). Дубли удалены: create-project.ps1:41-65 (хелпер dot-source ДО создания чего-либо, exit 1 с причиной; ASCII-fallback если хелпера нет), project-queue.ps1:110-112 (Get-QueuePath -> Assert-ProjectName + fallback Assert-ProjectName в ветке без хелпера, :89-95).
+(2) Ветка/worktree с кириллицей: git 2.49 принимает и ref project/1с-centr1507, и путь .agents\worktrees\1с-centr1507 (проверено: worktree add exit 0, show-ref видит ref, HEAD ветки = ровно project/<имя>). Slug НЕ нужен - ветка везде оставлена project/<имя> дословно. Пробел в имени - единственный разрешённый whitelist'ом символ, запрещённый в git-ref (git check-ref-format --branch с пробелом: exit 128) -> перцентируется: project/soak%20beta (project-worktree.ps1:158-170). Путь и CONTEXT-BUFFER ВСЕГДА сохраняют исходное имя.
+(3) НАЙДЕН edge case (не в ТЗ): PowerShell 5.1 декодирует stdout нативных команд кодовой страницей консоли (cp866/cp1251), поэтому путь из "git worktree list" приходил mojibake и Get-ProjectWorktreeRegistration возвращал null: worktree кириллического проекта числился незарегистрированным (idempotent-ветка теряла git-worktree-режим, Remove-ProjectWorktree не снимал metadata/ветку). Фикс: регистрация читается из ФС - Get-LinkedWorktreeInfo (project-worktree.ps1:259-291): <wt>\.git -> gitdir -> HEAD, оба файла читаются как UTF-8; Get-RepositoryWorktrees оставлен только для диагностики (задокументировано в комментарии).
+(4) НАЙДЕНА коллизия (не в ТЗ): project-queue.ps1 использовал ОБЩИЙ <root>\.memory\claims, а id задач уникальны только внутри проекта (tq-001 есть в каждой очереди) -> lease одного проекта конфликтовал с одноимённым lease другого, а -StaleCheck проекта ре-выпускал чужие bus-lease движка. Фикс: Get-ProjectClaimsDir (project-queue.ps1:122-131); Complete-Task/Dead-Task/Invoke-StaleCheck работают в projects\<имя>\.memory\claims.
+(5) SOAK tests\test-soak-5projects.ps1 (новый; PS 5.1, UTF-8 BOM, CRLF 528/0 loneLF): 8 кейсов, 68 проверок, SUMMARY passed=68 failed=0, exit 0 (прогнан 3 раза, стабильно). Изолированный AGENT_HQ_ROOT + fake-opencode + свой git-репозиторий. 5 проектов: 1с-centr1507, 1с-SlyckBuh1509, soak-alpha, soak beta, soak-gamma. Проверено: whitelist (30 небезопасных имён отклонено, 5 принято), создание всех 5 через CLI, свой worktree на каждый (exists, registered=True, ветка точная, git check-ref-format exit 0, идемпотентность), свой CONTEXT-BUFFER + leak-guard 5x5 (20 кросс-проверок) + отказ cross-project записи, queue-привязка project/worktree (без ссылок на чужой проект), независимость claim (tq-001 в 5 скоупах; Complete в проекте 1 отпустил только его lease, остальные 4 живы, повторный claim успешен), daemon -Drain по 5 агентам: outbox ровно 5 (без дублей, status=done, to=свой агент), dead-letter 0, archive 5, inbox 0, report processed=5/skipped=0/remaining=0, лишних jobs 0; h) пути/ветки/очереди/claims попарно различны, все пути внутри temp-root, реальный репозиторий не тронут (git worktree list до/после идентичен), temp и Jobs вычищены.
+(6) РЕГРЕСС: test-project-isolation 42/42 exit 0 (повторено после финальных правок), test-pipeline 10/10 exit 0, test-discovery RESULT PASS (PASS=22 FAIL=0 WARN=1 штатный), test-task-state 5/5 exit 0 (4 прогона; один ранний прогон дал 4/5 в кейсе release - транзиентная блокировка файла AV/indexer-ом, task-state.ps1 НЕ менялся, 4 следующих прогона чистые), verify-phase 41/41 ALL CHECKS PASSED exit 0.
+(7) CRLF/BOM: все мои 4 файла CRLF-only, loneLF=0; project-worktree.ps1 и create-project.ps1 без BOM (как в HEAD, ASCII-only), project-queue.ps1 с BOM (как в HEAD), test-soak - UTF-8 с BOM (содержит кириллические литералы + guard на целостность кодировки). Коммита нет; удалены за собой probe-скрипты и temp-каталоги; реальные projects/ (5 папок) не тронуты, .agents/worktrees реального репо без изменений.
+(8) ВАЖНО для всей команды (не блокер моей задачи, но ложный детект АВ): при правке project-worktree.ps1 Kaspersky AMSI отдавал ParserError ScriptContainedMaliciousContent ("скрипт содержит вредоносный контент"), из-за чего файл не загружался вообще (падали create-project/project-queue/isolation-тест). Причина локализована бисектом: КОММЕНТАРИЙ, в котором backtick-обёрнута команда git с ключом и quoted-аргументом (git check-ref-format --branch "project/my project"). HEAD-версия файла: 8/8 запусков чисто; моя версия: 8/8 блок; удаление ровно этой строки -> чисто (проверено точечно, остальные 47 строк комментариев ни при чём). Фикс: комментарий переформулирован без backtick-команд (exit 128 указан словами). ВЫВОД: AMSI сканирует КОНТЕНТ, исключения по путям (ЦКБ 10.09) его не покрывают; другим агентам не писать в .ps1-комментариях backtick-вызовы команд с ключами/кавычками. Рекомендация тимлиду: заявить в ИБ/ЦКБ на AMSI/файловое исключение для .agents\scripts (сам политики/исключения не трогал - AGENTS.md §10).
+(9) MCP: sequential-thinking использован (планирование задачи из 4 шагов). context7 НЕ использовался - внешних библиотек в задаче нет (только git CLI и PowerShell 5.1); hermes-atlas не требовался (готовые скиллы были). Прочитаны скиллы evidence-discipline, windows-safety, superpowers-implement.
+NOT ENOUGH EVIDENCE: поведение на РЕАЛЬНЫХ projects\1с-centr1507 и projects\1с-SlyckBuh1509 не проверял (ТЗ запрещало трогать реальные папки) - фикс доказан только в изолированном temp-root.
+SKILLS_LOADED: ["evidence-discipline", "windows-safety", "superpowers-implement"]
+MCP_USED: ["sequential-thinking"]
 COMPLIANCE: true
 STATUS: resolved
 ================================================================================

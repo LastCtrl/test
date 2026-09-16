@@ -2323,3 +2323,83 @@ MCP_USED: []
 COMPLIANCE: true
 STATUS: resolved
 ================================================================================
+
+================================================================================
+[2026-09-16 13:20] dev-3 -> team-lead:
+TYPE: update | PRIORITY: medium
+Project: agent-hq
+CONTENT: |
+  P1-5 "prompt-gate scrub + secret redaction + human approval" — ГОТОВО (артефакты: файлы на диске + вывод тестов, см. ниже).
+
+  1) .agents\scripts\prompt-gate.ps1 — расширен, legacy-режим G1..G6 НЕ изменён.
+     Доказательство неизменности: отчёт G1..G6 до и после правки побайтово идентичен
+     (сравнение 39 строк, 0 различий; исходник взят через `git show HEAD:...`).
+     * Invoke-PromptScrub: dot-source redact.ps1 -> Redact-Secrets -> секреты в [REDACTED].
+     * Политика секретов: по умолчанию scrub + предупреждение, промпт проходит (exit 0);
+       с -Strict — жёсткий блок (exit 3; одобрением НЕ снимается).
+     * Get-PromptRiskReasons (деструктивные/системные шаблоны => ручное одобрение):
+       rm -rf / rm -fr / rm -r -f; Remove-Item -Recurse -Force (в обоих порядках);
+       git push --force | -f; reg add|delete|import; schtasks; HKLM/HKEY_LOCAL_MACHINE;
+       SOFTWARE\Policies | gpedit | secedit | secpol.msc | LocalSecurityPolicy.
+     * Рискованный промпт => .memory\approvals\pending\<id>.json + exit 2.
+       id = "apr-" + 16 hex от sha256 ОЧИЩЕННОГО текста => идемпотентно (повторная
+       отправка того же промпта не плодит заявки), имя файла валидируется ^apr-[0-9a-f]{16}$
+       (защита от path traversal при -Approve).
+     * Одобрение: `.agents\scripts\prompt-gate.ps1 -Approve <id>` (pending -> approved\<id>.json)
+       ИЛИ маркер-файл .memory\approvals\approved\<id>. После одобрения промпт проходит (exit 0).
+     * Секреты в pending/approved НЕ пишутся: сохраняется только очищенный текст;
+       при secrets_found=true поле preview скрыто заглушкой.
+     * Fail-closed: нет redact.ps1 / ошибка Redact-Secrets / не удалось записать заявку
+       => промпт НЕ пропускается (Blocked либо Pending с флагом ApprovalWriteFailed).
+     * CLI: -Scrub (-Text <строка> | -Path <файл>, stdout = очищенный текст), -Approve <id>,
+       -Strict, -Quiet. Exit: 0 ok / 1 usage|нет заявки / 2 pending / 3 strict-block.
+     * Добавлен dot-source guard ($MyInvocation.InvocationName -eq '.' => return после
+       объявления функций): скрипт можно грузить через `.` без запуска G1..G6 и режимов.
+
+  2) Интеграция. grep по репо: prompt-gate нигде не вызывался (0 вызовов) => подключён в
+     единственную точку постановки промпта в очередь — .agents\scripts\message-queue.ps1, ветка
+     Action=send: dot-source prompt-gate + Invoke-PromptScrub -Text $Payload -Root $Base.
+     В outbox уходит ОЧИЩЕННЫЙ payload; рискованный/заблокированный промпт => exit 1 и файл в
+     очередь НЕ пишется (заявка на одобрение при этом создаётся). Контракт send не изменён
+     (успех 0 / отказ 1), существующие вызовы не тронуты; отсутствие prompt-gate.ps1 => fail-closed.
+
+  3) tests\test-prompt-gate.ps1 (новый, PS 5.1, изолированный $env:AGENT_HQ_ROOT в %TEMP%,
+     exit 1 при FAIL): RESULT: 14 passed, 0 failed, EXIT=0.
+     Кейсы: C1 benign passthrough + отсутствие legacy-отчёта; C2 scrub секрета (в stdout
+     [REDACTED], секрета нет); C3 -Path; C4 -Strict => exit 3 и 0 заявок; C5 message-queue send
+     => в outbox [REDACTED] и нет секрета; C6 risky => pending + exit 2; C7 approved-маркер
+     (файл approved\<id>) => exit 0 и промпт не изменён; C8 CLI -Approve => approved-файл, pending
+     пуст, повторный прогон exit 0; C9 отказ на unknown/traversal/malformed id; C10 send блокирует
+     risky (0 файлов в outbox, заявка создана); C11 benign payload в outbox байт-в-байт;
+     C12 usage-ошибка / пустой текст / отсутствующий файл.
+     Фикстуры без литеральных секретов: фейковый ключ собирается в рантайме конкатенацией
+     ("s"+"k-"+...), в файле нет ни одного секретоподобного литерала (проверено 7 regex-паттернами
+     сканера — 0 попаданий в 3 файлах).
+
+  4) Регресс (все exit 0): test-vault 8/8 PASS; test-pipeline 10/10 PASS;
+     test-discovery PASS=22 FAIL=0 SKIP=0 WARN=1 RESULT: PASS; verify-phase 41/41 ALL CHECKS PASSED.
+     Дополнительно: test-false-done 17/17 (в т.ч. mq-send-ok / mq-send-blocked — интеграция не сломала
+     контракт send), test-task-state 5/5, test-daemon 9/9.
+
+  5) Кодировки/гигиена: prompt-gate.ps1 BOM+CRLF (561 строка, 0 ParseErrors), message-queue.ps1
+     BOM+CRLF (309, 0), tests\test-prompt-gate.ps1 no-BOM+CRLF (267, 0; файл ASCII-only — как
+     test-pipeline.ps1). Temp-файлы, которые legacy-режим пишет в корень
+     (temp_prompt_gate_report.txt / temp_exit_code.txt), и мои scratch-каталоги в %TEMP% удалены;
+     `git status` содержит только: M prompt-gate.ps1, M message-queue.ps1, ?? tests\test-prompt-gate.ps1.
+     Коммит не делался, --no-verify не использовался.
+
+  Грабли PS 5.1 (проверено экспериментами, для потомков):
+     * @array-сплаттинг связывает параметры ПОЗИЦИОННО, а не по именам (в probe: Text='-Scrub',
+       Path='-Text', Approve='hello world') — в тестах/скриптах вызывать только с явными -Param,
+       либо хеш-сплаттингом. Первую версию теста это тихо ломало.
+     * Необъявленный [string]-параметр равен "" (не $null), поэтому «не передан» отличается от
+       "-Text ''" только через $PSBoundParameters.ContainsKey('Text').
+  NOT ENOUGH EVIDENCE: влияние -Strict на message-queue send не реализовано (у send всегда
+  дефолтная политика: секрет = scrub+предупреждение); сделать можно отдельной задачей, контракт
+  send при этом не меняется. Вызов из agent-hq-daemon не добавлялся — очередь наполняется через
+  message-queue send, это единственный найденный choke point.
+SKILLS_LOADED: ["evidence-discipline", "windows-safety", "superpowers-implement"]
+MCP_USED: ["sequential-thinking: 1 вызов (планирование P1-5)", "context7: not invoked (сторонних библиотек нет — только built-in PS 5.1/.NET: regex, cryptography, IO)", "hermes-atlas: not invoked (новый скилл/тул не требовался)"]
+COMPLIANCE: true
+STATUS: resolved
+================================================================================

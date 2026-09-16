@@ -251,8 +251,50 @@ if ([string]::IsNullOrWhiteSpace($Action)) {
         "receive" { $ok = Receive-Message }
         "list" { $ok = List-Messages }
         "send" {
-            $msg = New-Message -From $From -To $To -Type $Type -Priority $Priority -Payload $Payload
-            $ok = Send-Message $msg
+            # P1-5: перед постановкой в очередь промпт проходит гейт —
+            # scrub секретов + ручное одобрение рискованных промптов.
+            # Контракт действия не меняется: успех => exit 0, отказ гейта => exit 1.
+            $gateOk = $true
+            $payloadToSend = $Payload
+            $gateScript = Join-Path $PSScriptRoot "prompt-gate.ps1"
+            if (-not (Test-Path -LiteralPath $gateScript -PathType Leaf)) {
+                Write-Fail "prompt-gate.ps1 не найден ($gateScript) — scrub невозможен, отправка отменена"
+                $gateOk = $false
+            } else {
+                try {
+                    # dot-source: prompt-gate объявляет функции и не выполняет своих режимов
+                    . $gateScript -Quiet
+                    if ($null -eq (Get-Command -Name 'Invoke-PromptScrub' -ErrorAction SilentlyContinue)) {
+                        Write-Fail "Invoke-PromptScrub недоступен после загрузки prompt-gate.ps1"
+                        $gateOk = $false
+                    } else {
+                        $gate = Invoke-PromptScrub -Text $Payload -Root $Base
+                        if ($gate.SecretsFound) {
+                            Write-Log "🔒 scrub: замаскировано секретоподобных фрагментов: $($gate.RedactedCount)"
+                        }
+                        if (-not [string]::IsNullOrEmpty($Payload)) { $payloadToSend = $gate.Text }
+                        if ($gate.Blocked) {
+                            Write-Fail "промпт заблокирован гейтом (strict/scrub недоступен): $($gate.RiskReasons -join ', ')"
+                            $gateOk = $false
+                        } elseif ($gate.Pending) {
+                            $hint = if ($gate.ApprovalWriteFailed) { " (ВНИМАНИЕ: заявку не удалось записать — fail-closed)" } else { "" }
+                            Write-Fail "промпт требует ручного одобрения: id=$($gate.ApprovalId)$hint; причины: $($gate.RiskReasons -join ', ')"
+                            Write-Log "одобрить: .agents\scripts\prompt-gate.ps1 -Approve $($gate.ApprovalId)"
+                            $gateOk = $false
+                        }
+                    }
+                } catch {
+                    Write-Fail "гейт промптов упал: $($_.Exception.Message)"
+                    $gateOk = $false
+                }
+            }
+
+            if ($gateOk) {
+                $msg = New-Message -From $From -To $To -Type $Type -Priority $Priority -Payload $payloadToSend
+                $ok = Send-Message $msg
+            } else {
+                $ok = $false
+            }
         }
         "archive" { $ok = Archive-Old $Days }
         "dead-letter" { $ok = Show-DeadLetter }

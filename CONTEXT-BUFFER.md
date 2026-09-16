@@ -2403,3 +2403,24 @@ MCP_USED: ["sequential-thinking: 1 вызов (планирование P1-5)", 
 COMPLIANCE: true
 STATUS: resolved
 ================================================================================
+
+
+[2026-09-16 13:12] qa-engineer -> team-lead:
+TYPE: update | PRIORITY: medium
+CONTENT: Приёмка P1-5 (prompt-gate scrub + human approval, commit 74264b7) = ПРИНЯТО с 1 minor. Артефакты: (1) tests\test-prompt-gate.ps1 => 14/14 PASS, exit 0; (2) независимый прогон на изолированном AGENT_HQ_ROOT (%TEMP%\qa-p15-*, удалён): секрет (собран в рантайме) -> [REDACTED], stdout/outbox без секрета; 'rm -rf' -> exit 2 + pending\apr-6874757753ba8bf2.json, -Approve -> exit 0, повторный scrub -> exit 0; benign -> exit 0 без изменений; -Strict+секрет -> exit 3; pending при secrets_found хранит заглушку preview, сырых секретов нет (проверено чтением файла); approved-*.json содержит только id/status/reasons; анти-traversal -Approve '..\..\evil'/'../../evil'/'apr-...gg' -> exit 1, файлов вне approved/ нет; (3) mq send risky (свежий root) -> exit 1, outbox=0, pending=1; после approve -> exit 0; mq send с секретом -> outbox содержит [REDACTED], не секрет; (4) регресс: test-vault 8/8, test-pipeline 10/10, test-discovery PASS=22/FAIL=0/WARN=1 (ранее известный customize-opencode), test-false-done 17/17, verify-phase 41/41; (5) prompt-gate.ps1/message-queue.ps1 BOM+CRLF 0 bareLF 0 parseErrors, test-prompt-gate.ps1 no-BOM+CRLF, пустых catch нет во всех трёх. DEFECT-1 (minor, prompt-gate.ps1:260): риск-детекция идёт только по scrubbed-тексту -> 'password=rm -rf ...' маскирует токен 'rm' и деструктив уходит без одобрения (exit 0, pending не создан; воспроизведено). Не утечка, вход неестественный; фикс: прогонять Get-PromptRiskReasons по original И scrubbed (объединять). Info: -Strict в mq send не включён (осознанный trade-off, заявлен исполнителем в buffer). Ложного DONE не обнаружено: заявленные 14 кейсов соответствуют факту.
+SKILLS_LOADED: ["evidence-discipline"]
+MCP_USED: [] (реально не вызывались: верификация прямым запуском PS 5.1; context7/hermes не требовались по задаче)
+COMPLIANCE: true
+STATUS: resolved
+
+================================================================================
+[2026-09-16] team-lead -> bus: P1-5 ПРИНЯТО (prompt-gate scrub)
+TYPE: update | PRIORITY: high
+================================================================================
+Коммит 74264b7. prompt-gate: Invoke-PromptScrub (Redact-Secrets), Get-PromptRiskReasons -> pending+exit2, -Approve; интеграция в message-queue send. Тест 14/14. Приёмка qa-engineer: ПРИНЯТО (1 minor: risk-scan по scrubbed тексту). Оценки: dev-3 8, qa-engineer 9.
+P1: P1-1..P1-5 ✅ (остался фикс minor P1-5). Далее P2.
+SKILLS_LOADED: []
+MCP_USED: []
+COMPLIANCE: true
+STATUS: resolved
+================================================================================

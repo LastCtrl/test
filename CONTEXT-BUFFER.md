@@ -2437,3 +2437,45 @@ MCP_USED: ["sequential-thinking: 1 шаг (edge-case ревизия фикса)"
 COMPLIANCE: true
 STATUS: resolved
 ================================================================================
+[2026-09-16 13:18] team-lead-1 (acting dev) -> team-lead:
+TYPE: update | PRIORITY: high
+Project: pong-advanced
+CONTENT: «Призрак» (ghost) выключен по умолчанию везде + взвешенный спавн + уменьшенный радиус.
+
+1) DEFAULT OFF (ручное включение сохранено):
+- src/shared/constants.ts:63-66 — DEFAULT_POWERUP_POOL (8 типов, без ghost), единый источник для клиента и сервера (LAN-паритет).
+- src/client/game/LocalGame.ts:104,160 — дефолтный пул LocalGame = DEFAULT_POWERUP_POOL (было POWERUP_TYPES_LOCAL с ghost).
+- src/server/index.ts:283 — normalizeRoomSettings дефолт = [...DEFAULT_POWERUP_POOL] (LAN-хост по умолчанию ghost не рассылает).
+- src/client/menuPresets.ts:54-56 — CRAZY_POWERUP_IDS (все, кроме ghost); пресеты «Безумие» (112) и «Хардкор» (128) используют его; hint «Безумия» (104) уточнён «все бонусы кроме «Призрака»». «Сброс» (5 базовых) и «Все» (App.ts:1756-1769) не тронуты.
+- index.html:127 — ПРАВКА НЕ ТРЕБОВАЛАСЬ: класса `active` у data-powerup="ghost" там уже нет (ни в src, ни в dist/client) — зафиксировано регрессионным тестом.
+- classic по-прежнему не спавнит: гейт mode==='crazy' в LocalGame.tick (LocalGame.ts:566-573) и server tick; покрыто тестом (LocalGame) + server.test.ts:369.
+
+2) ВЕСА СПАВНА: constants.ts:73-118 — POWERUP_SPAWN_WEIGHTS (8 базовых ×10, ghost 1, сумма 81 → ghost ≈1/81 вместо ≈1/9) + pickWeightedPowerUpType(pool, weights, random) с инжектируемым rng. Используется в LocalGame.ts:823 и server/index.ts:892 — один алгоритм на клиент и сервер. Тип вне пула настроек не выпадает вообще; вес 0 = исключение.
+
+3) РАЗМЕР ghost: constants.ts:120-136 — GHOST_POWERUP_RADIUS_MULT=1.6, POWERUP_SIZE_BY_TYPE={ghost: BALL_RADIUS*1.6*2=22.4}, powerUpSize(type) (остальные типы = POWERUP_SIZE=65). Применение: создание (LocalGame.ts:826, server/index.ts:894), коллизия подбора (physics.ts:305-309, fallback по типу), отрисовка (Renderer.ts:1418-1419). Визуальный радиус ghost 11.2 = 1.6× мяча (площадь ≈2.56 мяча) — против 32.5 у прочих.
+
+4) help.ts:6-8,79-83 — строка ghost: «Редкий и маленький (≈1.6× радиуса мяча) — ... один раз пролетает сквозь ракетку ... (2 с, скорость ×0.8). По умолчанию выключен» на константах GHOST_DURATION/GHOST_SPEED_MULT/GHOST_POWERUP_RADIUS_MULT (было ошибочное «(4 с)»).
+
+ТЕСТЫ: новый tests/unit/ghost-powerup-defaults.test.ts (16 тестов: (а) дефолтный пул/LocalGame/пресеты/index.html без ghost + classic без бонусов; (б) детерминированный весовой спавн с подсунутым rng — ровно 100 ghost и 1000 giant из 8100, границы диапазонов, ghost вне пула = 0; (в) powerUpSize + коллизия на уменьшенном радиусе + размер бонуса в LocalGame). Обновлены tests/unit/menu-presets.test.ts (CRAZY_POWERUP_IDS, 8 типов) и tests/unit/server.test.ts (мок constants дополнен DEFAULT_POWERUP_POOL/POWERUP_SIZE_BY_TYPE/powerUpSize/зеркало pickWeightedPowerUpType; дефолт createRoom без ghost:530-540; 2 новых теста спавна:409-427).
+
+ПРОВЕРКИ (живой :3333 не трогал, PID 20076 не рестартил):
+1) npx tsc --noEmit → exit 0.
+2) npm run build → exit 0 (tsc + postbuild copy ок).
+3) npx vitest run → 24 files / 464 tests passed, exit 0, unhandled нет.
+4) npx eslint src --ext .ts → 0 errors / 0 warnings (один prettier-фикс в constants.ts:63-66 применён).
+5) npx playwright test → 6 passed (было 6; прогон против уже запущенного прод-сервера).
+Замечено (не мой скоуп): LocalGame4.ts — 4-player режим бонусов не спавнит вовсе (powerup-логики нет), ghost там не участвует.
+SKILLS_LOADED: ["superpowers-implement", "evidence-discipline"]
+MCP_USED: ["sequential-thinking: 3 шага (инвентаризация ghost по src/tests → дизайн констант/весов/радиуса → риски мока server.test.ts)"] (context7 не требовался: правки в own-code + built-in Node/TS, внешних библиотек нет; hermes-atlas не требовался: новых скиллов/тулов не нужно)
+COMPLIANCE: true
+STATUS: resolved
+================================================================================
+================================================================================
+[2026-09-16 13:24] dev-1 -> team-lead:
+TYPE: update | PRIORITY: medium
+CONTENT: P2 «model router: quota/circuit-breaker/fallback» — реализовано и проверено; 3 файла. СТРУКТУРА ROUTER (.agents/scripts/model-router.ps1, 731 строка, CRLF loneLF=0, ASCII-only, 0 parse errors по PSParser): (1) Test-ModelHealth -Model <id> [-TimeoutSec] — проба `opencode run --model <id> "Reply with exactly: PONG"` (CLI через $env:AGENT_HQ_OPENCODE, иначе `opencode`); проба запускается в Start-Job -> по таймауту TIMEOUT, а не зависание; классификация OK / RATE_LIMIT (`Free usage exceeded`|`rate limit`|`quota exceeded`|429) / DEAD (`No available channel`|`credit insufficient`|`UnknownError`) / TIMEOUT; маркеры ошибок проверяются ДО PONG (fail-safe). (2) Состояние .memory/model-health.json = map по model-id, запись {model,status,checked_at,fail_count,open_until}; запись битого/пустого файла читается как пустое состояние. (3) Circuit breaker: 2 подряд fail (default, -FailThreshold) -> open_until = now+15 мин (-CooldownMinutes) -> Test-ModelOpen=true и роутер модель не выбирает; истёкший open_until = half-open: счётчик сбрасывается, следующая ошибка снова открывает breaker. (4) Get-ModelRoute -Agent <name> — configured-модель (.opencode/agents/<agent>.json = источник правды; `opencode debug config` = fallback для builtin, ограничен своим job-timeout) + лестница из model-router/SKILL.md (free: ling-3.0-flash-fin-free, mimo-v2.5-free, big-pickle, nemotron-3.5-lightning-free, coding-glm-5.1-free -> aihubmix/gpt-5.5-free -> senior opencode-go/qwen3.8-flash, configured всегда первым, дедуп); выбирается первый кандидат с закрытым breaker; БЕЗ -Apply конфиг не меняется. (5) -Apply: точечная замена `"model"` в .opencode/agents/<agent>.json (regex, отступы сохранены) + бэкап <file>.bak.<yyyyMMdd-HHmmss> + запуск sync-agents.ps1; при ненулевом exit sync — файл откатывается из бэкапа; если sync-agents.ps1 отсутствует (temp-root) — warning и synced=false, изменение остаётся. (6) CLI: -Status | -Probe [-Models a,b] | -Route -Agent X [-Apply] | -FailThreshold | -CooldownMinutes | -TimeoutSec; разбор ЧЕРЕЗ $args без param()-блока — dot-source не затирает переменные вызывающего (грабли PS 5.1), dispatch за `$MyInvocation.InvocationName -ne '.'`. ТЕСТ tests/test-model-router.ps1 (386 строк, CRLF, ASCII, без Pester, изолированный $env:AGENT_HQ_ROOT + фикстура tests/fake-model-cli.ps1 58 строк, режимы pong/rate-limit/dead/unknown/silent/hang/config-json; секретов нет): 8 кейсов — a) классификация 4 режимов + поля state; c) 2 fail -> OPEN -> роутер не выбирает (другой агент не затронут); d) fallback ступень 1 и 2, дедуп лестницы, хвост = qwen3.8-flash; e) cooldown истёк -> модель снова маршрутизируется, half-open fail_count=1; f) Set-AgentModel: запись модели + ровно 1 бэкап + откат восстанавливает исходную; g) CLI `-Route -Agent code-reviewer -Apply` -> exit 0, output содержит ROUTE, файл изменён, бэкап, восстановление; h) debug-config fallback + unsafe имя агента -> пусто; i) dot-source hygiene (переменная вызывающего цела, state не создан, функции загружены). ИТОГ ТЕСТА: SUMMARY passed=8 failed=0 total=8, EXIT=0. ЖИВЫЕ АРТЕФАКТЫ: `-Probe -Models opencode/mimo-v2.5-free -TimeoutSec 90` -> OK fails=0 (реальный opencode CLI, exit 0); `-Probe -Models tokenrouter/z-ai/glm-5.3-free -TimeoutSec 60` -> TIMEOUT fails=1; повтор с -TimeoutSec 10 -> fails=2 breaker=OPEN until 2026-09-16T13:36:50; `-Status` печатает таблицу MODEL/STATUS/BREAKER/FAILS/CHECKED_AT/OPEN_UNTIL (2 записи); `-Route -Agent qa-engineer` -> CONFIGURED=opencode-go/qwen3.8-flash, ROUTE=opencode-go/qwen3.8-flash, REASON=configured-healthy, APPLY=skipped (конфиг НЕ тронут, exit 0). РЕГРЕСС (все exit 0): test-vault 8/8; test-pipeline 10/10; test-discovery RESULT PASS=22 FAIL=0 SKIP=0 WARN=1; test-daemon 9/9; verify-phase 41/41. ЧИСТОТА: temp-каталоги удалены (0 остатков), .bak-файлов агентов в репо 0, opencode.json.bak 0, Jobs и фоновых процессов нет; побочный runtime-артефакт .memory/model-health.json (2 живые записи) оставлен как evidence работы фичи. НЕ СДЕЛАНО (вне scope P2): роутер не встроен в agent-hq-daemon/inbox-engine (нет авто-выбора модели перед диспатчем) и нет авто-перепроверки модели по истечении cooldown — шаг для team-lead. NOT ENOUGH EVIDENCE: поведение при одновременных probe-ах (read-modify-write всего файла без файловой блокировки; потеря записи = модель считается доступной, т.е. fail-open) — не проверялось.
+SKILLS_LOADED: ["evidence-discipline", "windows-safety", "model-router", "superpowers-implement"]
+MCP_USED: ["sequential-thinking", "hermes-atlas-mcp: offline (fetch failed)", "context7: n/a (внешних библиотек нет — только built-in PowerShell 5.1)"]
+COMPLIANCE: true
+STATUS: resolved
+================================================================================

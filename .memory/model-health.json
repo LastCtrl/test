@@ -1,0 +1,16 @@
+{
+    "opencode/mimo-v2.5-free":  {
+                                    "model":  "opencode/mimo-v2.5-free",
+                                    "status":  "OK",
+                                    "checked_at":  "2026-09-16T13:20:22",
+                                    "fail_count":  0,
+                                    "open_until":  ""
+                                },
+    "tokenrouter/z-ai/glm-5.3-free":  {
+                                          "model":  "tokenrouter/z-ai/glm-5.3-free",
+                                          "status":  "TIMEOUT",
+                                          "checked_at":  "2026-09-16T13:21:50",
+                                          "fail_count":  2,
+                                          "open_until":  "2026-09-16T13:36:50"
+                                      }
+}

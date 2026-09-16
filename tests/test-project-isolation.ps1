@@ -287,6 +287,39 @@ if (Test-Path -LiteralPath $TaskState -PathType Leaf) {
 
 if ($caseOk) { Write-Host "PASS f) per-project claim scope" } else { Write-Host "FAIL f) per-project claim scope" }
 
+# --- g) BUG-025: in-process create-project (exit code + worktree mode) ------
+
+Write-Host ""
+Write-Host "CASE: g) in-process create-project (BUG-025)"
+$caseOk = $true
+
+$ProjectC = "isoC-$suffix"
+
+# Invoked in the SAME process: create-project.ps1 sets $ErrorActionPreference='Stop'
+# and dot-sources project-worktree.ps1, which is exactly the path that made git's
+# stderr look like a failure (BUG-025). The information stream (6) is captured so
+# the reported worktree mode can be asserted; records are joined manually instead
+# of via Out-String so a long line cannot be wrapped in the middle of a needle.
+$createCOutput = @(& $CreateProject -ProjectName $ProjectC -TemplateType "full-stack" 6>&1)
+$createCExit = $LASTEXITCODE
+$createCText = ($createCOutput | ForEach-Object { [string]$_ }) -join "`n"
+
+$caseOk = (Write-Check ("in-process create-project sets LASTEXITCODE to 0 (got " + $createCExit + ")") ($createCExit -eq 0)) -and $caseOk
+$caseOk = (Write-Check "in-process create-project created the project directory" (Test-Path -LiteralPath (Join-Path $Root "projects\$ProjectC") -PathType Container)) -and $caseOk
+
+if ($gitRepo) {
+    $worktreeC = Join-Path $Root ".agents\worktrees\$ProjectC"
+    $caseOk = (Write-Check "in-process worktree directory exists" (Test-Path -LiteralPath $worktreeC -PathType Container)) -and $caseOk
+    $infoC = Get-ProjectWorktree -Project $ProjectC -Root $Root
+    $caseOk = (Write-Check "in-process worktree is registered in the repo" ($infoC.registered -eq $true)) -and $caseOk
+    $caseOk = (Write-Check "create-project reports mode=git-worktree (BUG-025)" (Test-ContainsText -Text $createCText -Needle "[mode: git-worktree")) -and $caseOk
+    $caseOk = (Write-Check "create-project reports no false git failure (BUG-025)" (-not (Test-ContainsText -Text $createCText -Needle "git worktree add failed"))) -and $caseOk
+} else {
+    Write-Host "    WARN: git not available - git-worktree mode assertions skipped"
+}
+
+if ($caseOk) { Write-Host "PASS g) in-process create-project" } else { Write-Host "FAIL g) in-process create-project" }
+
 # --- isolation of the test itself -----------------------------------------
 
 Write-Host ""
@@ -304,8 +337,14 @@ Write-Host "=================================================="
 Write-Host ("SUMMARY: passed=" + $script:Pass + " failed=" + $script:Fail + " total=" + $total)
 Write-Host "=================================================="
 
-foreach ($project in @($ProjectA, $ProjectB)) {
-    try { $null = Remove-ProjectWorktree -Project $project -Root $Root } catch { }
+foreach ($project in @($ProjectA, $ProjectB, $ProjectC)) {
+    try {
+        $null = Remove-ProjectWorktree -Project $project -Root $Root
+    } catch {
+        # Best-effort cleanup: the whole temp root is removed below, so a failure
+        # here must not fail the suite - but it is reported instead of swallowed.
+        Write-Host ("    cleanup note: worktree remove failed for " + $project + ": " + $_.Exception.Message)
+    }
 }
 if ($gitRepo) { $null = & git -C $Root worktree prune 2>&1 }
 

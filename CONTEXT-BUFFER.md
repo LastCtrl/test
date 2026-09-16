@@ -2921,3 +2921,12 @@ MCP_USED: []
 COMPLIANCE: true
 STATUS: resolved
 ================================================================================
+
+================================================================================
+[TIME] dev-3 -> team-lead:
+TYPE: update | PRIORITY: medium
+CONTENT: BUG-025 FIXED (pre-existing major) + 2 minors from QA P2 soak. project-worktree.ps1: added Invoke-GitCapture (locally lowers ErrorActionPreference to Continue around git, captures stdout+stderr as one stream, returns ExitCode/Output, restores EAP in finally); New-ProjectWorktree and Remove-ProjectWorktree now use it instead of '& git ... 2>&1' (which threw NativeCommandError under create-project's EAP=Stop even on SUCCESS, giving mode=directory + false 'git worktree add failed' while the worktree was really registered). create-project.ps1: explicit 'exit 0' on the success path so in-process '& create-project.ps1; LASTEXITCODE' is 0 (was -1). Minor: comment at project-worktree.ps1:184 -> the deliberately-swallowed worktree-boundary failure now has a comment + Write-Verbose; empty catch in tests/test-soak-5projects.ps1 cleanup now logs a diagnostic (same for test-project-isolation cleanup). Minor: Test-ProjectName now rejects consecutive spaces (contract says 'single spaces'), header comment aligned; tests/test-soak-5projects.ps1 invalidNames gained 'a  b'. New regression test tests/test-project-isolation.ps1 CASE g): in-process create-project -> LASTEXITCODE==0, mode=git-worktree, no false failure (info stream 6 captured; records joined manually to avoid Out-String wrapping the needle). KNOWLEDGE-BASE BUG-025 -> FIXED. Evidence: baseline repro -1/directory/registered=True vs fixed 0/git-worktree/registered=True; suites all exit 0: test-project-isolation 48/48, test-soak-5projects 68/68, test-pipeline 10/10, verify-phase 41/41. Files: .agents/scripts/project-worktree.ps1, .agents/scripts/create-project.ps1, tests/test-project-isolation.ps1, tests/test-soak-5projects.ps1, KNOWLEDGE-BASE.md.
+SKILLS_LOADED: ["evidence-discipline"]
+MCP_USED: ["sequential-thinking"]
+COMPLIANCE: true
+STATUS: resolved

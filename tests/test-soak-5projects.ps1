@@ -179,7 +179,7 @@ foreach ($name in $ProjectNames) {
 }
 
 $invalidNames = @('..', '../evil', '..\..\evil', 'a/b', 'a\b', 'a.b', 'a:b', 'a*b', 'a?b', 'a"b', 'a<b', 'a>b', 'a|b',
-    ' a', 'a ', 'a.', '.a', 'a..b', 'CON', 'con', 'PRN', 'AUX', 'NUL', 'Com1', 'COM9', 'LPT1', 'lpt9', '', ' ', ($('x' * 64)))
+    ' a', 'a ', 'a  b', 'a.', '.a', 'a..b', 'CON', 'con', 'PRN', 'AUX', 'NUL', 'Com1', 'COM9', 'LPT1', 'lpt9', '', ' ', ($('x' * 64)))
 $allRejected = $true
 foreach ($bad in $invalidNames) {
     if (Test-ProjectName -ProjectName $bad) { $allRejected = $false; Write-Host ('    DIAG: wrongly accepted: [' + $bad + ']') }
@@ -512,7 +512,14 @@ Write-Host ('SUMMARY: passed=' + $script:Pass + ' failed=' + $script:Fail + ' to
 Write-Host '=================================================='
 
 foreach ($name in $ProjectNames) {
-    try { $null = Remove-ProjectWorktree -Project $name -Root $Root } catch { }
+    try {
+        $null = Remove-ProjectWorktree -Project $name -Root $Root
+    } catch {
+        # Best-effort cleanup: the whole temp root is deleted below, so a failure
+        # here must not fail the suite - but it is reported for diagnosis instead
+        # of being silently swallowed.
+        Write-Host ('    cleanup note: worktree remove failed for ' + $name + ': ' + $_.Exception.Message)
+    }
 }
 if ($gitAvailable) { $null = & git -C $Root worktree prune 2>&1 }
 

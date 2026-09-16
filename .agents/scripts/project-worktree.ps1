@@ -13,7 +13,7 @@
 #
 # Naming: Test-ProjectName (below) is the single whitelist shared with
 # create-project.ps1 / project-queue.ps1. It accepts Unicode letters (Cyrillic
-# included), digits, '_', '-' and spaces, while rejecting path traversal,
+# included), digits, '_', '-' and single spaces, while rejecting path traversal,
 # Windows-invalid characters, reserved device names and trailing spaces/dots.
 # Only a git ref name is transformed (a space there is percent-encoded as %20);
 # the worktree path and the CONTEXT-BUFFER always keep the original name.
@@ -89,6 +89,14 @@ function Test-ProjectName {
             $Reason.Value = "only letters (any language), digits, '_', '-' and single spaces are allowed; " +
                 "the name must start with a letter or a digit and must not contain / \ . : * ? "" < > |"
         }
+        return $false
+    }
+    # The contract promises SINGLE spaces; the character class alone would also
+    # accept "a  b", so consecutive spaces are rejected explicitly (the name may
+    # not end with a space - checked below - and cannot start with one because of
+    # the anchor, so a run of two spaces is the only remaining gap).
+    if ($ProjectName.Contains('  ')) {
+        if ($null -ne $Reason) { $Reason.Value = "only single spaces are allowed (consecutive spaces found)" }
         return $false
     }
     if ($ProjectName.Contains('..')) {
@@ -181,7 +189,15 @@ function Test-ProjectPathBoundary {
     $full = Get-NormalizedPath -Path $Path
     $bases = @()
     try { $bases += (Get-ProjectDir -Project $Project -Root $Root) } catch { return $false }
-    try { $bases += (Get-ProjectWorktreePath -Project $Project -Root $Root) } catch { }
+    # The worktree path is a SECONDARY boundary: if it cannot be resolved (invalid
+    # name / traversal) the projects\<name>\ boundary above has already decided the
+    # answer, so the failure is swallowed on purpose - but it is traced instead of
+    # being silently ignored.
+    try {
+        $bases += (Get-ProjectWorktreePath -Project $Project -Root $Root)
+    } catch {
+        Write-Verbose "project boundary: worktree path unavailable for '$Project': $($_.Exception.Message)"
+    }
 
     foreach ($b in $bases) {
         $boundary = (Get-NormalizedPath -Path $b).TrimEnd('\') + '\'
@@ -197,6 +213,40 @@ function Test-ProjectContextLeak {
 }
 
 # --- git helpers -----------------------------------------------------------
+
+# Run a git command and capture BOTH stdout and stderr in ONE stream without
+# letting the caller's $ErrorActionPreference turn git's stderr into a
+# terminating error. On PowerShell 5.1 a native command that writes to stderr
+# while EAP is 'Stop' raises a NativeCommandError - and git prints its progress
+# ("Preparing worktree ...") to stderr even on SUCCESS. Because create-project.ps1
+# sets $ErrorActionPreference='Stop' before dot-sourcing this helper, the former
+# `& git ... 2>&1` made New-ProjectWorktree treat a SUCCESSFUL registration as a
+# failure: mode='directory' plus a bogus "git worktree add failed" reason while
+# the worktree really existed (BUG-025). The preference is lowered only for the
+# duration of the call and restored afterwards.
+# Returns { ExitCode; Output }; stderr lines are part of Output.
+function Invoke-GitCapture {
+    param(
+        [Parameter(Mandatory = $true)][string]$Root,
+        [Parameter(Mandatory = $true)][string[]]$GitArguments
+    )
+
+    $savedErrorActionPreference = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    $output = @()
+    $exitCode = 1
+    try {
+        $output = @(& git -C $Root @GitArguments 2>&1)
+        $exitCode = $LASTEXITCODE
+    } catch {
+        $output = @($_.Exception.Message)
+        $exitCode = 1
+    } finally {
+        $ErrorActionPreference = $savedErrorActionPreference
+    }
+
+    return [PSCustomObject]@{ ExitCode = $exitCode; Output = $output }
+}
 
 function Test-IsGitRepository {
     param([string]$Root)
@@ -381,19 +431,16 @@ function New-ProjectWorktree {
     if ($canUseGit) {
         $branchExists = Test-GitBranchExists -Root $base -Branch $branch
         if ($branchExists) {
-            $gitArgs = @('-C', $base, 'worktree', 'add', $path, $branch)
+            $gitArgs = @('worktree', 'add', $path, $branch)
         } else {
-            $gitArgs = @('-C', $base, 'worktree', 'add', '-b', $branch, $path)
+            $gitArgs = @('worktree', 'add', '-b', $branch, $path)
         }
-        $gitOutput = @()
-        $exitCode = 1
-        try {
-            $gitOutput = @(& git @gitArgs 2>&1)
-            $exitCode = $LASTEXITCODE
-        } catch {
-            $gitOutput = @($_.Exception.Message)
-            $exitCode = 1
-        }
+        # BUG-025: Invoke-GitCapture lowers $ErrorActionPreference for the call,
+        # so git's stderr progress no longer looks like a terminating error when
+        # the caller runs with EAP='Stop'.
+        $gitRun = Invoke-GitCapture -Root $base -GitArguments $gitArgs
+        $gitOutput = @($gitRun.Output)
+        $exitCode = $gitRun.ExitCode
         if ($exitCode -eq 0 -and (Test-Path -LiteralPath $path -PathType Container)) {
             $result.mode = "git-worktree"
             $result.created = $true
@@ -445,8 +492,11 @@ function Remove-ProjectWorktree {
 
     $registration = Get-ProjectWorktreeRegistration -Project $Project -Root $base
     if ($null -ne $registration) {
-        $null = & git -C $base worktree remove --force $path 2>&1
-        $null = & git -C $base branch -D $branch 2>&1
+        # BUG-025 class: run through Invoke-GitCapture so a caller with
+        # $ErrorActionPreference='Stop' does not turn git's stderr into a
+        # terminating error (the removal is best-effort either way).
+        $null = Invoke-GitCapture -Root $base -GitArguments @('worktree', 'remove', '--force', $path)
+        $null = Invoke-GitCapture -Root $base -GitArguments @('branch', '-D', $branch)
     }
     if (Test-Path -LiteralPath $path) {
         Remove-Item -LiteralPath $path -Recurse -Force -ErrorAction SilentlyContinue

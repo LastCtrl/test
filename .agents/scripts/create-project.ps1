@@ -369,3 +369,11 @@ Write-Host "Next steps:" -ForegroundColor Yellow
 Write-Host "  1. cd $projectDir" -ForegroundColor White
 Write-Host "  2. git init ; git add -A ; git commit -m 'init'" -ForegroundColor White
 Write-Host "  3. Start coding!" -ForegroundColor White
+
+# Explicit success exit code (BUG-025). When this script is invoked in the SAME
+# process (`& .\create-project.ps1 ...`), the caller reads $LASTEXITCODE. Without
+# an explicit `exit 0` that value leaked from the last native command (or stayed
+# at -1 after a caught git stderr), so a fully SUCCESSFUL run looked like a
+# failure in-process; `powershell -File` hid the problem because PowerShell
+# defaults the process exit code to 0 in that mode.
+exit 0

@@ -1695,3 +1695,87 @@ TYPE: update | PRIORITY: medium | Project: 1с-centr1507
 CONTENT: Обмен ТелефоныОрганизаций, правка "отправка пометки удаления в центр" внесена в выгрузку центральной: Catalogs\ТелефоныОрганизаций\Ext\ObjectModule.bsl (блок сравнения пометки в ПередЗаписью + новая процедура ПриЗаписи с вызовом MEUSDE_Module.ЗаписатьВБазуПолучателя). Артефакты: projects\1с-centr1507\output\fix-помеченные-удаление\ (DIFF.md, ИНСТРУКЦИЯ.md, original/new). Корневая причина (подтверждена): отправка висела только на ПослеЗаписи формы элемента, пометка удаления события формы не вызывает. Заказчик вставит файл сам; его оценка 3/10 — переусложнено (50 строк вместо минимального хука). ЗАВТРА: 1) переделать фикс проще по замечанию заказчика; 2) дозасылка ~100 старых помеченных (внешняя обработка .epf, при желании авто-при-обновлении); 3) ждём выгрузку базы филиала для сверки. СШП-канал для этого справочника не задействован (data-dependent, moot).
 SKILLS_LOADED: [], MCP_USED: ["sequential-thinking"], COMPLIANCE: true
 STATUS: partial (продолжение завтра)
+
+[2026-09-15 RETROACTIVE - recorded by team-lead; agent task cancelled (infra: snapshot Busy) but work landed] team-lead-2 (acting dev) -> team-lead:
+TYPE: update | PRIORITY: high
+Project: pong-advanced
+CONTENT: Клиентский пакет по фидбеку. Меню: единый блок настроек + ОДНА кнопка «Создать комнату» (btn-host) и «Присоединиться» (btn-join); удалены дубли btn-custom-room/btn-custom-local и отдельный экран custom-room-screen; сохранены E2E-id (btn-ai/btn-local-pvp/btn-4p/btn-host/btn-join/btn-help/btn-profile/btn-shop/btn-leaderboard). toasts.ts:158 showError(message, subtitle) — правый верхний угол, красный стиль. Магазин: после покупки/надевания refreshUser + перерисовка (баланс/статусы сразу, без перезагрузки); ошибки 400/409 → showError («Недостаточно XP: нужно N, доступно M»). Итог матча: App.ts:352 showMatchSummary + metaView.formatMatchSummary из ответа POST /api/stats (result/xpGained/eloDelta/стрик/unlocked), закрывается кнопкой/авто, не мешает новой игре (App.ts:425). Экран «Достижения»: profile.ts:262 renderAchievementsScreen + btn-achievements (index.html:197), прогресс-бары progress/condition_value, GET /api/users/:id/achievements. Админ-бейдж при user.isAdmin. Рендер паттернов/форм: Renderer.ts (paddlePattern/ballPattern/trailPattern + secondary) :36-46,:99-107; shop-preview те же паттерны; bgFit — заметность legendary на светлой/тёмной теме. Тесты клиентские (+27; итог 367/367). Верификация тимлида (агенты-приёмщики не стартовали): tsc 0, build 0, 367/367, lint 14e/45w, E2E 6/6; UI-смоук на :3333 — меню/достижения(0 из 6)/магазин(115, баланс, «Надето»)/назад, 0 pageerror.
+SKILLS_LOADED: ["superpowers-implement"]
+MCP_USED: ["sequential-thinking"]
+COMPLIANCE: true
+STATUS: resolved
+
+[2026-09-15] team-lead -> bus:
+TYPE: update | PRIORITY: high
+Project: pong-advanced
+CONTENT: Круг правок по плейтест-фидбеку ЗАВЕРШЁН (P3-F, 11 пунктов). (1) Портал-петля (critical gameplay) исправлена в shared/arenas.ts checkTeleport: выход мяча ВНЕ зоны назначения (R+r+ε вдоль вектора), кулдаун на обе зоны пары, запрет телепорта при движении наружу ((ball-center)·v>0), ≤1 телепорт/0.5с. (2) ghost нерф 2с/×0.8/alpha .55; heavy 10с + ракетка ×0.5 на 3с при попадании (refresh, без стака). (3) отсчёт 3-2-1 (~1.35с) локально+LAN. (4) меню: один экран настроек + одна LAN-кнопка, дубли убраны. (5) showError-уведомления. (6) баланс обновляется сразу. (7) итог матча (xpGained/eloDelta/стрик/unlocked). (8) экран достижений с прогрессом. (9) магазин 115 предметов с паттернами/формами. (10) админ last: всё бесплатно, isAdmin. (11) контраст legendary. Верификация (fallback тимлида, §3.3): tsc 0, build 0, 367/367, lint 14e/45w, E2E 6/6, HTTP-смоук (115 предметов, админ owned=115, xpGained=200/eloDelta=16, achievements progress), UI-смоук (меню/достижения/магазин, 0 pageerror). Прод перезапущен (PID 12484). BLOCKER: запуски qa-engineer/code-reviewer для этого пакета отменялись (инфраструктура агентов: snapshot Busy / cancel) — независимая приёмка ПАКЕТА F отложена; фолбэк-верификация выполнена тимлидом. Backlog: пункт из dev-1 (не обновил существующий тест meta.test.ts:420 — поправлен тимлидом на COSMETIC_CATALOG.length), powerups_collected не трекается, opponent_elo не отправляется, LAN-rematch по ended-комнате, предсуществующие lint-warnings.
+SKILLS_LOADED: []
+MCP_USED: []
+COMPLIANCE: true
+STATUS: resolved
+
+[2026-09-16 08:25] dev-1 -> team-lead:
+TYPE: update | PRIORITY: medium
+Project: 1с-centr1507
+CONTENT: Упрощение правки ObjectModule.bsl (Справочник.ТелефоныОрганизаций) по замечанию заказчика (3/10, переусложнено). Модуль возвращён к оригиналу ObjectModule.original.bsl (95 строк, SHA256 FA5145FE...27F4B4) и добавлена РОВНО одна процедура ПриЗаписи(Отказ): 5 строк кода + 1 пустая строка-разделитель = вставка 6 строк. Итог: рабочий файл = ObjectModule.new.bsl, 101 строка, 7725 байт, SHA256 9C2ACF51A92146D8AABCEDACA7844B79081F3E232CDDC565694AB34E3804F8CB; BOM=true, CRLF=101, bareLF=0, табы 178 (было 174), отступов пробелами 0, процедур 3/3, скобки 33/33. Убрано всё переусложнение v1/v2: запрос текущей ПометкаУдаления, флаг дсОтправитьПометкуУдаления в ДополнительныеСвойства, Попытка, проверка возврата УдалосьОтправить и ЗаписьЖурналаРегистрации. Существующие строки не изменены (вырезание строк 91-96 даёт построчно оригинал 95/95). Файлы: Centr1507\Catalogs\ТелефоныОрганизаций\Ext\ObjectModule.bsl (рабочий), output\fix-помеченные-удаление\{ObjectModule.new.bsl, DIFF.md, ИНСТРУКЦИЯ.md}. Платформа не запускалась, другие проекты не тронуты, временный файл удалён. Scope: в выгрузке Centr1507 за последние 3 дня изменён только этот файл (mtime; git не отслеживает projects\ - .gitignore:66).
+NOT ENOUGH EVIDENCE: рантайм-поведение MEUSDE_Module.ЗаписатьВБазуПолучателя при пометке удаления (платформа не запускалась по ограничению ТЗ).
+SKILLS_LOADED: ["evidence-discipline", "1c-dev", "windows-safety"]
+MCP_USED: ["sequential-thinking"]
+MCP_NOTES: context7 и hermes-atlas не вызывались (в задаче нет внешних библиотек/фреймворков — чистый текст BSL-модуля; документация платформы не требовалась).
+COMPLIANCE: true
+STATUS: resolved
+
+[2026-09-16 08:30] qa-engineer -> team-lead:
+TYPE: update | PRIORITY: medium
+Project: agent-hq
+CONTENT: РЕ-РЕВЬЮ фикса P1-1 (коммит 3e0763e) — ВЕРДИКТ: ПРИНЯТО. Worktree == коммит (git diff пуст). Все 6 дефектов закрыты, доказательства независимые (не самоотчёт dev-3):
+(1) BUG-019 молчаливый пропуск revoke — ИСПРАВЛЕН. Код: Read-ClaimDataChecked (bounded retry, явный исход {ok,data,reason,path}) task-state.ps1:166-243; re-check revoke с retry 3×150ms :580; при read-fail LastWriteTime в re-check НЕ участвует (grep: единственный фолбэк mtime — на уровне скана :528, задокументирован :504-505) — отзыв по возрасту stale-скана + Write-Warning :593-597; delete-ошибки логируются :609-618. Прогон с искусственной ошибкой (FileShare.None-лок на состаренном lease 7200s): 2 warnings («unreadable after retries… revoking on stale scan age 7200s» + «failed to delete»), revoked=0; после разблокировки revoked=1 (age=7201s owner=worker-1), чистый revoke — 0 warnings. Update-Heartbeat под локом: false + warning, lease НЕ пересобран (agent='owner-A' сохранён).
+(2) RISK-001 revoke не scheduled — ИСПРАВЛЕН. Invoke-StaleClaimSweep inbox-poller.ps1:597-607, вызов в начале Process-Inbox :612 (до skip-ветки). E2E-прогон в песочнице (AGENT_HQ_ROOT=temp + fake-opencode.ps1): pre-seeded lease age 7200s owner 'crashed-worker' → poller -Once: лог «♻️ Revoked stale claim: task 'e2e-recheck-001' (age 7200s, owner 'crashed-worker')» (строка 4 лога ДО «Calling opencode run» строка 5), «Already claimed» skips=0, outbox создан, архив создан, lease после прогона отсутствует, exit 0.
+(3) RISK-001b heartbeat/TTL/owner — ИСПРАВЛЕН. Heartbeat в проде: :542 (перед attempt-1), :560 (между attempt-1/2), цикл ожидания Job срезом ≤30s + Update-Heartbeat :308-317. TTL=2×900+300=2100s > наихудших 2×900s (:246,:259, claim :509). Owner-guard прогоном: Release -Agent owner-B → false + warning, lease цел; Release -Agent owner-A → true. Call-sites с владельцем: poller :590, project-queue Complete :427, Dead :479.
+(4)-(6) Cosmetic — все подтверждены: #4 комментарий TOCTOU честный «best-effort, small TOCTOU window» task-state.ps1:555-559; #5 attempt: ре-claim после revoke = 2 (прогон), marker-файл потребляется при claim (:369-370 Clear); #6 Get-Claim: под локом → $null БЕЗ warnings (0), при реальном битом JSON → 1 warning «corrupt (invalid JSON)» (:490-498).
+СТАБИЛЬНОСТЬ: tests\test-task-state.ps1 5 прогонов подряд → каждый SUMMARY passed=5 failed=0 total=5, EXIT=0 (флейк BUG-019 не воспроизведён).
+РЕГРЕСС: test-vault 8/8 exit0; test-pipeline 9/9 exit0; test-discovery RESULT PASS 22/0/0 WARN=1; test-false-done 17/17 exit0; verify-phase 41/41 exit0.
+NON-BLOCKING NOTES (не дефекты этой итерации): (a) sweep в поллере использует фикс. TTL 900s (:600) при lease_seconds 2100 — безопасно благодаря heartbeat каждые ≤30s (сравнение по heartbeat_at); деградация возможна только при persistent-сбое записи heartbeat (тогда чужой отзыв переживёт owner-guard release); (b) Get-StaleClaims:528 сохраняет mtime-фолбэк на уровне скана — задокументированный дизайн для corrupt-lease. KNOWLEDGE-BASE BUG-019/RISK-001 = FIXED, резолвы соответствуют коду. Временные харнессы удалены (temp-песочницы подчистлены, проверено Test-Path=False).
+SKILLS_LOADED: ["evidence-discipline"]
+MCP_USED: []
+MCP_NOTES: context7/sequential-thinking/hermes-atlas не вызывались — ревью собственного PS-кода репо, внешних библиотек нет; доказательства получены чтением файлов и прогонами.
+COMPLIANCE: true
+STATUS: resolved
+
+================================================================================
+[2026-09-16] dev-1 -> team-lead:
+TYPE: update | PRIORITY: medium
+Project: 1с-centr1507
+CONTENT: Внешняя обработка дозасылки пометок удаления ТелефоныОрганизаций — ИСХОДНИКИ ГОТОВЫ, .EPF НЕ СОБРАН (платформа без лицензии). Статус: PARTIAL.
+АРТЕФАКТЫ (все созданы, UTF-8 BOM + CRLF; корень: projects\1с-centr1507\output\Обработка-ОтправкаПомеченныхТелефонов\):
+ - src\ОтправкаПомеченныхТелефонов\ОтправкаПомеченныхТелефонов.xml (2067 б) — MetaDataObject/ExternalDataProcessor, version=2.15, uuid=95c70fbd-cdba-4c58-85ab-f28f482b906f, ClassId c3831ec8-d8d5-4f93-8a22-f9bfae07327f, GeneratedType ExternalDataProcessorObject.ОтправкаПомеченныхТелефонов, DefaultForm=ExternalDataProcessor.ОтправкаПомеченныхТелефонов.Form.Форма, ChildObjects\Form=Форма;
+ - ...\ОтправкаПомеченныхТелефонов\Forms\Форма.xml (1483 б) — метаданные управляемой формы (FormType=Managed, UsePurposes=PlatformApplication);
+ - ...\Forms\Форма\Ext\Form.xml (4104 б) — реквизиты формы Объект (MainAttribute, cfg:ExternalDataProcessorObject.*) + РезультатСообщение (xs:string, Length=0), поле РезультатСообщение (ReadOnly+MultiLine), группа кнопок, команды ОтправитьПомеченные и Закрыть, событие OnCreateAtServer; extension-элементы ContextMenu/ExtendedTooltip у каждого элемента, id уникальны (1..9 в ChildItems, 1..2 в Attributes/Commands);
+ - ...\Forms\Форма\Ext\Form\Module.bsl (80 строк) — ПриСозданииНаСервере: гард ЭтоЦентральнаяБаза() -> предупреждение; &НаКлиенте ОтправитьПомеченные(Команда) -> серверная функция; &НаКлиенте Закрыть(Команда) -> ЭтаФорма.Закрыть(); &НаСервере Функция ОтправитьПомеченныеНаСервере(): гард центра, запрос "ВЫБРАТЬ Ссылка, Организация ИЗ Справочник.ТелефоныОрганизаций КАК ТелефоныОрганизаций ГДЕ ПометкаУдаления", цикл с Попытка/Исключение вокруг MEUSDE_Module.ЗаписатьВБазуПолучателя(Выборка.Ссылка, Выборка.Организация), счётчики Всего/Отправлено/Ошибок + накопление текстов ошибок, Возврат строки со сводкой;
+ - ...\Ext\ObjectModule.bsl (274 б) — пустой каркас стандартных областей;
+ - ИНСТРУКЦИЯ.md — запуск в филиале, поведение (повторный запуск безопасен, гард центра), куда смотреть в центре (журнал регистрации, фильтр MEUSDE; HTTP-сервис MEUSDE есть в HTTPServices выгрузки), команды сборки/обратной выгрузки, раздел "что проверено/не проверено";
+ - Сборка-epf.log — точные команды и verbatim-ответ платформы.
+СБОРКА (попытка, артефакт Сборка-epf.log): CREATEINFOBASE File="C:\...\Temp\opencode\epfbuild" — успешно (1Cv8.1CD 2 506 752 б); DESIGNER /F <temp base> /LoadExternalDataProcessorOrReportFromFiles "<root xml>" "<epf>" /DisableStartupDialogs /DisableStartupMessages /Out <log> -> ответ платформы: "Не найдена лицензия. Не обнаружен ключ защиты программы или полученная программная лицензия!" Файл .epf не создан (Test-Path=False). Лицензионных файлов у платформы нет (C:\Program Files (x86)\1cv8\8.3.22.1750\licenses содержит только 3rd_party\*.txt), других версий платформы на машине нет; обратный дамп DumpExternalDataProcessorOrReportToFiles по той же причине не выполнялся.
+ПРОВЕРЕНО (артефакты проверки): (1) все 3 XML well-formed — [xml].Load() OK, корни MetaDataObject/MetaDataObject/Form, version=2.15; (2) структура каталогов и состав XML сверены со спецификацией формата выгрузки внешней обработки (docs/1c-epf-spec.md формата 2.x + epf-init) и с реальными файлами выгрузки Centr1507 (эталоны: DataProcessors\СверкаКадровыхДанныхТелефоновОрганизации\Forms\ФормаЗамены\Ext\Form.xml — структура Form.xml; ...\Forms\Форма.xml — метаданные формы); (3) MEUSDE_Module.ЗаписатьВБазуПолучателя(Ссылка, ОрганизацияОтправитель, ...) Экспорт — CommonModules\MEUSDE_Module\Ext\Module.bsl:3123-3149; ЭтоЦентральнаяБаза() Экспорт — :329-337; (4) реквизит Организация у Справочник.ТелефоныОрганизаций — Catalogs\ТелефоныОрганизаций.xml:794-806 (тип cfg:CatalogRef.Организации); (5) паттерн "модульная процедура с именем метода формы + квалифицированный ЭтаФорма.<Метод>()" подтверждён в этой же конфигурации: InformationRegisters\ЗначенияКоэффициентовСебестоимости\Forms\ФормаЗаписиГруппы\Ext\Form\Module.bsl:146-153 (&НаКлиенте Процедура Записать(Команда) ... ЭтаФорма.Закрыть()) -> Процедура Закрыть(Команда)+ЭтаФорма.Закрыть() безопасен, несмотря на одноимённый метод формы.
+NOT ENOUGH EVIDENCE: сборка .epf и загрузка формы платформой (компиляция модуля формы, проверка самой схемы logform) — платформа недоступна без лицензии; рантайм-поведение обработки на реальной базе (HTTP-обмен с центром) не проверялось. Из InputField сознательно убран <Height> (порядок элементов схемы платформой не подтверждён) — оставлены только проверенные по реальному дампу ReadOnly/MultiLine.
+Временные файлы (temp-база epfbuild, логи попытки, вспомогательные списки имён) удалены; в выгрузке Centr1507 ничего не менялось.
+SKILLS_LOADED: ["evidence-discipline", "1c-epf-build", "1c-form-patterns", "1c-dev", "windows-safety"]
+MCP_USED: ["sequential-thinking", "hermes-atlas-mcp: offline (fetch failed)", "context7: not applicable — 1С/BSL в каталоге context7 отсутствуют"]
+COMPLIANCE: true
+STATUS: partial
+
+================================================================================
+[2026-09-15] team-lead -> bus: P1-1 ЗАКРЫТ (claim/lease/heartbeat/stale-sweep)
+TYPE: update | PRIORITY: high
+================================================================================
+Коммиты 084c7d9, 3e0763e. task-state.ps1 (атомарный claim через CreateNew, heartbeat, TTL=2xJob+300, owner-checked release, attempt increment, retry-read); poller: stale-sweep в цикле + Claim/Release try/finally; project-queue: Release+Revoke.
+Цикл: qa ВОЗВРАТ (3 real major) -> dev-3 фикс -> ре-ревью ПРИНЯТО.
+Тесты: test-task-state 5/5 (5 прогонов), vault 8/8, pipeline 9/9, discovery 22/0, false-done 17/17, verify-phase 41/41.
+Оценки: dev-3 7+8, qa-engineer(qwen) 9.
+Модель-заметка: free-tier opencode исчерпан -> qa-engineer переведён на opencode-go/qwen3.8-flash (коммит e869c0a).
+ОСТАЛОСЬ P1: per-project worktree+buffer, единый daemon+worker pool, tracer/scoring v2, prompt-gate scrub. Потом P2.
+SKILLS_LOADED: []
+MCP_USED: []
+COMPLIANCE: true
+STATUS: resolved
+================================================================================

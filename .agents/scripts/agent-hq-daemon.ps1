@@ -11,7 +11,8 @@
 #
 # РЕЖИМЫ (все завершаются сами):
 #   -Once           : один проход (scan -> обработать всё найденное -> выход)
-#   -Drain          : проходы, пока scan не вернёт 0 сообщений (или не истёк лимит)
+#   -Drain          : проходы, пока scan не вернёт 0 сообщений, пока есть прогресс
+#                     (изменение состояния хотя бы одного сообщения) или не истёк лимит
 #   (без флагов)    : то же, но на пустом проходе пауза -PollIntervalSeconds,
 #                     всё равно ограничено -MaxDurationSeconds
 #
@@ -242,8 +243,21 @@ function Invoke-DaemonRun {
     }
 
     # Infrastructure pre-checks: without the CLI the whole run is pointless.
-    if (-not (Test-OpencodeAvailable)) { $script:FatalErrors++ ; $script:ExitCode = 1 ; return }
-    if (-not (Test-ScriptSyntax -Path $script:DaemonScriptPath)) { $script:FatalErrors++ ; $script:ExitCode = 1 ; return }
+    # BUG-020 minor: the run report is the artifact operators (and the test suite)
+    # read, so it is written on the fatal path too — otherwise a failed run looks
+    # like "no run at all".
+    if (-not (Test-OpencodeAvailable)) {
+        $script:FatalErrors++
+        $script:ExitCode = 1
+        $null = Write-DaemonReport -ExitCode 1 -Remaining (@(Get-PendingInboxItems).Count)
+        return
+    }
+    if (-not (Test-ScriptSyntax -Path $script:DaemonScriptPath)) {
+        $script:FatalErrors++
+        $script:ExitCode = 1
+        $null = Write-DaemonReport -ExitCode 1 -Remaining (@(Get-PendingInboxItems).Count)
+        return
+    }
 
     while ($true) {
         if ((Get-Date) -ge $deadline) {
@@ -270,6 +284,10 @@ function Invoke-DaemonRun {
         }
 
         Write-Log "📨 Pass $($script:Passes): $($items.Count) message(s) found, pool throttle=$ThrottleLimit"
+        # BUG-020: drain must stop on a pass that changed no message state. A message
+        # reserved by a foreign worker stays in the inbox, so the scan never returns
+        # 0 and -Drain would otherwise spawn worker jobs until the duration bound.
+        $progressBefore = $script:Processed + $script:DeadLettered
         $running = @()
 
         foreach ($item in $items) {
@@ -292,6 +310,14 @@ function Invoke-DaemonRun {
         }
         if ($running.Count -gt 0) {
             $script:Stopped += (Stop-RemainingWorkers -Running $running)
+        }
+
+        # No progress = every item was skipped (nothing to do this pass). For -Drain
+        # that is a terminal condition (nothing will change by scanning again); the
+        # interval mode keeps its own polling rhythm.
+        if ($Drain -and ($script:Processed + $script:DeadLettered) -eq $progressBefore) {
+            Write-Log "🛑 Pass $($script:Passes): no progress (no message changed state) — drain finishing early"
+            break
         }
 
         if ($Once) { break }

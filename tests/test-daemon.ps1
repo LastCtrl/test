@@ -1,4 +1,4 @@
-# test-daemon.ps1 - independent harness for agent-hq-daemon.ps1 (P1-3 worker pool).
+﻿# test-daemon.ps1 - independent harness for agent-hq-daemon.ps1 (P1-3 worker pool).
 # Pure PowerShell 5.1 (no Pester). Every case runs in an isolated temporary root and
 # drives .agents\scripts\agent-hq-daemon.ps1 as a CHILD process (so the real exit
 # code is asserted and the daemon's own `exit` can never kill this harness), using
@@ -11,7 +11,7 @@
 #   d) ThrottleLimit 1 + slow CLI          -> never more than 1 run at a time
 #   e) pre-existing foreign claim           -> skipped, no outbox, claim survives (no duplicates)
 #   f) -MaxDurationSeconds bound           -> short bounded run, worker stopped, no hang
-#   g) broken AGENT_HQ_OPENCODE             -> exit 1 (infrastructure error)
+#   g) broken AGENT_HQ_OPENCODE             -> exit 1 (infrastructure error, report written)
 #   h) -Once                                -> single pass processes everything
 #   i) -DryRun                              -> exit 0, nothing processed
 #
@@ -355,11 +355,15 @@ function Test-CaseNoDuplicateProcessing {
     $all = (Write-Check "no archive entry" ((Get-JsonFileCount (Join-Path $Root ".memory\archive")) -eq 0)) -and $all
     $all = (Write-Check "message still waiting in the inbox" ((Get-InboxJsonCount -Root $Root) -eq 1)) -and $all
     $all = (Write-Check "foreign lease survived (owner-guarded release)" (Test-PathLeaf (Join-Path $claimsDir ($id + ".claim.json")))) -and $all
+    # BUG-020: a pass without progress must end -Drain immediately instead of
+    # spinning until -MaxDurationSeconds (240s by default).
+    $all = (Write-Check ("drain exited on no progress (" + [int]$run.Elapsed + "s < 30s)") ($run.Elapsed -lt 30)) -and $all
 
     $report = Get-DaemonReport -Root $Root
     if ($null -ne $report) {
         $all = (Write-Check "report.skipped >= 1" ([int]$report.skipped -ge 1)) -and $all
         $all = (Write-Check "report.processed = 0" ([int]$report.processed -eq 0)) -and $all
+        $all = (Write-Check ("report.passes <= 2 (got " + [int]$report.passes + ")") ([int]$report.passes -le 2)) -and $all
     } else {
         $all = (Write-Check "run report exists" $false) -and $all
     }
@@ -412,10 +416,13 @@ function Test-CaseBadCli {
     $all = (Write-Check "daemon exit code 1 (infrastructure error)" ($run.ExitCode -eq 1)) -and $all
     $all = (Write-Check "no outbox result" ((Get-JsonFileCount (Join-Path $Root ".memory\outbox")) -eq 0)) -and $all
     $all = (Write-Check "message untouched in the inbox" ((Get-InboxJsonCount -Root $Root) -eq 1)) -and $all
+    # BUG-020 minor: the fatal path must still write the run report (unconditional
+    # assertion — a missing report is a failure, not a skipped check).
     $report = Get-DaemonReport -Root $Root
-    if ($null -ne $report) {
-        $all = (Write-Check "report.fatalErrors >= 1" ([int]$report.fatalErrors -ge 1)) -and $all
-    }
+    $all = (Write-Check "run report written on the fatal path" ($null -ne $report)) -and $all
+    $fatalErrors = 0
+    if ($null -ne $report) { $fatalErrors = [int]$report.fatalErrors }
+    $all = (Write-Check "report.fatalErrors >= 1" ($fatalErrors -ge 1)) -and $all
     return $all
 }
 

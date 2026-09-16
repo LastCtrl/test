@@ -260,6 +260,23 @@
 - **NOT a P1-2 regression (pre-existing)**: кириллические имена проектов отвергаются whitelist'ами `create-project.ps1:42` и `project-queue.ps1:101` — оба существовали ДО 4d8b50e (git show 4d8b50e^: … :32/:78). Существующие `1с-centr1507`/`1с-SlyckBuh1509` были несовместимы с project-queue и раньше; P1-2 их не трогает (проверено: git status чист, worktree list 30→30).
 - **Discovered by**: qa-engineer независимая приёмка P1-2, 2026-09-16. **Status**: open (minor, на усмотрение тимлида).
 
+### BUG-020 (P1-3): agent-hq-daemon -Drain — busy-loop до истечения лимита при отсутствии прогресса
+- **Date**: 2026-09-16 (приёмка коммита aacb4dd)
+- **Severity**: major
+- **File**: .agents/scripts/agent-hq-daemon.ps1:248-298 (цикл `while ($true)` в `Invoke-DaemonRun`)
+- **Symptom**: Сообщение, «навечно» забронированное чужим claim (например, длинная задача poller'а с тем же claims-каталогом), остаётся в inbox → скан никогда не возвращает 0 → `-Drain` крутит проходы до `MaxDurationSeconds` (default 240 c), на каждом проходе спавня worker-job. Замер: `-Drain -MaxDurationSeconds 20` с 1 claimed-сообщением → elapsed 21 s, report.passes=37, skipped=37. Побочный эффект в тестах: tests/test-daemon.ps1 кейс e (`-Drain` + foreign claim) выполняется ~240 s → весь suite 270 s вместо ~30 s.
+- **Root cause**: у `-Drain` нет условия выхода «проход не изменил состояние ни одного сообщения» (skipped/dry-run прогрессом не считаются); контракт из docstring («проходы, пока scan не вернёт 0») формально соблюдён, но семантически drain должен завершаться при отсутствии прогресса.
+- **Impact**: при постановке daemon в планировщик с `-Drain` — до 240 s гонки ~120-240 powershell-процессов на один забронированный id, mutex `agent-hq-daemon-mutex` удерживается всё это время → последующие запуски получают exit 1 («Another daemon instance is already running») — шум и ложные алерты.
+- **Fix (ТЗ)**: в `Invoke-DaemonRun` считать дельту `Processed+DeadLettered` за проход; если за проход ни одного изменения состояния и все результаты — skipped, для `-Drain` делать break (для interval-режима — обычный sleep). Кейс e перевести на `-Once` или добавить assert `elapsed < 30` и `passes <= 2`. Ре-ревью по диффу.
+- **Discovered by**: qa-engineer независимая приёмка P1-3 (probes S4 + замер suite), 2026-09-16. **Status**: FIXED (2026-09-16, dev-2) — см. Resolution.
+- **Сопутствующий minor (тот же коммит)**: на fatal-пути (CLI не найден, daemon:245-246) `return` происходит до `Write-DaemonReport` → `daemon-last-run.json` не создаётся (подтверждено: reportExists=False), а тест g (tests/test-daemon.ps1:415-418) проверяет `fatalErrors>=1` только `if ($null -ne $report)` — вакуальная ассерция; самоотчёт dev-2 «g) fatalErrors≥1» артефактом не подтверждён. Fix: писать отчёт и на fatal-пути; ассерцию сделать безусловной.
+- **Resolution (dev-2, 2026-09-16)**:
+  - Early-exit: `Invoke-DaemonRun` запоминает `$progressBefore = Processed + DeadLettered` в начале прохода; после осушения пула, если режим `-Drain` и дельта == 0 → `break` с логом `no progress (no message changed state) — drain finishing early` (agent-hq-daemon.ps1:290,315-321). Interval-режим не изменён (условие под `$Drain`).
+  - Fatal-путь: отчёт пишется ДО `return` на обеих инфраструктурных проверках (agent-hq-daemon.ps1:249-260) → `daemon-last-run.json` создаётся и при отсутствии CLI.
+  - Тесты: кейс e — добавлены безусловные `drain exited on no progress (< 30s)` и `report.passes <= 2`; кейс g — `run report written on the fatal path` + `report.fatalErrors >= 1` без `if ($null -ne $report)` (tests/test-daemon.ps1).
+  - Косметика: tests/test-daemon.ps1 приведён к UTF-8 BOM (как остальные скрипты).
+  - Проверка: probe (foreign claim, `-Drain -MaxDurationSeconds 20`): было passes=37/skipped=37/elapsed 21 s → стало passes=1/skipped=1/elapsed 1.2 s, exit 0. Suite: test-daemon 9/9 exit 0, 31.7 s и 30.6 s (два прогона; было ~270 s). Регресс: test-pipeline 9/9 exit 0, test-task-state 5/5 exit 0.
+
 ## Patterns
 
 ### PowerShell encoding pitfalls on Windows

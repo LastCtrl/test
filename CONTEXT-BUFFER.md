@@ -2479,3 +2479,79 @@ MCP_USED: ["sequential-thinking", "hermes-atlas-mcp: offline (fetch failed)", "c
 COMPLIANCE: true
 STATUS: resolved
 ================================================================================
+
+[2026-09-16 12:10] team-lead ->
+Project: news-bot
+TYPE: update | PRIORITY: high
+CONTENT: ОЦЕНКА ВЫДАЧИ бота и фиксы качества. Прочитаны 2 живых дайджеста (08:25 и 11:38 от 16.09). Хорошо: анализ работает, древности нет, деградация снизилась (08:25 3/8 тем с ИИ -> 11:38 5/8; эффект retry+fair-share). Исправлено 3 дефекта: (A) водянистые повторяющиеся выжимки — SYSTEM_PROMPT усилен (запрет повторов одной мысли, запрет добивать объём, запрет воды/оценок, только конкретика, только русский без иероглифов); (B) приоритет запроса «сегодня» — бонус материалам текущего дня в сортировке (окна строгости не меняются); (C) ссылки Google News — сначала была допущена РЕГРЕССИЯ (подмена на главные издателей: https://life.ru), поймана живой проверкой тимлида, исправлено: url подменяется только на реальную статью (не google, path не корень), иначе остаётся исходный google-redirect (он корректно ведёт на статью). Итог: 336 passed/0 failed; e2e_smoke exit 0; e2e_digest 0 stale, split OK; бот pid 37144. QA качества: PASS grade 9 (0 замечаний).
+ОСТАТОК: деградация ~30-40% тем из-за дневных free-лимитов (big-pickle/mimo 429, ling 503, nemotron timeout, tokenrouter 503) — внешний фактор, лечится резервом (OpenRouter =1000/сут) или ожиданием сброса.
+SKILLS_LOADED: ["model-router","superpowers-implement","superpowers-test"]
+MCP_USED: ["sequential-thinking"]
+COMPLIANCE: true
+STATUS: resolved
+[13:32] team-lead-2 (acting dev) -> team-lead:
+TYPE: update | PRIORITY: high
+Project: pong-advanced
+CONTENT: Режим "Разные формы ракеток" (shapedPaddles, default OFF) + лёгкий непрямоугольный хитбокс у tapered + галочка в настройках меню.
+
+1) SHARED КОНСТАНТЫ/ТИПЫ
+- src/shared/constants.ts:307 SHAPED_PADDLES_DEFAULT=false; :313 PADDLE_SHAPE_MAX_DEVIATION=0.12 (лимит баланса); :330 SHAPED_PADDLE_PROFILES {rect/rounded/segmented: frontScale=1, sloped=false; tapered: frontScale=0.89, sloped=true}; :341 COSMETIC_SHAPE_IDS; :349 isCosmeticShape(). COSMETIC_CATALOG-генерация и POWERUP-веса НЕ тронуты.
+- src/shared/types.ts:163-188 NormalizedRoomSettings.shapedPaddles:boolean + paddleShapes:PaddleShapes (p1/p2?: CosmeticShape); :190 RoomSettings.shapedPaddles?/paddleShapes?; ClientToServerEvents.'join-game' принимает опц. paddleShape.
+- Геометрия: длина (getPaddleHeight) всегда перпендикулярна полёту, толщина PADDLE_W — вдоль полёта, поэтому "передняя/задняя кромка" — края по глубине, а "высота" — длина хитбокса.
+
+2) ФИЗИКА (один shared-код клиент+сервер)
+- src/shared/physics.ts:88 PaddleShapeProfile; :96 paddleProfileScaleAt(t, shaped, shape); :114 paddleHeightAt(paddle, t, shaped, shape) (t=0 тыл → 100%, t=1 передняя кромка → 89% для tapered).
+- :196 checkPaddleCollision(..., profile?) — faceH центрируется по середине ракетки, hitPos нормируется по faceH; в vertical (длина по X, :215) и horizontal (длина по Y, :273) ветвях. shaped=false/форма без slope → faceH===pH → поведение прежнее байт-в-байт. Отклонение ≤11% (<12%): край = ±0.89, центр не меняется (hitPos=0.5).
+- src/server/index.ts:262 zod (shapedPaddles + paddleShapes enum); :311 normalizeRoomSettings (boolean строго ===true, мусор → false; формы валидируются isCosmeticShape); :362 paddleProfileFor(room, side) — null когда режим выключен; применён в 4 точках коллизии (6**/7**); :2158 join-game принимает paddleShape гостя → settings.paddleShapes.p2; normalizeRoomSettings экспортирован (:2385) для тестов.
+- src/client/game/LocalGame.ts:132 shapedPaddles=false; :137 paddleShapes; opts :149; :790 shapeProfile(side); применён в 4 точках коллизии (:542,:563,:749,:766).
+
+3) ВИЗУАЛ
+- src/client/game/Renderer.ts:122 shapedPaddlesEnabled=false + remotePaddleShapes; :465 setShapedPaddles(enabled, shapes); :484 applyShapeMode() — ВЫКЛ: shape='rect' (цвета/узор/glow сохраняются), ВКЛ: форма скина + форма соперника из настроек комнаты; применён к p1/p2 (:8**) и 4p (:764). :1064 силуэт tapered перерисован под тот же уклон хитбокса (frontScale 0.89, симметрично, с учётом flip) — drawStylePreview (shop.ts) не гейтится и по-прежнему показывает форму предмета.
+
+4) UI/ПРОБРОС
+- src/client/index.html:80-86 группа #shaped-paddles-group рядом с ареной/щитом (секция "Режим и правила"): чекбокс id=opt-shaped-paddles (БЕЗ checked = default ВЫКЛ) + hint (стили переиспользованы .filter-toggle/.filter-checkbox — styles.css не менялся).
+- src/client/App.ts:729 shapedPaddles: shapedPaddlesChecked(); :737 хелпер; :743 syncShapedPaddles (рендер+LocalGame); :925 paddleShape в join-payload; :962 applyRenderCosmetics синхронит форму при догрузке косметики; :1001/1014 LocalGame opts + sync; :1170 toLanSettings пробрасывает shapedPaddles/paddleShapes; :1182 хост синхронит при создании комнаты; резюме гостя — из res.settings.
+- Пресеты (menuPresets.ts) не тронуты: галочку не включают и не сбрасывают. help.ts:44 — строка-пояснение ("по умолчанию выключена", ≤12%).
+
+5) ТЕСТЫ
+- tests/unit/shaped-paddles.test.ts (21 тест): (а) OFF → прямоугольник при любой форме + неизвестная форма; (б) ratio 0.88-0.90, отклонение ≤0.12, линейность, край вне укороченной кромки не ловится (294: OFF-hit / ON-miss), отскок на краю отличается и детерминирован (dy больше), центр не затронут, rounded/segmented/rect без изменений; (в) LAN-паритет: LocalGame tick == shared-вызов (dx/dy/x/y, 9 знаков) и сервер createRoom+tick == LocalGame tick; (г) normalizeRoomSettings: default false, 'true'/1/{}/null → false, формы валидные/мусор; (д) гейт Renderer (applyShapeMode) + галочка в index.html без checked + проброс в App + строка help.
+
+ВЕРИФИКАЦИЯ (живой :3333, PID 20076 НЕ рестартился, порт слушается):
+1) npx tsc --noEmit → exit 0
+2) npm run build → exit 0 (tsc + postbuild copy)
+3) npx vitest run → 25 files / 485 tests passed, exit 0 (было 464 → +21), unhandled нет
+4) npm run lint → exit 0, 0 errors / 0 warnings
+5) npx playwright test → 6 passed (id меню целы)
+Доп. смоук (playwright, temp-скрипт удалён): галочка найдена, default unchecked, клик → checked, локальная игра против ИИ стартует с режимом ON, canvas не пустой, pageErrors=[].
+
+ЗАМЕЧАНИЯ/ГРАНИЦЫ:
+- Серверная часть (dist/server/index.js процесса 20076) подхватится только после следующего рестарта; клиентская статика обновлена (dist/client/*) и совместима со старым сервером (zod молча срезает неизвестные ключи, LAN не 404-ит).
+- Форму соперника в LAN хост узнаёт косвенно (гость присылает её при join уже после создания комнаты) — хост рисует соперника прямоугольником до ремачта; расхождение с его серверным хитбоксом ≤11% длины.
+- context7 недоступен (fetch failed) — фиксирую как offline.
+SKILLS_LOADED: ["superpowers-implement", "evidence-discipline"]
+MCP_USED: ["sequential-thinking", "context7: offline (fetch failed)", "hermes-atlas: не вызывался (задача на своём shared-коде, новые скиллы не требовались)"]
+COMPLIANCE: true
+STATUS: resolved
+================================================================================
+
+================================================================================
+[2026-09-16 13:33] qa-engineer -> team-lead:
+TYPE: update | PRIORITY: medium
+CONTENT: P2 «model router (health/breaker/fallback)» commit e3d6a08 — ВЕРДИКТ: ПРИНЯТО (2 minor, без critical/major). Артефакты приёмки: (1) tests/test-model-router.ps1 → SUMMARY passed=8 failed=0 total=8, EXITCODE=0. (2) НЕЗАВИСИМАЯ проверка (собственный fake-CLI + изолированный $env:AGENT_HQ_ROOT в %TEMP%, не dev-тест): pass=22 fail=0 — классификация pong→OK / «Free usage exceeded»→RATE_LIMIT / «No available channel»→DEAD / висящий CLI→TIMEOUT (возврат <30с, не ждёт 600с); fail-safe: маркер+PONG в одном выводе → RATE_LIMIT/DEAD, ложного OK нет (в т.ч. юнит Get-ProbeStatus); breaker: 2 подряд fail → OPEN (open_until≈now+15мин), Get-ModelRoute возвращает fallback opencode/ling-3.0-flash-fin-free вместо OPEN-модели (reason=configured-open-fallback), другой агент не затронут; cooldown: состаренный open_until=2020 → модель снова маршрутизируется, half-open fail→fail_count=1; safe-by-default: `-Route` без `-Apply` → exit 0, «APPLY: skipped», файл агента byte-identical по хэшу, бэкапов не создано. (3) живой `-Status` в реальном репо → exit 0, таблица из .memory\model-health.json (2 записи; OPEN у tokenrouter/glm-5.3-free до 13:36:50 — на момент 13:29 корректен). (4) Регресс: test-vault 8/8 exit0; test-pipeline passed=10 failed=0; test-discovery PASS=22 FAIL=0 SKIP=0 WARN=1 RESULT=PASS; test-daemon passed=9 failed=0; test-task-state passed=5 failed=0; verify-phase 41/41 ALL CHECKS PASSED exit0. (5) Гигиена: CRLF во всех 3 изменённых .ps1 (loneLF=0: model-router 30488B, test-model-router 21150B, fake-model-cli 2160B); пустых catch в изменённых файлах нет (все 8 catch model-router.ps1 с телом; в тестах fake-модели catch нет; единственные catch{} — вне scope P2: agent-hq-daemon.ps1:132, project-worktree.ps1:99, test-project-isolation.ps1:308 — pre-existing). Дефекты (записаны в KNOWLEDGE-BASE.md): BUG-023 minor/latent — Set-AgentModel regex Replace без count перезаписывает ВСЕ «model»-ключи (воспроизведено на копии registry.json: 30/30 перезаписано при direct call); через CLI НЕдостижимо (registry→agent-model-unknown, файл byte-identical), реальные agent-файлы имеют ровно 1 ключ; комментарий model-router.ps1:491 «first key only» расходится с кодом :527; фикс [regex]::Replace(...,1). BUG-024 minor — гонка read-modify-write .memory\model-health.json (model-router.ps1:230-262) без блокировки: потеря записи → fail-open (один лишний прогон мёртвой модели), конфиги/секреты не затронуты, состояние самовосстанавливается; при текущем одиночном CLI-запуске minor, эскалация в major при wiring в daemon (задекларировано dev-1). Очистка: temp-артефакты QA (%TEMP%\qa-p2-*, qa_p2_independent.ps1) удалены; git status: изменены только CONTEXT-BUFFER.md и ratings.jsonl (не моими руками — team-lead), model-health.json и опенкоде-конфиги не тронуты.
+SKILLS_LOADED: ["evidence-discipline"]
+MCP_USED: [] (реальных MCP-вызовов не было: приёмка = запуск реальных скриптов PS 5.1 + чтение кода; context7/hermes-atlas не требовались, sequential-thinking не вызывался — честное пустое по evidence-discipline)
+COMPLIANCE: true
+STATUS: resolved
+================================================================================
+
+================================================================================
+[2026-09-16] team-lead -> bus: P2 model router ПРИНЯТО
+TYPE: update | PRIORITY: high
+================================================================================
+Коммит e3d6a08. model-router.ps1: Test-ModelHealth (OK/RATE_LIMIT/DEAD/TIMEOUT, маркеры до PONG), breaker (2 fail/15min), fallback-лестница (SKILL), -Status/-Probe/-Route [-Apply] c бэкапом/откатом. Тест 8/8. Живой -Status: glm-5.3-free OPEN. Приёмка qa-engineer: ПРИНЯТО (2 minor: BUG-023 replace-all, BUG-024 race). Оценки: dev-1 8, qa-engineer 8.
+P2: model router ✅. Осталось: evaluation v2, soak 2->5 проектов.
+SKILLS_LOADED: []
+MCP_USED: []
+COMPLIANCE: true
+STATUS: resolved
+================================================================================

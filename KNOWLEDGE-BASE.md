@@ -310,6 +310,20 @@
   - Тест: `tests/test-pipeline.ps1` кейс j) env correlation + новый режим `envprobe` в `tests/fake-opencode.ps1`. CLI-ребёнок печатает `AGENT_HQ_TASK_ID=<messageId>` и `AGENT_HQ_ATTEMPT_ID=attempt-1`; ассерты и по outbox-response, и по файлу-пробе, записанному самим процессом ребёнка. SUMMARY: passed=10 failed=0, exit 0 (было 9 кейсов; +1 новый).
   - Сопутствующий minor `.opencode/package.json` → добавлен `"type": "module"`. Оговорка (evidence-discipline): файл в .gitignore (`.opencode/.gitignore:2`), правка локальная и может быть перегенерирована opencode; на Node v24.19.0 предупреждение MODULE_TYPELESS_PACKAGE_JSON не воспроизводится (проверено на typeless-контроле) → NOT ENOUGH EVIDENCE, что правка что-то меняет на текущем рантайме.
 
+### BUG-023 (P2, QA-приёмка): model-router.ps1 Set-AgentModel — regex Replace перезаписывает ВСЕ ключи "model", не только top-level
+- **Симптом**: комментарий `model-router.ps1:491` обещает "first 'model' key only", но `[regex]::Replace($raw, $pattern, $evaluator)` (`model-router.ps1:527`) без ограничения количества заменит все совпадения; паттерн `(?m)^(\s*"model"...)` с `\s*` матчит и вложенные ключи.
+- **Воспроизведение (QA, direct call)**: `Set-AgentModel -Agent registry -Model "X/Y"` на копии `.opencode/agents/registry.json` → перезаписано 30 из 30 model-ключей (evidence: вывод проверки, ok=True changed=True).
+- **Достижимость через CLI**: НЕ достижимо — `-Route -Agent registry -Apply` даёт REASON=agent-model-unknown, APPLY=not needed, файл byte-identical (проверено хэшами). Реальные `.opencode/agents/<agent>.json` содержат ровно 1 model-ключ → эффект нулевой.
+- **Статус**: minor, latent. Фикс: `[regex]::Replace(..., 1)` (count overload) или якорь на минимальный отступ + правка комментария.
+- **Решение/обход**: не вызывать Set-AgentModel на файлах с несколькими model-ключами; при интеграции в daemon — добавить фикс перед автоматизацией.
+
+### BUG-024 (P2, QA-приёмка): model-router.ps1 — read-modify-write `.memory\model-health.json` без межпроцессной блокировки (fail-open при гонке)
+- **Симптом**: `Set-ModelHealthResult` (`model-router.ps1:230-262`) читает весь state, правит одну запись и перезаписывает файл целиком; два параллельных `-Probe` → last-writer-wins, потеря записей другой модели.
+- **Последствия**: потерянный fail_count/open_until → breaker не открылся → один лишний прогон мёртвой модели (fail-open). Конфиги агентов и секреты не затрагиваются; состояние самовосстанавливается следующим probe.
+- **Оценка QA**: **minor** при текущем одиночном запуске (CLI вручную/тимлидом, probe внутри процесса последовательны); эскалировать до **major** при wiring в daemon/параллельные поллеры.
+- **Фикс (рекомендация)**: эксклюзивный lock на время read-modify-write (`[System.IO.File]::Open($path,'Open','ReadWrite','None')` + retry), либо per-model файлы state, либо merge-with-reread под lock.
+- **Статус**: принято как известное ограничение (задекларировано dev-1 в self-report 2026-09-16).
+
 
 ## Patterns
 

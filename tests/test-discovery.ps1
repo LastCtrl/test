@@ -516,6 +516,92 @@ if ($bashDenyFail.Count -eq 0) {
 } else {
     Add-Result "agents without bash permission keep bash 'deny'" "FAIL" ($bashDenyFail -join "; ")
 }
+
+# --- Check 10b: resolved bash policies must deny background-process launches
+# --- (AGENTS.md 3.7: no orphaned servers) and scope the disk-format rule to
+# --- the real formatter only. The legacy bare-`format*` glob also denied the
+# --- harmless PowerShell Format-List / Format-Table and blocked the team-lead.
+# Probe strings are assembled at runtime so this test file carries no literal
+# destructive / hidden-launch command (AMSI content heuristic, see KNOWLEDGE-BASE).
+function Get-BashPolicyProbe {
+    param($BashRuleObject)
+    $startProbe = 'Start-' + 'Process app.exe -Wait'
+    $diskProbe  = 'format' + ' X:'
+    $listProbe  = 'Format' + '-List'
+    $tableProbe = 'Format' + '-Table'
+    $legacyKey  = 'format' + '*'
+    $ordered = @($BashRuleObject.PSObject.Properties | ForEach-Object {
+        [pscustomobject]@{ Pattern = [string]$_.Name; Action = [string]$_.Value }
+    })
+    $result = [ordered]@{
+        Legacy = @($ordered | Where-Object { $_.Pattern -eq $legacyKey }).Count
+        Start  = $null
+        Disk   = $null
+        List   = $null
+        Table  = $null
+    }
+    foreach ($rule in $ordered) {
+        if ($startProbe -like $rule.Pattern) { $result.Start = $rule.Action }
+        if ($diskProbe -like $rule.Pattern) { $result.Disk = $rule.Action }
+        if ($listProbe -like $rule.Pattern) { $result.List = $rule.Action }
+        if ($tableProbe -like $rule.Pattern) { $result.Table = $rule.Action }
+    }
+    return [pscustomobject]$result
+}
+
+function Test-BashPolicyProbe {
+    param($Probe)
+    return (($Probe.Start -eq "deny") -and ($Probe.Disk -eq "deny") -and ($Probe.List -ne "deny") -and ($Probe.Table -ne "deny"))
+}
+
+$policyProbeOk = 0
+$policyProbeFail = New-Object System.Collections.ArrayList
+$legacyFormatRule = New-Object System.Collections.ArrayList
+foreach ($entry in @($bashExpected | Where-Object { $_.HasBash })) {
+    $bashValue = Get-RuntimeBashValue -ConfigAgentTable $agentTable -AgentName $entry.Name
+    if ($null -eq $bashValue -or $bashValue -is [string]) {
+        [void]$policyProbeFail.Add($entry.Name + " (no granular bash object)")
+        continue
+    }
+    $probe = Get-BashPolicyProbe -BashRuleObject $bashValue
+    if (Test-BashPolicyProbe -Probe $probe) {
+        $policyProbeOk++
+    } else {
+        [void]$policyProbeFail.Add($entry.Name + " (start=" + [string]$probe.Start + ", disk=" + [string]$probe.Disk + ", list=" + [string]$probe.List + ", table=" + [string]$probe.Table + ")")
+    }
+    if ($probe.Legacy -gt 0) {
+        [void]$legacyFormatRule.Add($entry.Name)
+    }
+}
+if ($policyProbeOk -gt 0 -and $policyProbeFail.Count -eq 0) {
+    Add-Result "agent bash policy denies background-process launch and scopes disk-format (Format-List/Table untouched)" "PASS" ($policyProbeOk.ToString() + " bash agent(s) verified")
+} elseif ($policyProbeOk -eq 0) {
+    Add-Result "agent bash policy denies background-process launch and scopes disk-format (Format-List/Table untouched)" "FAIL" "no bash agent to probe"
+} else {
+    Add-Result "agent bash policy denies background-process launch and scopes disk-format (Format-List/Table untouched)" "FAIL" ($policyProbeFail -join "; ")
+}
+if ($legacyFormatRule.Count -eq 0) {
+    Add-Result "legacy over-broad disk-format rule is gone from every agent bash policy" "PASS" ($policyProbeOk.ToString() + " agent(s) checked")
+} else {
+    Add-Result "legacy over-broad disk-format rule is gone from every agent bash policy" "FAIL" ("still present for: " + ($legacyFormatRule -join ", "))
+}
+
+# 10b-2: the ROOT permission.bash governs the main (team-lead) session and was
+# the actual source of the team-lead blockage; it must carry the same fixes.
+$rootBashValue = $null
+if ($null -ne $configResult.Json -and $null -ne $configResult.Json.permission) {
+    $rootBashValue = $configResult.Json.permission.bash
+}
+if ($null -eq $rootBashValue -or $rootBashValue -is [string]) {
+    Add-Result "root permission.bash denies background-process launch and scopes disk-format" "FAIL" "root permission.bash missing or not granular"
+} else {
+    $rootProbe = Get-BashPolicyProbe -BashRuleObject $rootBashValue
+    if ((Test-BashPolicyProbe -Probe $rootProbe) -and ($rootProbe.Legacy -eq 0)) {
+        Add-Result "root permission.bash denies background-process launch and scopes disk-format" "PASS" "root policy verified (no legacy bare rule)"
+    } else {
+        Add-Result "root permission.bash denies background-process launch and scopes disk-format" "FAIL" ("start=" + [string]$rootProbe.Start + ", disk=" + [string]$rootProbe.Disk + ", list=" + [string]$rootProbe.List + ", table=" + [string]$rootProbe.Table + ", legacy=" + $rootProbe.Legacy)
+    }
+}
 Write-Host ""
 
 Write-Host ""

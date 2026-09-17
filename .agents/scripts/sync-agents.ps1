@@ -183,7 +183,15 @@ function Get-BashPermissionRules {
     $rules['shutdown*'] = 'deny'
     $rules['Stop-Computer*'] = 'deny'
     $rules['Restart-Computer*'] = 'deny'
-    $rules['format*'] = 'deny'
+    # Формат диска (disk format). ПРОБЕЛ обязателен: голый glob `format*`
+    # матчил безобидные Format-List/Format-Table (баг — блокировал команды
+    # тимлида). `format *` матчит `format C:`, но не `Format-List`.
+    $rules['format *'] = 'deny'
+    # Фоновый запуск процессов запрещён (AGENTS.md §3.7): Start-Process без
+    # остановки в том же вызове оставляет осиротевший процесс. Deny — последним
+    # правилом, чтобы «last-rule-wins» гарантированно побеждал allow-правила
+    # выше (например powershell*/pwsh*).
+    $rules['Start-Process*'] = 'deny'
 
     return $rules
 }

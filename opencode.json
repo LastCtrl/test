@@ -109,7 +109,8 @@
                 "shutdown*": "deny",
                 "Stop-Computer*": "deny",
                 "Restart-Computer*": "deny",
-                "format*": "deny"
+                "format *": "deny",
+                "Start-Process*": "deny"
             },
             "edit": "allow",
             "external_directory": {
@@ -168,7 +169,8 @@
                 "shutdown*": "deny",
                 "Stop-Computer*": "deny",
                 "Restart-Computer*": "deny",
-                "format*": "deny"
+                "format *": "deny",
+                "Start-Process*": "deny"
             },
             "edit": "allow",
             "external_directory": {
@@ -267,7 +269,8 @@
                 "shutdown*": "deny",
                 "Stop-Computer*": "deny",
                 "Restart-Computer*": "deny",
-                "format*": "deny"
+                "format *": "deny",
+                "Start-Process*": "deny"
             },
             "edit": "allow",
             "external_directory": {
@@ -326,7 +329,8 @@
                 "shutdown*": "deny",
                 "Stop-Computer*": "deny",
                 "Restart-Computer*": "deny",
-                "format*": "deny"
+                "format *": "deny",
+                "Start-Process*": "deny"
             },
             "edit": "allow",
             "external_directory": {
@@ -385,7 +389,8 @@
                 "shutdown*": "deny",
                 "Stop-Computer*": "deny",
                 "Restart-Computer*": "deny",
-                "format*": "deny"
+                "format *": "deny",
+                "Start-Process*": "deny"
             },
             "edit": "allow",
             "external_directory": {
@@ -444,7 +449,8 @@
                 "shutdown*": "deny",
                 "Stop-Computer*": "deny",
                 "Restart-Computer*": "deny",
-                "format*": "deny"
+                "format *": "deny",
+                "Start-Process*": "deny"
             },
             "edit": "allow",
             "external_directory": {
@@ -503,7 +509,8 @@
                 "shutdown*": "deny",
                 "Stop-Computer*": "deny",
                 "Restart-Computer*": "deny",
-                "format*": "deny"
+                "format *": "deny",
+                "Start-Process*": "deny"
             },
             "edit": "allow",
             "external_directory": {
@@ -562,7 +569,8 @@
                 "shutdown*": "deny",
                 "Stop-Computer*": "deny",
                 "Restart-Computer*": "deny",
-                "format*": "deny"
+                "format *": "deny",
+                "Start-Process*": "deny"
             },
             "edit": "allow",
             "external_directory": {
@@ -621,7 +629,8 @@
                 "shutdown*": "deny",
                 "Stop-Computer*": "deny",
                 "Restart-Computer*": "deny",
-                "format*": "deny"
+                "format *": "deny",
+                "Start-Process*": "deny"
             },
             "edit": "allow",
             "external_directory": {
@@ -680,7 +689,8 @@
                 "shutdown*": "deny",
                 "Stop-Computer*": "deny",
                 "Restart-Computer*": "deny",
-                "format*": "deny"
+                "format *": "deny",
+                "Start-Process*": "deny"
             },
             "edit": "allow",
             "external_directory": {
@@ -739,7 +749,8 @@
                 "shutdown*": "deny",
                 "Stop-Computer*": "deny",
                 "Restart-Computer*": "deny",
-                "format*": "deny"
+                "format *": "deny",
+                "Start-Process*": "deny"
             },
             "edit": "allow",
             "external_directory": {
@@ -798,7 +809,8 @@
                 "shutdown*": "deny",
                 "Stop-Computer*": "deny",
                 "Restart-Computer*": "deny",
-                "format*": "deny"
+                "format *": "deny",
+                "Start-Process*": "deny"
             },
             "edit": "allow",
             "external_directory": {
@@ -857,7 +869,8 @@
                 "shutdown*": "deny",
                 "Stop-Computer*": "deny",
                 "Restart-Computer*": "deny",
-                "format*": "deny"
+                "format *": "deny",
+                "Start-Process*": "deny"
             },
             "edit": "allow",
             "external_directory": {
@@ -936,7 +949,8 @@
                 "shutdown*": "deny",
                 "Stop-Computer*": "deny",
                 "Restart-Computer*": "deny",
-                "format*": "deny"
+                "format *": "deny",
+                "Start-Process*": "deny"
             },
             "edit": "allow",
             "external_directory": {
@@ -1013,7 +1027,8 @@
                 "shutdown*": "deny",
                 "Stop-Computer*": "deny",
                 "Restart-Computer*": "deny",
-                "format*": "deny"
+                "format *": "deny",
+                "Start-Process*": "deny"
             },
             "edit": "allow",
             "external_directory": {
@@ -1072,7 +1087,8 @@
                 "shutdown*": "deny",
                 "Stop-Computer*": "deny",
                 "Restart-Computer*": "deny",
-                "format*": "deny"
+                "format *": "deny",
+                "Start-Process*": "deny"
             },
             "edit": "allow",
             "external_directory": {
@@ -1209,7 +1225,8 @@
                 "shutdown*": "deny",
                 "Stop-Computer*": "deny",
                 "Restart-Computer*": "deny",
-                "format*": "deny"
+                "format *": "deny",
+                "Start-Process*": "deny"
             },
             "edit": "allow",
             "external_directory": {
@@ -1268,7 +1285,8 @@
                 "shutdown*": "deny",
                 "Stop-Computer*": "deny",
                 "Restart-Computer*": "deny",
-                "format*": "deny"
+                "format *": "deny",
+                "Start-Process*": "deny"
             },
             "edit": "allow",
             "external_directory": {
@@ -1328,7 +1346,8 @@
                 "shutdown*": "deny",
                 "Stop-Computer*": "deny",
                 "Restart-Computer*": "deny",
-                "format*": "deny"
+                "format *": "deny",
+                "Start-Process*": "deny"
             },
             "edit": "allow",
             "external_directory": {
@@ -1418,7 +1437,8 @@
                 "shutdown*": "deny",
                 "Stop-Computer*": "deny",
                 "Restart-Computer*": "deny",
-                "format*": "deny"
+                "format *": "deny",
+                "Start-Process*": "deny"
             },
             "edit": "allow",
             "external_directory": {
@@ -1508,7 +1528,8 @@
                 "shutdown*": "deny",
                 "Stop-Computer*": "deny",
                 "Restart-Computer*": "deny",
-                "format*": "deny"
+                "format *": "deny",
+                "Start-Process*": "deny"
             },
             "edit": "allow",
             "external_directory": {
@@ -1598,7 +1619,8 @@
                 "shutdown*": "deny",
                 "Stop-Computer*": "deny",
                 "Restart-Computer*": "deny",
-                "format*": "deny"
+                "format *": "deny",
+                "Start-Process*": "deny"
             },
             "edit": "allow",
             "external_directory": {
@@ -1773,7 +1795,8 @@
       "shutdown*": "deny",
       "Stop-Computer*": "deny",
       "Restart-Computer*": "deny",
-      "format*": "deny"
+      "format *": "deny",
+      "Start-Process*": "deny"
     },
     "external_directory": {
       "*": "ask",

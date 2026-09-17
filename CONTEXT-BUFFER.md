@@ -3372,9 +3372,41 @@ CONTENT: ГЭП КОРРЕЛЯЦИИ traces/scoring (P3-3 follow-up) ЗАКРЫ�
   ДОКАЗАТЕЛЬСТВО END-TO-END (живой файл): run с AGENT_HQ_AGENT=dev-1 -> traces.jsonl: {"type":"session_agent","session_id":"ses_f512da10...","agent":"dev-1","agent_source":"env","task_id":"P3-3-GAP","attempt_id":"attempt-1"}; session_start/session_end с agent=dev-1+task_id; plugin_diag {"agent":"dev-1","runtime_agent":"build","agent_mismatch":1,"chat_message":1}. budget ДО: observed=0, unknown=45/45 (45 sessions -> unknown). ПОСЛЕ: attrib observed=2 inferred=0 unknown=48; by-agent: build(observed), dev-1(observed, model=opencode-go/deepseek-v4.1-flash); by-model: opencode-go/deepseek-v4.1-flash 1 run. Легаси 7144 записей в окне чтения пропущены, новые не сломали.
   ТЕСТЫ: test-plugins.mjs 32/32 exit0 (было 26/26; +5 agent-resolution/session_agent/plugin_diag/env-приоритет/no-agent=empty, +1 смешанный traces для scoring); test-explain-budget.ps1 12/12 кейсов 100/100 чеков exit0 (было 10/10 75/75; +k смешанный traces observed/inferred/unknown/ambiguous+битая строка, +l -NoInference); test-pipeline.ps1 10/10 exit0 (кейс j расширен: воркер видит AGENT_HQ_AGENT=testagent, env-probe файл "<id>|attempt-1|testagent"); verify-phase.ps1 41/41 exit0.
   CRLF: budget.ps1/inbox-engine.ps1/fake-opencode.ps1/test-pipeline.ps1/test-explain-budget.ps1 — CRLF (bareLF=0, BOM у inbox-engine/fake-opencode сохранён); tracer.js/test-plugins.mjs — LF (как в оригинале). Temp-пробник и его файл удалены, фон. процессов не оставлено, НЕ коммичено.
-  НЕ ПРОВЕРЕНО: inferred-ветка на ЖИВОМ файле не срабатывает — .memory/evidence ОТСУТСТВУЕТ (missing), проверено только на фикстурах. context7 MCP offline (fetch failed) — API opencode сверял по установленному .opencode/node_modules/@opencode-ai/plugin 1.18.21 .d.ts + живому hook-замеру. KNOWLEDGE-BASE.md не правил (зона tech-writer).
+   НЕ ПРОВЕРЕНО: inferred-ветка на ЖИВОМ файле не срабатывает — .memory/evidence ОТСУТСТВУЕТ (missing), проверено только на фикстурах. context7 MCP offline (fetch failed) — API opencode сверял по установленному .opencode/node_modules/@opencode-ai/plugin 1.18.21 .d.ts + живому hook-замеру. KNOWLEDGE-BASE.md не правил (зона tech-writer).
 SKILLS_LOADED: ["evidence-discipline", "windows-safety"]
 MCP_USED: ["sequential-thinking", "context7: offline (fetch failed)"]
+COMPLIANCE: true
+STATUS: resolved
+================================================================================
+
+================================================================================
+[2026-09-17 10:35] qa-engineer -> team-lead:
+TYPE: update | PRIORITY: medium
+CONTENT: Независимая приёмка фикса корреляции traces/budget (P3-3 follow-up, коммит 4c5df59: tracer.js v2.1, inbox-engine AGENT_HQ_AGENT, budget observed/inferred/unknown) — ПРИНЯТО, без critical/major. Артефакты (реальные запуски):
+  1) node tests\test-plugins.mjs → «RESULT: 32/32 passed, 0 failed», exit 0.
+  2) tests\test-explain-budget.ps1 → «cases passed=12 failed=0», «checks passed=100 failed=0», exit 0 (кейс k — mixed traces+inference+ambiguous, кейс l — -NoInference).
+  3) НЕЗАВИСИМО: свежий `opencode run --model opencode-go/deepseek-v4.1-flash "reply PONG"` (exit 0, ответ PONG). Новые записи traces.jsonl (после baseline 24414 строк): ses_f512568ebffeC6pZDUbP6DWVx9 — session_start (agent=""), session_agent {agent:"build", agent_source:"session.updated"}, session_end {agent:"build", duration_ms:5270}, plugin_diag {chat_message:1, session_updated_agent:8, tool_spans:0, agent_mismatch:0}. session_id присутствует во всех новых записях; env AGENT_HQ_AGENT не был задан — агент взят из runtime session.updated (по ТЗ допустимо).
+  4) НЕЗАВИСИМАЯ фикстура (temp\opencode\qa-budget-fixture, удалена после): budget.ps1 -Root -TracesDir -Json — exit 0, не падает на mixed-файле; observed=1/inferred=1/unknown=2 (inferred через evidence-task), broken line посчитана и пропущена (broken_trace_lines=1), legacy без session_id пропущен и посчитан (legacy_trace_records=1); -NoInference → inferred=0/unknown=3, inference_enabled=false.
+  5) Амбивалентная сессия (2 агента в одном evidence-окне) → unknown, ambiguous_sessions=1, dev-3/qa-1 НЕ выдуманы (by_agent их не содержит).
+  6) Регресс: test-pipeline.ps1 10/10 exit0 (кейс j: worker видит AGENT_HQ_AGENT=testagent), verify-phase.ps1 41/41 exit0, test-doctor.ps1 6/6 (30 checks) exit0.
+  7) Строки: inbox-engine/budget/test-explain-budget/test-pipeline/fake-opencode .ps1 — CRLF, bareLF=0; tracer.js — LF, CRLF=0.
+  Бюджет на РЕАЛЬНЫХ данных: exit 0, observed=3 (build×2, dev-1×1 с configured model), unknown=46 честно, legacy=7131 skipped; note «evidence directory missing» → inferred на проде недоступен.
+  MINOR (не блокирующие, ограничения данных а не кода): M1 — .memory/evidence отсутствует на прод-корне, inferred-ветка на проде срабатывать нечему до генерации evidence движком (dev-1 сам это задекларировал; воспроизведено на фикстуре — логика верна). M2 — процессы opencode от 14–15.09 дописывают legacy-строки до рестарта (note в выводе объясняет). Новый баг для KNOWLEDGE-BASE не заведён (критичных/мажорных дефектов нет). Осиротевших процессов после приёмки нет (opencode run — foreground, завершился; висят только легаси-сессии 14–15.09, не трогал). Временные фикстуры удалены.
+SKILLS_LOADED: ["evidence-discipline"]
+MCP_USED: ["sequential-thinking"]
+COMPLIANCE: true
+STATUS: resolved
+================================================================================
+
+================================================================================
+[2026-09-17] team-lead -> bus: P3-3b ПРИНЯТО (tracer correlation fix)
+TYPE: update | PRIORITY: medium
+================================================================================
+Коммит 4c5df59. Диагноз: смешанное (старые процессы держат tracer v1 -> reload) + РЕАЛЬНЫЙ баг (агент недоступен в событиях). Фикс: env AGENT_HQ_AGENT + session_agent/plugin_diag; budget observed/inferred/unknown, ambiguous -> unknown, -NoInference. Тесты: plugins 32/32, explain-budget 12/12. Приёмка qa-engineer: ПРИНЯТО.
+Оценки: dev-1 9, qa-engineer 8.
+Примечание: fleet-агенты mode=subagent -> opencode run --agent X откатывается на build (runtime не может назвать fleet-агента) - важно для понимания трейсов.
+SKILLS_LOADED: []
+MCP_USED: []
 COMPLIANCE: true
 STATUS: resolved
 ================================================================================

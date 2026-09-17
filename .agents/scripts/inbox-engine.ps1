@@ -326,6 +326,16 @@ function Invoke-OpencodeAttempt {
         } else {
             Remove-Item Env:\AGENT_HQ_ATTEMPT_ID -ErrorAction SilentlyContinue
         }
+        # P3-3 gap: the fleet agent name is exported too. Every agent in
+        # .opencode\agents is mode=subagent and `opencode run --agent <subagent>`
+        # falls back to the default primary agent, so the runtime cannot report
+        # the fleet agent (observed 2026-09-17 on opencode 1.18.31: --agent
+        # qa-engineer -> session agent "build"). The launcher knows the name.
+        if ($agent) {
+            $env:AGENT_HQ_AGENT = $agent
+        } else {
+            Remove-Item Env:\AGENT_HQ_AGENT -ErrorAction SilentlyContinue
+        }
         # Resolve the CLI inside the job: the Start-Job child process inherits env vars.
         $opencodeCmd = if ($env:AGENT_HQ_OPENCODE) { $env:AGENT_HQ_OPENCODE } else { "opencode" }
         $errFile = [System.IO.Path]::GetTempFileName()

@@ -8,11 +8,27 @@
 #     "delegation" } markers for every `task` tool call.
 #   * traces.jsonl (@ .opencode\plugins\tracer.js) - joined on session_id to
 #     attribute a session to an agent / task (perf records carry no agent field).
+#   * .memory\evidence\*.json (inbox-engine.ps1) - attempt records with agent,
+#     started_at/finished_at and task_id; used ONLY for the labelled fallback
+#     below. Missing/unreadable documents are reported, never guessed.
 #   * .opencode\agents\<agent>.json - the configured model of an agent, so usage
 #     can be rolled up per model.
 #   * .memory\evidence\*\json - stdout/stderr byte lengths, the only token-ish
 #     signal available. Token counts are an ESTIMATE (chars / 4) and are always
 #     labelled as such; the fleet does not record real token usage yet.
+#
+# Attribution (P3-3 gap follow-up). Every session row carries an explicit label:
+#   * observed - a trace record names the agent for that session_id;
+#   * inferred - no agent in the traces, but exactly ONE agent matches the
+#     session through the machine evidence: the task id recorded on the session,
+#     or the session time window [ts - duration, ts] overlapping exactly one
+#     evidence attempt window. Two or more candidates are NEVER resolved by
+#     picking one: such a session stays `unknown` and is reported as ambiguous;
+#   * unknown  - nothing attributable; the session is counted, not guessed.
+# The mixed traces.jsonl case (records written by an older plugin version without
+# correlation fields next to correlated ones) is handled by design: a record
+# without session_id/agent is skipped, the first non-empty agent per session wins.
+# `-NoInference` disables the fallback entirely (observed-only accounting).
 #
 # Limits: .agents\config\model-limits.json (a built-in fallback is used when the
 # file is missing). Only limits that are actually documented are numeric; every
@@ -22,6 +38,7 @@
 #   .\budget.ps1
 #   .\budget.ps1 -SinceHours 6 -Json
 #   .\budget.ps1 -Agent qa-engineer
+#   .\budget.ps1 -NoInference -Json
 #   .\budget.ps1 -LimitsPath C:\tmp\limits.json -WarnAt 0.6
 #
 # Exit code: 0 = within limits, 2 = WARN (>= WarnAt of a limit) or OVER (>= 100%),
@@ -38,7 +55,9 @@ param(
     [string]$TracesDir = '',
     [string]$LimitsPath = '',
     [double]$WarnAt = 0.8,
-    [int]$MaxTraceBytes = 524288
+    [int]$MaxTraceBytes = 524288,
+    [switch]$NoInference,
+    [int]$InferSlackSeconds = 60
 )
 
 $script:BudgetScriptRoot = $PSScriptRoot
@@ -272,20 +291,141 @@ function Read-BudgetLimits {
 # Trace / agent / model attribution
 # ===========================================================================
 
-# session_id -> agent from the trace spans (perf records have no agent field).
+# session_id -> @{ agent; source; attribution } from the trace spans (perf
+# records have no agent field). Mixed files are handled by design: a legacy
+# record without session_id/agent is skipped, and the FIRST non-empty agent per
+# session wins, so a correlated record can follow uncorrelated ones.
 function Get-BudgetSessionAgents {
     param([string]$TracesDirValue, [int]$MaxBytes)
     $map = @{}
     $file = Join-Path $TracesDirValue 'traces.jsonl'
     $read = Read-BudgetJsonl -Path $file -MaxBytes $MaxBytes
+    $legacyRecords = 0
+    $agentRecords = 0
     foreach ($record in @($read.records)) {
         $sessionId = [string]$record.session_id
         $agentName = [string]$record.agent
-        if ([string]::IsNullOrWhiteSpace($sessionId)) { continue }
+        if ([string]::IsNullOrWhiteSpace($sessionId)) { $legacyRecords++; continue }
         if ([string]::IsNullOrWhiteSpace($agentName)) { continue }
-        if (-not $map.ContainsKey($sessionId)) { $map[$sessionId] = $agentName }
+        $agentRecords++
+        if (-not $map.ContainsKey($sessionId)) {
+            $map[$sessionId] = [ordered]@{
+                agent       = $agentName
+                source      = [string]$record.agent_source
+                attribution = 'observed'
+            }
+        }
     }
-    return [pscustomobject]@{ map = $map; file = $file; exists = [bool]$read.exists; broken_lines = [int]$read.broken_lines; error = [string]$read.error }
+    return [pscustomobject]@{
+        map            = $map
+        file           = $file
+        exists         = [bool]$read.exists
+        truncated      = [bool]$read.truncated
+        broken_lines   = [int]$read.broken_lines
+        error          = [string]$read.error
+        legacy_records = $legacyRecords
+        agent_records  = $agentRecords
+    }
+}
+
+# Machine evidence as attribution CANDIDATES (facts only, no guessing):
+#   task_agents[task_id] = distinct agents of that task's evidence attempts
+#   windows[]            = { agent; start; end } per evidence attempt
+# Timestamps are normalised to UTC; an unparsable one is counted, not assumed.
+function Get-BudgetEvidenceAttribution {
+    param([string]$RootValue)
+    $taskAgents = @{}
+    $windows = New-Object System.Collections.ArrayList
+    $notes = New-Object System.Collections.ArrayList
+    $skippedAttempts = 0
+    $dir = Join-Path (Join-Path $RootValue '.memory') 'evidence'
+    if (-not (Test-Path -LiteralPath $dir -PathType Container)) {
+        [void]$notes.Add('evidence directory missing - inferred attribution is unavailable (observed attribution and counters are unaffected)')
+        return [pscustomobject]@{ task_agents = $taskAgents; windows = @(); attempts = 0; files = 0; skipped = 0; notes = @($notes) }
+    }
+    $files = @(Get-ChildItem -LiteralPath $dir -Filter '*.json' -File -ErrorAction SilentlyContinue | Sort-Object Name)
+    foreach ($file in $files) {
+        $raw = Read-BudgetTextFile -Path $file.FullName
+        if ([string]::IsNullOrWhiteSpace($raw)) { continue }
+        $json = $null
+        try { $json = $raw | ConvertFrom-Json -ErrorAction Stop } catch { $json = $null }
+        if ($null -eq $json) {
+            [void]$notes.Add('broken evidence json: ' + $file.Name)
+            continue
+        }
+        $taskId = [string]$json.task_id
+        if ([string]::IsNullOrWhiteSpace($taskId)) { $taskId = $file.BaseName }
+        foreach ($attempt in @($json.attempts)) {
+            if ($null -eq $attempt) { continue }
+            $attemptAgent = [string]$attempt.agent
+            if ([string]::IsNullOrWhiteSpace($attemptAgent)) { $skippedAttempts++; continue }
+            if (-not $taskAgents.ContainsKey($taskId)) { $taskAgents[$taskId] = @{} }
+            $taskAgents[$taskId][$attemptAgent] = $true
+            $start = ConvertTo-BudgetUtc -Text ([string]$attempt.started_at)
+            $end = ConvertTo-BudgetUtc -Text ([string]$attempt.finished_at)
+            if (($null -eq $end) -and ($null -ne $start)) {
+                $end = $start.AddMilliseconds([double](ConvertTo-BudgetInt -Value $attempt.duration_ms -Default 0))
+            }
+            if ($null -eq $start) { $skippedAttempts++; continue }
+            [void]$windows.Add([ordered]@{ agent = $attemptAgent; start = $start; end = $end; task_id = $taskId })
+        }
+    }
+    if ($skippedAttempts -gt 0) {
+        [void]$notes.Add('evidence attempts without an agent or a parsable timestamp are skipped as attribution candidates: ' + $skippedAttempts)
+    }
+    return [pscustomobject]@{
+        task_agents = $taskAgents
+        windows     = @($windows)
+        attempts    = @($windows).Count
+        files       = $files.Count
+        skipped     = $skippedAttempts
+        notes       = @($notes)
+    }
+}
+
+# Fallback attribution for a session that has no agent in the traces. Returns
+# @{ agent; method; candidates; ambiguous } - agent is '' unless exactly ONE
+# candidate was found (never picks a winner out of several).
+function Resolve-BudgetInferredAgent {
+    param(
+        [string]$TaskId,
+        $Instant,
+        [long]$DurationMs,
+        $Evidence,
+        [int]$SlackSeconds
+    )
+    if ($null -eq $Evidence) { return [ordered]@{ agent = ''; method = ''; candidates = 0; ambiguous = $false } }
+
+    if (-not [string]::IsNullOrWhiteSpace($TaskId) -and $Evidence.task_agents.ContainsKey($TaskId)) {
+        $candidates = @($Evidence.task_agents[$TaskId].Keys)
+        if ($candidates.Count -eq 1) {
+            return [ordered]@{ agent = [string]$candidates[0]; method = 'evidence-task'; candidates = 1; ambiguous = $false }
+        }
+        return [ordered]@{ agent = ''; method = 'evidence-task'; candidates = $candidates.Count; ambiguous = ($candidates.Count -gt 1) }
+    }
+
+    if (($null -eq $Instant) -or (@($Evidence.windows).Count -eq 0)) {
+        return [ordered]@{ agent = ''; method = ''; candidates = 0; ambiguous = $false }
+    }
+    $sessionStart = $Instant
+    if ($DurationMs -gt 0) { $sessionStart = $Instant.AddMilliseconds(-1 * [double]$DurationMs) }
+    $slack = [System.TimeSpan]::FromSeconds($SlackSeconds)
+    $matches = @{}
+    foreach ($window in @($Evidence.windows)) {
+        if ($null -eq $window.start) { continue }
+        $windowEnd = $window.end
+        if ($null -eq $windowEnd) { $windowEnd = $window.start }
+        $overlaps = ($window.start -le $sessionStart.Add($slack)) -and ($windowEnd.Add($slack) -ge $sessionStart) -and ($window.start -le $Instant.Add($slack))
+        if ($overlaps) { $matches[[string]$window.agent] = $true }
+    }
+    $matched = @($matches.Keys)
+    if ($matched.Count -eq 1) {
+        return [ordered]@{ agent = [string]$matched[0]; method = 'evidence-window'; candidates = 1; ambiguous = $false }
+    }
+    if ($matched.Count -gt 1) {
+        return [ordered]@{ agent = ''; method = 'evidence-window'; candidates = $matched.Count; ambiguous = $true }
+    }
+    return [ordered]@{ agent = ''; method = ''; candidates = 0; ambiguous = $false }
 }
 
 # agent -> configured model from .opencode\agents\<agent>.json (regex-guarded name).
@@ -362,6 +502,10 @@ try {
     $perf = Read-BudgetJsonl -Path $perfFile -MaxBytes $MaxTraceBytes
 
     $sessionAgents = Get-BudgetSessionAgents -TracesDirValue $budgetTracesPath -MaxBytes $MaxTraceBytes
+    $evidenceAttribution = $null
+    if (-not $NoInference) {
+        $evidenceAttribution = Get-BudgetEvidenceAttribution -RootValue $budgetRootPath
+    }
 
     $notes = New-Object System.Collections.ArrayList
     foreach ($note in @($budgetLimits.notes)) { [void]$notes.Add([string]$note) }
@@ -370,6 +514,16 @@ try {
     if ($perf.truncated) { [void]$notes.Add('performance.jsonl was read from its tail (older records not counted)') }
     if ([int]$perf.broken_lines -gt 0) { [void]$notes.Add('broken performance lines skipped: ' + [int]$perf.broken_lines) }
     if (-not $sessionAgents.exists) { [void]$notes.Add('traces.jsonl not found: agent attribution degraded to (unknown)') }
+    if ([int]$sessionAgents.broken_lines -gt 0) { [void]$notes.Add('broken trace lines skipped: ' + [int]$sessionAgents.broken_lines) }
+    if ([int]$sessionAgents.legacy_records -gt 0) {
+        [void]$notes.Add('legacy trace records without correlation fields are skipped for attribution: ' + [int]$sessionAgents.legacy_records + ' (written by a plugin version without session_id, or by a process started before the plugin was upgraded - restart opencode to pick up the current tracer.js)')
+    }
+    if ($sessionAgents.truncated) { [void]$notes.Add('traces.jsonl was read from its tail (older trace records not counted)') }
+    if ($NoInference) {
+        [void]$notes.Add('inference disabled (-NoInference): only agents observed in the traces are attributed')
+    } elseif ($null -ne $evidenceAttribution) {
+        foreach ($note in @($evidenceAttribution.notes)) { [void]$notes.Add([string]$note) }
+    }
 
     $sessionRows = New-Object System.Collections.ArrayList
     $delegationRows = New-Object System.Collections.ArrayList
@@ -386,6 +540,7 @@ try {
                 ts          = $tsText
                 instant     = $instant
                 session_id  = [string]$record.session_id
+                task_id     = [string]$record.task_id
                 duration_ms = ConvertTo-BudgetInt -Value $record.duration_ms -Default 0
                 score       = ConvertTo-BudgetNullableInt -Value $record.score
             })
@@ -400,37 +555,91 @@ try {
     }
     if ($undated -gt 0) { [void]$notes.Add('records with an unparsable timestamp are kept (window filter skipped for them): ' + $undated) }
 
-    # --- per-agent aggregation -------------------------------------------
-    $byAgent = @{}
-    $attributedSessions = 0
-    $unattributedSessions = 0
+    # --- attribution: observed (traces) -> inferred (evidence) -> unknown ----
+    $attributionCounts = [ordered]@{ observed = 0; inferred = 0; unknown = 0 }
+    $inferredMethods = @{}
+    $ambiguousSessions = 0
+    $sessionAttribution = @{}
     foreach ($row in $sessionRows) {
         $sessionId = [string]$row.session_id
-        $agentName = '(unknown)'
+        $attribution = 'unknown'
+        $agentName = ''
+        $method = ''
         if ($sessionAgents.map.ContainsKey($sessionId)) {
-            $agentName = [string]$sessionAgents.map[$sessionId]
-            $attributedSessions++
-        } else {
-            $unattributedSessions++
+            $agentName = [string]$sessionAgents.map[$sessionId].agent
+            $attribution = 'observed'
+        } elseif ($null -ne $evidenceAttribution) {
+            $guess = Resolve-BudgetInferredAgent -TaskId ([string]$row.task_id) -Instant $row.instant `
+                -DurationMs ([long]$row.duration_ms) -Evidence $evidenceAttribution -SlackSeconds $InferSlackSeconds
+            if (-not [string]::IsNullOrWhiteSpace([string]$guess.agent)) {
+                $agentName = [string]$guess.agent
+                $attribution = 'inferred'
+                $method = [string]$guess.method
+                if (-not $inferredMethods.ContainsKey($method)) { $inferredMethods[$method] = 0 }
+                $inferredMethods[$method]++
+            } elseif ($guess.ambiguous) {
+                $ambiguousSessions++
+            }
         }
+        $attributionCounts[$attribution]++
+        $sessionAttribution[$sessionId] = [ordered]@{ agent = $agentName; attribution = $attribution; method = $method }
+    }
+
+    # --- per-agent aggregation -------------------------------------------
+    $byAgent = @{}
+    foreach ($row in $sessionRows) {
+        $sessionId = [string]$row.session_id
+        $resolved = $sessionAttribution[$sessionId]
+        $agentName = [string]$resolved.agent
+        if ([string]::IsNullOrWhiteSpace($agentName)) { $agentName = '(unknown)' }
         if ((-not [string]::IsNullOrWhiteSpace($Agent)) -and ($agentName -ne $Agent)) { continue }
         if (-not $byAgent.ContainsKey($agentName)) {
-            $byAgent[$agentName] = [ordered]@{ agent = $agentName; runs = 0; delegations = 0; duration_ms = [long]0; tokens_estimated = $false; tokens = 0; model = '' }
+            $byAgent[$agentName] = [ordered]@{
+                agent = $agentName; runs = 0; delegations = 0; duration_ms = [long]0
+                tokens_estimated = $false; tokens = 0; model = ''
+                observed_runs = 0; inferred_runs = 0; unknown_runs = 0; attribution = 'unknown'
+            }
         }
         $byAgent[$agentName].runs += 1
         $byAgent[$agentName].duration_ms += [long]$row.duration_ms
+        if ([string]$resolved.attribution -eq 'observed') { $byAgent[$agentName].observed_runs += 1 }
+        elseif ([string]$resolved.attribution -eq 'inferred') { $byAgent[$agentName].inferred_runs += 1 }
+        else { $byAgent[$agentName].unknown_runs += 1 }
+    }
+    foreach ($name in @($byAgent.Keys)) {
+        $entry = $byAgent[$name]
+        $kinds = @()
+        if ([int]$entry.observed_runs -gt 0) { $kinds += 'observed' }
+        if ([int]$entry.inferred_runs -gt 0) { $kinds += 'inferred' }
+        if ([int]$entry.unknown_runs -gt 0) { $kinds += 'unknown' }
+        if ($kinds.Count -eq 1) { $entry.attribution = $kinds[0] } elseif ($kinds.Count -gt 1) { $entry.attribution = 'mixed' }
     }
     if ([string]::IsNullOrWhiteSpace($Agent)) {
         foreach ($row in $delegationRows) {
             $agentName = '(unattributed)'
             if (-not $byAgent.ContainsKey($agentName)) {
-                $byAgent[$agentName] = [ordered]@{ agent = $agentName; runs = 0; delegations = 0; duration_ms = [long]0; tokens_estimated = $false; tokens = 0; model = '' }
+                $byAgent[$agentName] = [ordered]@{
+                    agent = $agentName; runs = 0; delegations = 0; duration_ms = [long]0
+                    tokens_estimated = $false; tokens = 0; model = ''
+                    observed_runs = 0; inferred_runs = 0; unknown_runs = 0; attribution = 'unknown'
+                }
             }
             $byAgent[$agentName].delegations += 1
         }
     }
-    if ($unattributedSessions -gt 0) {
-        [void]$notes.Add('sessions without agent attribution: ' + $unattributedSessions + ' of ' + ($attributedSessions + $unattributedSessions) + ' (no matching agent field inside the traces read window)')
+    $totalSessions = $attributionCounts.observed + $attributionCounts.inferred + $attributionCounts.unknown
+    if ($totalSessions -gt 0) {
+        [void]$notes.Add('attribution: observed=' + $attributionCounts.observed + ' inferred=' + $attributionCounts.inferred + ' unknown=' + $attributionCounts.unknown + ' of ' + $totalSessions)
+    }
+    if ($attributionCounts.inferred -gt 0) {
+        $methodText = @($inferredMethods.Keys | Sort-Object | ForEach-Object { $_ + '=' + $inferredMethods[$_] }) -join ', '
+        [void]$notes.Add('inferred attribution (not observed in traces) matched ' + $attributionCounts.inferred + ' session(s) through the machine evidence: ' + $methodText)
+    }
+    if ($attributionCounts.unknown -gt 0) {
+        [void]$notes.Add('sessions without agent attribution: ' + $attributionCounts.unknown + ' of ' + $totalSessions + ' (no agent field in the traces and no unambiguous evidence match)')
+    }
+    if ($ambiguousSessions -gt 0) {
+        [void]$notes.Add('sessions left unknown because several agents matched the same time window (never guessed): ' + $ambiguousSessions)
     }
 
     $agentNames = @($byAgent.Keys)
@@ -571,12 +780,26 @@ try {
                 tokens_estimated = ($totalTokens -gt 0)
                 tokens           = $totalTokens
             }
+            attribution   = [ordered]@{
+                observed             = [int]$attributionCounts.observed
+                inferred             = [int]$attributionCounts.inferred
+                unknown              = [int]$attributionCounts.unknown
+                inference_enabled    = (-not $NoInference)
+                methods              = @($inferredMethods.Keys | Sort-Object | ForEach-Object { [ordered]@{ method = [string]$_; sessions = [int]$inferredMethods[$_] } })
+                ambiguous_sessions   = [int]$ambiguousSessions
+                observed_map_entries = [int]($sessionAgents.map.Keys).Count
+                legacy_trace_records = [int]$sessionAgents.legacy_records
+                broken_trace_lines   = [int]$sessionAgents.broken_lines
+            }
             by_agent      = @($byAgent.Keys | Sort-Object | ForEach-Object {
                 $entry = $byAgent[$_]
                 [ordered]@{
                     agent = [string]$entry.agent; runs = [int]$entry.runs; delegations = [int]$entry.delegations
                     duration_ms = [long]$entry.duration_ms; model = [string]$entry.model
                     tokens_estimated = [bool]$entry.tokens_estimated; tokens = [int]$entry.tokens
+                    attribution = [string]$entry.attribution
+                    observed_runs = [int]$entry.observed_runs; inferred_runs = [int]$entry.inferred_runs
+                    unknown_runs = [int]$entry.unknown_runs
                 }
             })
             by_model      = @($byModel.Keys | Sort-Object | ForEach-Object {
@@ -608,18 +831,20 @@ try {
         [void]$lines.Add('limits  : ' + $budgetLimitsPath + ' (' + $budgetLimits.source + ')')
         [void]$lines.Add('')
         [void]$lines.Add(('totals  : runs=' + $totalRuns + ' delegations=' + $totalDelegations + ' duration=' + (Format-BudgetDuration -Ms $totalDuration) + ' tokens(est)=' + $(if ($totalTokens -gt 0) { $totalTokens } else { 'n/a' })))
+        [void]$lines.Add(('attrib  : observed=' + $attributionCounts.observed + ' inferred=' + $attributionCounts.inferred + ' unknown=' + $attributionCounts.unknown + $(if ($NoInference) { ' (inference disabled)' } else { '' })))
         [void]$lines.Add('')
         [void]$lines.Add('--- by agent ---')
         if ($byAgent.Count -eq 0) {
             [void]$lines.Add('  no sessions in the selected window')
         } else {
-            [void]$lines.Add(('{0,-20} {1,5} {2,6} {3,10}  {4,-32} {5}' -f 'AGENT', 'RUNS', 'DELEG', 'DURATION', 'MODEL', 'TOKENS(est)'))
+            [void]$lines.Add(('{0,-20} {1,5} {2,6} {3,10}  {4,-32} {5,-12} {6}' -f 'AGENT', 'RUNS', 'DELEG', 'DURATION', 'MODEL', 'TOKENS(est)', 'ATTRIB'))
             foreach ($name in @($byAgent.Keys | Sort-Object)) {
                 $entry = $byAgent[$name]
-                [void]$lines.Add(('{0,-20} {1,5} {2,6} {3,10}  {4,-32} {5}' -f $entry.agent, $entry.runs, $entry.delegations,
+                [void]$lines.Add(('{0,-20} {1,5} {2,6} {3,10}  {4,-32} {5,-12} {6}' -f $entry.agent, $entry.runs, $entry.delegations,
                     (Format-BudgetDuration -Ms ([long]$entry.duration_ms)),
                     $(if ([string]::IsNullOrWhiteSpace([string]$entry.model)) { '-' } else { [string]$entry.model }),
-                    $(if ($entry.tokens_estimated) { [string]$entry.tokens } else { 'n/a' })))
+                    $(if ($entry.tokens_estimated) { [string]$entry.tokens } else { 'n/a' }),
+                    $(if ([string]::IsNullOrWhiteSpace([string]$entry.attribution)) { '-' } else { [string]$entry.attribution })))
             }
         }
         [void]$lines.Add('')

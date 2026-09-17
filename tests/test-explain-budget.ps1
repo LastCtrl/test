@@ -20,6 +20,9 @@
 #   h) budget OVER            - fixture limit reached -> warning + exit 2
 #   i) budget WARN            - fixture limit approaching -> warning + exit 2
 #   j) budget empty root      - no data, no crash, valid JSON
+#   k) budget mixed traces    - legacy + correlated + broken lines; observed /
+#                               inferred (evidence) / unknown, ambiguous never guessed
+#   l) budget -NoInference    - observed-only accounting, inference switched off
 #
 # Exit code: 0 when every case passes, 1 when at least one fails.
 
@@ -268,6 +271,101 @@ $warnLimitsPath = Join-Path $TempBase "warn-limits.json"
     models  = [ordered]@{ 'aihubmix/gpt-5.5-free' = [ordered]@{ provider = 'aihubmix'; tier = 'free'; requests_per_day = 3; tokens_per_day = $null; confidence = 'fixture'; source = 'test fixture' } }
 }) -Depth 6), $Utf8NoBom)
 
+# --- fixture: MIXED traces + evidence-based (inferred) attribution ----------
+# Covers the P3-3 follow-up: a live traces.jsonl holds legacy records (written by
+# a plugin version without correlation fields) next to correlated ones, so
+# budget.ps1 must stay stable and label every session honestly:
+#   sesOBS -> observed (agent in the traces)
+#   sesINF -> inferred (no agent in the traces; exactly one matching evidence window)
+#   sesAMB -> unknown  (two evidence agents for the same task id -> never guessed)
+#   sesUNK -> unknown  (correlated record with an EMPTY agent, nothing to match)
+
+$MixedRoot   = Join-Path $TempBase ([guid]::NewGuid().ToString("N"))
+$mixedTraces = Join-Path $MixedRoot "traces"
+foreach ($rel in @(".memory\evidence", ".opencode\agents", ".agents\config", "traces")) {
+    New-Item -ItemType Directory -Path (Join-Path $MixedRoot $rel) -Force | Out-Null
+}
+
+$tObs     = $nowUtc.AddMinutes(-40)
+$tInf     = $nowUtc.AddMinutes(-95)
+$tUnk     = $nowUtc.AddMinutes(-20)
+$tAmb     = $nowUtc.AddMinutes(-10)
+$tEvStart = $localNow.AddMinutes(-100)
+$tEvEnd   = $localNow.AddMinutes(-90)
+
+$mixedEvidence = [ordered]@{
+    task_id  = 'MIX-INF'
+    attempts = @(
+        [ordered]@{
+            task_id = 'MIX-INF'; attempt_id = 'att-1'; agent = 'dev-i'; command = 'opencode run -m demo'
+            exit_code = 0; status = 'ok'; reason = ''
+            started_at = (Format-LocalIso $tEvStart); finished_at = (Format-LocalIso $tEvEnd)
+            duration_ms = 600000; stdout_length = 1200; stderr_length = 0
+        }
+    )
+}
+[System.IO.File]::WriteAllText((Join-Path $MixedRoot ".memory\evidence\MIX-INF.json"),
+    (ConvertTo-Json -InputObject $mixedEvidence -Depth 6), $Utf8NoBom)
+
+# Two different agents for one task id: the session must stay unknown.
+$ambiguousEvidence = [ordered]@{
+    task_id  = 'MIX-AMB'
+    attempts = @(
+        [ordered]@{
+            task_id = 'MIX-AMB'; attempt_id = 'att-1'; agent = 'dev-a'; command = 'opencode run -m demo'
+            exit_code = 0; status = 'ok'; reason = ''
+            started_at = (Format-LocalIso $tAmb.AddMinutes(-6)); finished_at = (Format-LocalIso $tAmb.AddMinutes(-4))
+            duration_ms = 120000; stdout_length = 100; stderr_length = 0
+        },
+        [ordered]@{
+            task_id = 'MIX-AMB'; attempt_id = 'att-2'; agent = 'dev-b'; command = 'opencode run -m demo'
+            exit_code = 0; status = 'ok'; reason = ''
+            started_at = (Format-LocalIso $tAmb.AddMinutes(-3)); finished_at = (Format-LocalIso $tAmb.AddMinutes(-1))
+            duration_ms = 120000; stdout_length = 100; stderr_length = 0
+        }
+    )
+}
+[System.IO.File]::WriteAllText((Join-Path $MixedRoot ".memory\evidence\MIX-AMB.json"),
+    (ConvertTo-Json -InputObject $ambiguousEvidence -Depth 6), $Utf8NoBom)
+
+$mixedTraceLines = @(
+    # legacy tracer v1 records: no session_id, no agent (live-file reality)
+    (New-JsonLine ([ordered]@{ ts = (Format-TraceIso $tInf); type = 'session_start'; id = 'sesINF' })),
+    (New-JsonLine ([ordered]@{ ts = (Format-TraceIso $tInf.AddSeconds(5)); type = 'tool'; tool = 'bash'; ms = 12 })),
+    # correlated records (tracer v2/v2.1)
+    (New-JsonLine ([ordered]@{ ts = (Format-TraceIso $tObs); type = 'session_start'; id = 'sesOBS'; session_id = 'sesOBS'; agent = 'dev-m'; agent_source = 'session.updated' })),
+    (New-JsonLine ([ordered]@{ ts = (Format-TraceIso $tObs.AddSeconds(5)); type = 'tool'; tool = 'edit'; session_id = 'sesOBS'; call_id = 'c9'; agent = 'dev-m'; agent_source = 'session.updated'; duration_ms = 5; status = 'ok' })),
+    # correlated but without an agent value (measured on opencode 1.18.31 before v2.1)
+    (New-JsonLine ([ordered]@{ ts = (Format-TraceIso $tUnk); type = 'session_agent'; id = 'sesUNK'; session_id = 'sesUNK'; agent = ''; agent_source = '' })),
+    'this-is-not-json'
+)
+[System.IO.File]::WriteAllText((Join-Path $mixedTraces "traces.jsonl"), (($mixedTraceLines -join "`n") + "`n"), $Utf8NoBom)
+
+$mixedPerfLines = @(
+    (New-JsonLine ([ordered]@{ ts = (Format-TraceIso $tObs); session_id = 'sesOBS'; duration_ms = 60000; score = 95; type = 'session'; task_id = 'MIX-OBS' })),
+    (New-JsonLine ([ordered]@{ ts = (Format-TraceIso $tInf); session_id = 'sesINF'; duration_ms = 300000; score = 80; type = 'session'; task_id = '' })),
+    (New-JsonLine ([ordered]@{ ts = (Format-TraceIso $tUnk); session_id = 'sesUNK'; duration_ms = 30000; score = 99; type = 'session'; task_id = '' })),
+    (New-JsonLine ([ordered]@{ ts = (Format-TraceIso $tAmb); session_id = 'sesAMB'; duration_ms = 10000; score = 99; type = 'session'; task_id = 'MIX-AMB' })),
+    (New-JsonLine ([ordered]@{ ts = (Format-TraceIso $tDeleg); type = 'delegation'; tool = 'task' }))
+)
+[System.IO.File]::WriteAllText((Join-Path $mixedTraces "performance.jsonl"), (($mixedPerfLines -join "`n") + "`n"), $Utf8NoBom)
+
+foreach ($pair in @(
+    @{ Name = 'dev-m'; Model = 'demo/model-m' },
+    @{ Name = 'dev-i'; Model = 'demo/model-i' }
+)) {
+    [System.IO.File]::WriteAllText((Join-Path $MixedRoot (".opencode\agents\" + $pair.Name + ".json")),
+        (ConvertTo-Json -InputObject ([ordered]@{ name = $pair.Name; model = $pair.Model; mode = 'subagent' }) -Depth 4), $Utf8NoBom)
+}
+[System.IO.File]::WriteAllText((Join-Path $MixedRoot ".agents\config\model-limits.json"),
+    (ConvertTo-Json -InputObject ([ordered]@{
+        version = 1
+        models  = [ordered]@{
+            'demo/model-m' = [ordered]@{ provider = 'demo'; tier = 'free'; requests_per_day = 100; tokens_per_day = $null; confidence = 'fixture'; source = 'test fixture' }
+            'demo/model-i' = [ordered]@{ provider = 'demo'; tier = 'free'; requests_per_day = 100; tokens_per_day = $null; confidence = 'fixture'; source = 'test fixture' }
+        }
+    }) -Depth 6), $Utf8NoBom)
+
 # --- environment isolation --------------------------------------------------
 
 $originalRoot = $env:AGENT_HQ_ROOT
@@ -501,6 +599,66 @@ try {
         $caseOk = (Write-Check "falls back to the built-in limits" ([string]$emptyBudgetParsed.limits_source -eq 'built-in') ("got=" + $emptyBudgetParsed.limits_source)) -and $caseOk
     }
     Close-Case "j) budget empty root" $caseOk
+
+    # --- k) budget on a MIXED traces.jsonl (observed/inferred/unknown) -------
+
+    Write-Host ""
+    Write-Host "CASE: k) budget mixed traces + inferred attribution"
+    $caseOk = $true
+    $mixedJson = Invoke-AgentScript -ScriptPath $Budget -Arguments @('-Root', $MixedRoot, '-TracesDir', $mixedTraces, '-Json')
+    $caseOk = (Write-Check "exit code is 0" ($mixedJson.code -eq 0) ("exit=" + $mixedJson.code)) -and $caseOk
+    $mixedParsed = $null
+    try { $mixedParsed = $mixedJson.text | ConvertFrom-Json -ErrorAction Stop } catch { $mixedParsed = $null }
+    $caseOk = (Write-Check "mixed traces do not break the JSON output" ($null -ne $mixedParsed)) -and $caseOk
+    if ($null -ne $mixedParsed) {
+        $caseOk = (Write-Check "counts all 4 sessions in the window" ([int]$mixedParsed.totals.runs -eq 4) ("got=" + $mixedParsed.totals.runs)) -and $caseOk
+        $caseOk = (Write-Check "legacy records without correlation are skipped, not fatal" ([int]$mixedParsed.attribution.legacy_trace_records -eq 2) ("got=" + $mixedParsed.attribution.legacy_trace_records)) -and $caseOk
+        $caseOk = (Write-Check "a broken trace line is counted and skipped" ([int]$mixedParsed.attribution.broken_trace_lines -eq 1) ("got=" + $mixedParsed.attribution.broken_trace_lines)) -and $caseOk
+        $caseOk = (Write-Check "exactly one session is observed" ([int]$mixedParsed.attribution.observed -eq 1) ("got=" + $mixedParsed.attribution.observed)) -and $caseOk
+        $caseOk = (Write-Check "exactly one session is inferred" ([int]$mixedParsed.attribution.inferred -eq 1) ("got=" + $mixedParsed.attribution.inferred)) -and $caseOk
+        $caseOk = (Write-Check "two sessions stay honestly unknown" ([int]$mixedParsed.attribution.unknown -eq 2) ("got=" + $mixedParsed.attribution.unknown)) -and $caseOk
+        $caseOk = (Write-Check "the inferred session went through the evidence window" (@($mixedParsed.attribution.methods | Where-Object { $_.method -eq 'evidence-window' -and [int]$_.sessions -eq 1 }).Count -eq 1) ("methods=" + (((@($mixedParsed.attribution.methods) | ForEach-Object { $_.method })) -join ','))) -and $caseOk
+        $caseOk = (Write-Check "the ambiguous session is reported, never resolved" ([int]$mixedParsed.attribution.ambiguous_sessions -eq 1) ("got=" + $mixedParsed.attribution.ambiguous_sessions)) -and $caseOk
+
+        $obsRow = @($mixedParsed.by_agent | Where-Object { $_.agent -eq 'dev-m' })
+        $caseOk = (Write-Check "observed agent is labelled observed" (@($obsRow).Count -eq 1 -and [int]$obsRow[0].runs -eq 1 -and [string]$obsRow[0].attribution -eq 'observed') ("row=" + ($obsRow | ConvertTo-Json -Compress))) -and $caseOk
+        $caseOk = (Write-Check "observed agent keeps its configured model" (@($obsRow).Count -eq 1 -and [string]$obsRow[0].model -eq 'demo/model-m')) -and $caseOk
+
+        $infRow = @($mixedParsed.by_agent | Where-Object { $_.agent -eq 'dev-i' })
+        $caseOk = (Write-Check "inferred agent is labelled inferred" (@($infRow).Count -eq 1 -and [int]$infRow[0].runs -eq 1 -and [string]$infRow[0].attribution -eq 'inferred') ("row=" + ($infRow | ConvertTo-Json -Compress))) -and $caseOk
+        $caseOk = (Write-Check "inferred run is not counted as observed" (@($infRow).Count -eq 1 -and [int]$infRow[0].observed_runs -eq 0 -and [int]$infRow[0].inferred_runs -eq 1)) -and $caseOk
+
+        $unknownRow = @($mixedParsed.by_agent | Where-Object { $_.agent -eq '(unknown)' })
+        $caseOk = (Write-Check "the unknown bucket keeps the unattributed runs" (@($unknownRow).Count -eq 1 -and [int]$unknownRow[0].runs -eq 2 -and [string]$unknownRow[0].attribution -eq 'unknown')) -and $caseOk
+        $caseOk = (Write-Check "the ambiguous agents are NOT invented" (@($mixedParsed.by_agent | Where-Object { $_.agent -eq 'dev-a' -or $_.agent -eq 'dev-b' }).Count -eq 0)) -and $caseOk
+        $caseOk = (Write-Check "notes explain the inference and the ambiguity" (($mixedParsed.notes -join "`n") -match 'inferred attribution' -and ($mixedParsed.notes -join "`n") -match 'never guessed')) -and $caseOk
+    } else {
+        $caseOk = (Write-Check "mixed json could not be checked (parse failed)" $false) -and $caseOk
+    }
+    $mixedHuman = Invoke-AgentScript -ScriptPath $Budget -Arguments @('-Root', $MixedRoot, '-TracesDir', $mixedTraces)
+    $caseOk = (Write-Check "human mode exits 0" ($mixedHuman.code -eq 0) ("exit=" + $mixedHuman.code)) -and $caseOk
+    $caseOk = (Write-Check "human table shows the attribution column" ($mixedHuman.text -match 'ATTRIB' -and $mixedHuman.text -match 'inferred' -and $mixedHuman.text -match 'observed')) -and $caseOk
+    Close-Case "k) budget mixed traces + inference" $caseOk
+
+    # --- l) budget -NoInference (observed-only accounting) ------------------
+
+    Write-Host ""
+    Write-Host "CASE: l) budget -NoInference"
+    $caseOk = $true
+    $noInferJson = Invoke-AgentScript -ScriptPath $Budget -Arguments @('-Root', $MixedRoot, '-TracesDir', $mixedTraces, '-NoInference', '-Json')
+    $noInferParsed = $null
+    try { $noInferParsed = $noInferJson.text | ConvertFrom-Json -ErrorAction Stop } catch { $noInferParsed = $null }
+    $caseOk = (Write-Check "exit code is 0" ($noInferJson.code -eq 0) ("exit=" + $noInferJson.code)) -and $caseOk
+    if ($null -ne $noInferParsed) {
+        $caseOk = (Write-Check "runs are still counted" ([int]$noInferParsed.totals.runs -eq 4) ("got=" + $noInferParsed.totals.runs)) -and $caseOk
+        $caseOk = (Write-Check "inference is disabled and reported" ([bool]$noInferParsed.attribution.inference_enabled -eq $false -and [int]$noInferParsed.attribution.inferred -eq 0)) -and $caseOk
+        $caseOk = (Write-Check "3 sessions fall back to unknown" ([int]$noInferParsed.attribution.unknown -eq 3) ("got=" + $noInferParsed.attribution.unknown)) -and $caseOk
+        $caseOk = (Write-Check "the observed agent survives" (@($noInferParsed.by_agent | Where-Object { $_.agent -eq 'dev-m' -and $_.attribution -eq 'observed' }).Count -eq 1)) -and $caseOk
+        $caseOk = (Write-Check "no inferred agent appears" (@($noInferParsed.by_agent | Where-Object { $_.agent -eq 'dev-i' }).Count -eq 0)) -and $caseOk
+    } else {
+        $caseOk = (Write-Check "-NoInference json parses" $false) -and $caseOk
+    }
+    Close-Case "l) budget -NoInference" $caseOk
 } finally {
     if ([string]::IsNullOrWhiteSpace($originalRoot)) {
         Remove-Item -Path "Env:\AGENT_HQ_ROOT" -ErrorAction SilentlyContinue
@@ -513,6 +671,7 @@ try {
         $env:AGENT_HQ_TRACES_DIR = $originalTraces
     }
     Remove-Item -LiteralPath $EmptyRoot -Recurse -Force -ErrorAction SilentlyContinue
+    Remove-Item -LiteralPath $MixedRoot -Recurse -Force -ErrorAction SilentlyContinue
     Remove-Item -LiteralPath $Root -Recurse -Force -ErrorAction SilentlyContinue
     Remove-Item -LiteralPath $TempBase -Recurse -Force -ErrorAction SilentlyContinue
 }

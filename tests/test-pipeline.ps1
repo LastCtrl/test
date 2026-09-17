@@ -65,7 +65,8 @@ function Set-CaseEnv {
 }
 
 function Clear-CaseEnv {
-    foreach ($name in @("AGENT_HQ_ROOT", "AGENT_HQ_OPENCODE", "FAKE_OPENCODE_MODE", "FAKE_OPENCODE_ENV_TRACK_DIR", "AGENT_HQ_JOB_TIMEOUT")) {
+        foreach ($name in @("AGENT_HQ_ROOT", "AGENT_HQ_OPENCODE", "FAKE_OPENCODE_MODE", "FAKE_OPENCODE_ENV_TRACK_DIR", "AGENT_HQ_JOB_TIMEOUT", "AGENT_HQ_AGENT")) {
+
         Remove-Item -Path ("Env:\" + $name) -ErrorAction SilentlyContinue
     }
 }
@@ -235,7 +236,9 @@ function Test-RedactionCase {
 
 # P1-4/BUG-022: the engine must export AGENT_HQ_TASK_ID / AGENT_HQ_ATTEMPT_ID into
 # the worker environment, otherwise the tracer/scoring correlation layer of the
-# spawned CLI records empty task ids and joins nothing.
+# spawned CLI records empty task ids and joins nothing. P3-3 gap follow-up: the
+# fleet agent name travels the same way (AGENT_HQ_AGENT), because the runtime
+# cannot report it for a mode=subagent fleet (it falls back to the default agent).
 function Test-EnvCorrelationCase {
     param([string]$Root)
     Set-CaseEnv -Root $Root -Mode "envprobe"
@@ -253,6 +256,7 @@ function Test-EnvCorrelationCase {
         $response = [string]$msg.response
         $all = (Write-Check "worker saw AGENT_HQ_TASK_ID=<messageId>" ($response.Contains("AGENT_HQ_TASK_ID=" + $id))) -and $all
         $all = (Write-Check "worker saw AGENT_HQ_ATTEMPT_ID=attempt-1" ($response.Contains("AGENT_HQ_ATTEMPT_ID=attempt-1"))) -and $all
+        $all = (Write-Check "worker saw AGENT_HQ_AGENT=testagent" ($response.Contains("AGENT_HQ_AGENT=testagent"))) -and $all
     }
 
     # Out-of-band proof from the child process itself (one file per invocation).
@@ -261,7 +265,7 @@ function Test-EnvCorrelationCase {
     $all = (Write-Check "worker wrote exactly one env probe" ($probeFiles.Count -eq 1)) -and $all
     if ($probeFiles.Count -eq 1) {
         $probe = (Get-Content -LiteralPath $probeFiles[0].FullName -Raw -Encoding UTF8).Trim()
-        $all = (Write-Check "env probe file holds '<messageId>|attempt-1'" ($probe -eq ($id + "|attempt-1"))) -and $all
+        $all = (Write-Check "env probe file holds '<messageId>|attempt-1|testagent'" ($probe -eq ($id + "|attempt-1|testagent"))) -and $all
     }
 
     return $all

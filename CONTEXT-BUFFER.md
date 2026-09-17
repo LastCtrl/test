@@ -3277,3 +3277,104 @@ MCP_USED: []
 COMPLIANCE: true
 STATUS: resolved
 ================================================================================
+
+================================================================================
+[TIME] team-lead-1 (acting dev) -> team-lead:
+TYPE: update | PRIORITY: critical
+Project: pong-advanced
+================================================================================
+ROLE LIMIT: субагенты недоступны (subagent depth limit=1) -> работал сам как acting dev (delegation невозможна, отмечено).
+
+1) АВТОСЕЙВ БД (критично, аккаунты терялись при Stop-Process -Force):
+   - НОВЫЙ src/server/db/autosave.ts: AutosaveManager (debounce 3000мс, periodic 30000мс, инжектируемые setTimer/clearTimer/startInterval/stopInterval/now/write), markDirty/isDirty/flush/flushNow/start/stop/flushCount/lastWriteAt; синглтон initAutosave/getAutosave/markDirty/flushAutosave/resetAutosaveForTests. Ошибка записи не роняет процесс (console.error + dirty сохраняется), таймеры .unref().
+   - src/server/db/schema.ts:185 saveDatabase — АТОМАРНО: tmp-файл рядом -> fsync -> renameSync (schema.ts:203) поверх целевого, fallback на прямую запись. Краш в момент записи не бьёт БД.
+   - src/server/index.ts:3221 initAutosave(DB_PATH) в initApp + markDirty после сида; периодический таймер только вне тест-раннера; markDirty в КАЖДОМ мутирующем пути: users create (1915), users PUT (2021), stats POST (2156), checkAchievements (1866), applyCosmeticPurchase (2402), admin-выдача в cosmetics POST (2451), equip PUT (2532); gracefulShutdown:3182 flushNow+stop до closeDatabase; stopServer:3248 stop таймеров. В тест-раннере data/pong.db НЕ пишется (data/ пуст, проверено).
+   - tests/unit/db-autosave.test.ts (НОВЫЙ, 11 тестов): дебаунс/перевзвод/периодика/stop/flushNow/ошибка записи (инжектируемые таймеры FakeScheduler + vi.fn writer), атомарность на реальном временном каталоге (tmp отсутствует, БД переоткрывается), интеграционно POST /api/users -> getAutosave().isDirty()===true.
+
+2) GHOST УДАЛЁН ИЗ ИГРЫ ПОЛНОСТЬЮ:
+   - src/shared/constants.ts: POWERUP_TYPES_LOCAL без 'ghost' (8 типов), POWERUP_COLORS_LOCAL без ghost, POWERUP_SPAWN_WEIGHTS без ghost (сумма 80), POWERUP_SIZE_BY_TYPE без ghost, DEFAULT_POWERUP_POOL = 8 типов; pickWeightedPowerUpType получил whitelist-фильтр (legacy 'ghost' в пуле не выбирается); GHOST_* константы и consumeGhostPass оставлены инертными (используются Renderer/тестами).
+   - src/client/game/LocalGame.ts: убран case 'ghost' + неиспользуемый импорт GHOST_DURATION; пул фильтруется по POWERUP_TYPES_LOCAL.
+   - src/server/index.ts: убраны case 'ghost' в applyPowerUp/applyPowerUp4; spawnPowerUp:1112 доп. фильтр 'ghost' (защита от legacy-пула комнаты); import GHOST_DURATION удалён.
+   - tests/unit/ghost-powerup-defaults.test.ts переписан в «ghost отсутствует везде» (константы + детерминированный перебор 8000 бросков + 300 спавнов + source-level отсутствие case 'ghost' + подбор ghost-бонуса не активирует).
+   - ОСТАТКИ ВНЕ МОЕЙ ЗОНЫ (клиентский агент): index.html:185 тумблер data-powerup="ghost" (не active, активация безвредна — whitelist), Renderer.ts:97/109 ghost-glyph/label + ball.ghost alpha (мёртвый код), menuPresets.ts:43/55 ALL_POWERUP_IDS с 'ghost'. ball.ghost*/types.ts оставлены как инертные legacy-поля.
+
+3) «СБРОС» БОНУСОВ: КОНТРАКТ + вынужденная точечная правка чужого файла: src/client/App.ts:2190 «Сброс» теперь снимает active со ВСЕХ .powerup-toggle (раньше хардкод 5 базовых); «Все» (App.ts:2182) остаётся «включить все». collectActivePowerups() -> пул игры; ghost отфильтрован whitelist'ом. menuPresets.DEFAULT_POWERUP_IDS (5 базовых) теперь не используется кнопкой «Сброс» — мёртвый экспорт, удалить клиентскому агенту.
+
+4) ФИЗИКА (обе причины найдены, UI-сбор настроек был корректен — App.ts:866-867 читает index.html:186/194, LAN-schema пробрасывает):
+   - paddleSize НЕ работал: getPaddleHeight() считал высоту только от PADDLE_H и игнорировал настройку (height в freshPaddle перетирался физикой/wire). Фикс: shared/physics.ts getPaddleHeight умножает на PaddleState.sizeScale (дефолт 1, floor 16); LocalGame.freshPaddle проставляет sizeScale (LocalGame.ts:308-322); сервер: createRoom index.ts:613/630, startRoom:2706, startRoom4:2761 (4p). Хитбокс (checkPaddleCollision/paddleHeightAt), clamp (updatePaddlePosition) и wire-высота (toWirePaddle) теперь согласованы.
+   - gravity НЕ работала: интегрирование ±gravityVy*dt*dt (эффект в ~60 раз слабее). Фикс: LocalGame.applyAmbientGravity (LocalGame.ts:409-420) и server applyServerGravity (index.ts:752) -> ±gravityVy*dt. Проверка: g=300 за 1с даёт ~150px (было ~2.5px).
+   - Тесты: physics.test.ts (sizeScale, комбинирование с giant/shrink, floor, checkPaddleCollision по sizeScale), localgame-custom.test.ts (paddleSize 2/0.5 + gravity 300 за 60 тиков > 50px), server.test.ts новый describe «физика настроек комнаты» (gravity через tick >20px за 60 тиков, gravity=0, paddleSize в sizeScale+wire=200, startRoom переносит 0.5).
+
+5) ТРАНСЛЯЦИЯ СКИНА СОПЕРНИКА (LAN) — КОНТРАКТ (сервер реализован):
+   - Payload: create-game принимает опц. `paddleSkin: string` (хост=p1) — createRoomSchema; join-game принимает опц. `paddleSkin: string` (2p -> сторона p2, 4p -> player4). Валидация: /^[a-z0-9_-]{1,64}$/, невалидное = «скина нет» (normalizePaddleSkin index.ts:355).
+   - Хранение: room.paddleSkins (index.ts:278, assignPaddleSkin:367).
+   - Трансляция в стейте: `state.paddles.p1.skin` / `state.paddles.p2.skin` (toWirePaddle:1542) И `state.paddleSkins = {p1?,p2?,p3?,p4?}` (buildGameState:1618; p3/p4 только в карте, paddles4 не менялся). Мяч/трейл остаются локальными.
+   - Клиенту (клиентский агент): (а) отправлять `paddleSkin` (id экипированного paddle_skin) в create-game/join-game; (б) при отрисовке ракетки стороны i брать `state.paddles[i].skin` (для p3/p4 — `state.paddleSkins.p3|p4`) и подставлять скин в Renderer для ракетки соперника. Без (а) фича инертна на клиенте.
+   - tests/unit/lan-cosmetic.test.ts (НОВЫЙ, 8 тестов): whitelist id, host/guest скины в state, 4p p3/p4, невалидные значения, paddleSize в wire-высоте.
+
+6) ПРОВЕРКИ (все exit 0):
+   1) npx tsc --noEmit -> 0
+   2) npm run build -> 0 (postbuild копирование ок)
+   3) npx vitest run -> 38 files / 770 tests passed, exit 0, без unhandled (baseline был 31/685)
+   4) npm run lint -> 0 errors / 0 warnings
+   5) npx playwright test -> 10 passed (было 6: клиентский агент добавил mobile.spec.ts + tmp-shots.spec.ts), exit 0
+   Сверх: unit-доказательства save-флаша (debounce/periodic/atomic + dirty после POST /api/users) и невозможности спавна/выбора ghost — см. п.1/п.2.
+
+LIMITATIONS (честно):
+- E2E гоняется против УЖЕ запущенного прод-процесса node dist/server/index.js (PID 6612) — в нём СТАРЫЙ серверный код; новые серверные фичи (autosave/скины/физика на сервере) покрыты только unit-тестами. Для E2E-валидации нужен рестарт прод-сервера тимлидом (я его не трогал, §3.7).
+- Независимая приёмка (qa-engineer/code-reviewer) НЕ выполнена: spawn субагентов в моей сессии запрещён (depth=1). Требуется приёмка тимлидом; self-report ниже — самоотчёт, не приёмка.
+- context7 MCP в сессии недоступен (fetch failed) — работал без доков library; sequential-thinking использован.
+- Проверено: фоновых процессов не оставлял (в системе только MCP-серверы и прод-сервер проекта), data/pong.db не создавался/не писался, временных файлов нет.
+SKILLS_LOADED: ["superpowers-implement", "evidence-discipline"]
+MCP_USED: ["sequential-thinking", "context7: offline"]
+COMPLIANCE: true
+STATUS: resolved
+================================================================================
+
+================================================================================
+[2026-09-17] team-lead-2 (acting dev) -> team-lead: UX-редизайн меню pong-advanced (волна B, клиент)
+TYPE: update | PRIORITY: high
+Project: pong-advanced
+CONTENT: Сделано (все пути от D:\Тест\pong-advanced):
+1) МЕНЮ ПЕРЕДЕЛАНО (топ-приоритет). Новая разметка src/client/index.html: 1·Режим (:43, classic/crazy/custom), 2·Игроки (:54, opt-players-1="1", opt-players="2", opt-players-2v2 disabled «скоро», opt-players-4="4"), 3·Арена+Щит (:66/:75, только Безумие/Кастом и 2 игрока), 4·Правила (:84, «до счёта» + <details id="more-settings"> :93 с orientation/длительностью/скоростью/размером/гравитацией/скинами), 5·ИИ (:152, только 1 игрок: уровень+характер), 6·Бонусы (:174, сворачиваемая, Все/Сброс, 8 живых бонусов), 7·ИГРАТЬ (:211) + LAN (:220) + прогресс/справка. Вся логика видимости — чистый модуль src/client/menuLayout.ts (normalizeMenuMode/Players, menuLayout, menuGroupVisibility, menuModeForGame: custom→crazy); применение — App.ts currentMenuLayout :935 + syncMenuLayout :954 (переключает arena/shield/powerups/ai + тексты подсказок); перекрытие «виджет профиля наезжал на заголовок» устранено (styles.css:1976 → .profile-widget статичный). Удалены дубли: группа «Соперник» (opponent) убрана целиком (соперник выводится из числа игроков), секция «Физика и матч» слита в «Больше настроек», частота бонусов переехала в «6·Бонусы». Подписи с title-подсказками у всех option-кнопок (проверено тестом). Все E2E-id сохранены (btn-ai/btn-local-pvp/btn-4p/btn-host/btn-join/btn-help/btn-profile/btn-shop/btn-leaderboard/btn-achievements/btn-online/opt-players/opt-players-4) — playwright 8/8. Новая большая кнопка #btn-play → App.ts:2191 startQuick(currentMenuLayout().playAction) (App.ts:2180; ai|local-pvp|4p; «2 игрока» всегда human, «Против ИИ» всегда ai).
+2) СКРОЛЛБАРЫ. styles.css:1889-1960 — тонкие кастомные вместо стандартных серых: scrollbar-width/scrollbar-color (Firefox) + ::-webkit-scrollbar 10px с прозрачным треком и thumb в тон теме (--sb-thumb/--sb-thumb-hover, dark/light), внутри @supports selector(::-webkit-scrollbar) возвращаем scrollbar-width:auto, чтобы webkit-стили не игнорировались; + overscroll-behavior:contain и scroll-behavior:smooth. Применено к .panel/.meta-body/.help-body/.room-list (меню и магазин). .panel--menu :1965 (overflow-x:hidden).
+3) СКИНЫ. Галочка «Разные формы ракеток» (opt-shaped-paddles) УДАЛЕНА из разметки, вместо неё тумблер «Скины: вкл/выкл» (index.html:141 opt-skins checked + :143 opt-skins-state), настройка персистится в localStorage pong-skins-v1 (новый чистый модуль src/client/skinPrefs.ts: parse/load/save, default ВКЛ, 'off'/'0'/'false' → выкл, битое хранилище не ломает). App.ts: skinsPrefEnabled :905, applySkinsPreference :921 (setSkinsEnabled + syncShapedPaddles + подпись), collectSettings `shapedPaddles: skins` :896 и `paddleSkin` :900. Renderer: skinsEnabled/сеттеры :142/:525/:529 + гейт рендера `const gameCosmetics = skinsEnabled ? activeCosmetics : null` :976 (paddle/ball/trail → дефолт при «выкл»); превью магазина (drawStylePreview) не гейтится (косметика — его содержание).
+4) СКИН СОПЕРНИКА В LAN. Клиент реализован по контракту волны A (shared/types.ts:165 state.paddleSkins; server toWirePaddle → paddles[i].skin): новый src/client/remoteSkins.ts — толерантное извлечение (карта paddleSkins/remoteSkins/…, paddles[i].cosmeticPaddle|paddleSkin|skinId|skin, paddles4[].id), фильтр своей стороны, подпись для кэша; App.ts syncRemoteSkins :995 (вызов на 'state' :1604, сброс карты при выходе в меню) → Renderer.setRemotePaddleCosmetics :538 → paddlePaintFor :981 рисует ЧУЖУЮ ракетку ЕЁ скином (resolveRemotePaddlePaint :561), мяч/трейл всегда свои. Свой скин уходит на сервер: toLanSettings :1485 (create-game) и join payload :1215.
+   NOT VERIFIED (e2e-визуально): прод-сервер :3333 (PID 6612, старт 07:59) старше контракта волны A и рестарт запрещён ТЗ — в стейте старого процесса поля paddleSkins нет. Скриншоты LAN-игры: свои скины рисуются (серая classic-ракетка), чужие — дефолтные цвета (ожидаемо). Покрыто unit-тестами (remote-skins 7 + renderer-skins 11) + проверкой App-wiring. Для приёмки нужен рестарт прод-сервера тимлидом.
+5) ЛОББИ. Новый чистый src/client/lobbyInfo.ts (lobbySummaryText, hostLobbyStatus, guestLobbyStatus, hostSideHint) + App.ts setLobbySummary :1045. Браузерная проверка (host+client LAN, 0 pageerror на обеих страницах): хост «Игроков: 1/2 — ждём второго игрока» и сводка «Режим: Безумие · Игроков: 2 · Арена: Стандарт · Щит: выкл · Бонусы: 5 · Скорость: 300 · Матч: без лимита»; гость «Ты — правая сторона (P2), клавиши: ↑/↓ (или свайп). Ждём старта хоста. Код: 5Z8W»; для ended — «Игра завершена — ждём реванш от хоста». НАЙДЕН И ИСПРАВЛЕН реальный баг по ходу проверки: ack join-game не содержит mode (сервер отдаёт нормализованные настройки БЕЗ режима) → гость видел «Режим: Классика» в комнате «Безумие». Фикс: режим берём из списка комнат (roomModesByCode :1060/:1097, room.mode) и из game-started :1689, при неизвестном — строку «Режим» не выводим вовсе (lobbyInfo.ts). Перепроверено в браузере: гость видит «Режим: Безумие».
+6) КРОСС-ВОЛНОВАЯ УБОРКА (по запросу волны A): удалён мёртвый тумблер data-powerup="ghost" из index.html (призрак убран из движка) и 'ghost' из ALL_POWERUP_IDS (menuPresets.ts, теперь 8 живых; CRAZY_POWERUP_IDS = все 8, фильтр оставлен на случай возврата), обновлён тест menu-presets.
+7) ТЕСТЫ: +5 новых файлов (menu-layout 12, skin-prefs 8, remote-skins 7, renderer-skins 11, lobby-info 13) + mobile.spec.ts (2 e2e-смоука 390x844) + обновлены shaped-paddles/menu-presets. Уникальность id, порядок групп, отсутствие дублей настроек, видимость групп по режиму/числу игроков, применение скинов вкл/выкл, сборка настроек — покрыты.
+8) ИНЦИДЕНТ/САМОКОНТРОЛЬ (важно): при точечной правке Renderer.ts я применил PowerShell round-trip (Get-Content -Raw + Set-Content -Encoding UTF8) и получил double-encoded кириллицу во всём файле (12 ошибок eslint no-irregular-whitespace, mojibake-комментарии). Обнаружил, восстановил ЛОССЛЕСС-обратным преобразованием (CP1251→UTF8, проверка lossy=0; 'Своя сторона' восстановлено; файл 56598 байт), BOM удалён, mojibake-артефакты=0 во всех моих файлах, eslint Renderer.ts=0. Впредь правки исходников — только edit-инструментом (как и было предписано ТЗ).
+9) ПРОВЕРКИ (5, все зелёные, после ВСЕХ правок): 1) npx tsc --noEmit → exit 0; 2) npm run build → exit 0 (postbuild скопировал index.html/styles.css в dist/client); 3) npx vitest run → 38 files / 775 tests passed, exit 0, без unhandled (baseline моей сессии был 31/685); 4) npm run lint → 0 errors / 0 warnings, exit 0; 5) npx playwright test → 8 passed, exit 0 (6 прежних: game 5 + lan 1 — id целы; + 2 новых mobile: меню-группы/скины + магазин/скроллбар, 390x844, 0 pageerror, нет горизонтального overflow). Доп: меню/магазин/лобби проверены визуально (скриншоты desktop 1400x900 и mobile 390x844) — перекрытий нет, «ИГРАТЬ» влезает на экран ноутбука, группы скрываются корректно.
+10) ГИГИЕНА: прод-сервер не рестартился и не убивался; фоновых процессов не оставлял; временные файлы (tests/e2e/tmp-shots.spec.ts, tests/e2e/tmp-lobby.spec.ts, temp-скриншоты и temp-реверс Renderer.ts) удалены; src/server/** и src/shared/** не редактировались (только чтение); в чужих файлах правок нет.
+
+LIMITATIONS (честно):
+- E2E-визуальная проверка скина соперника в LAN невозможна на текущем прод-процессе (PID 6612, старый код сервера) — нужен рестарт тимлидом (см. п.4).
+- 2v2 в движке отсутствует (нет команд/team-скора ни в shared, ни в server) — кнопка «2v2» намеренно disabled с подсказкой «в разработке», не фейк.
+- Светлая тема (theme-light) визуально не снималась в скриншотах: кастомный скроллбар имеет отдельные переменные для light, но глазами не проверялся.
+- Независимая приёмка (qa-engineer/code-reviewer) НЕ выполнена: спавн субагентов в моей сессии недоступен; ниже — самоотчёт, не приёмка.
+SKILLS_LOADED: ["superpowers-implement"]
+MCP_USED: ["sequential-thinking"]
+COMPLIANCE: true
+STATUS: resolved
+================================================================================
+
+
+================================================================================
+[2026-09-17 13:20] dev-1 -> team-lead:
+TYPE: update | PRIORITY: medium
+CONTENT: ГЭП КОРРЕЛЯЦИИ traces/scoring (P3-3 follow-up) ЗАКРЫТ. Диагноз СМЕШАННЫЙ: операционка + реальный баг tracer.js.
+  0) ПРОВЕРКА СВЕЖИМ ПРОЦЕССОМ (`opencode run --model opencode-go/deepseek-v4.1-flash`): новые записи ПОЯВИЛИСЬ с session_id/call_id/status (session_start+session_end ses_f514f40e..., tool call_00_e7dv...). Значит v2 из 263c9b0 работает; 23894 легаси-записей писала группа долгоживущих opencode.exe (PID 13032/23172/27612/31536/27964/10276, старт 14-15.09 = ДО коммита tracer v2 16.09 12:28) — они держали v1 в памяти. => ОПЕРАЦИОНКА: нужен свежий процесс/рестарт opencode; код не виноват.
+  1) НО `agent` был пуст и в свежем процессе => РЕАЛЬНЫЙ БАГ. Доказано временным hook-probe плагином (создан, замерен, УДАЛЁН): в opencode 1.18.31 `chat.message` input = {sessionID, model} — БЕЗ agent и messageID; tool.execute.* = {tool, sessionID, callID}; agent есть только в event session.updated.properties.info.agent; `chat.params` использовать НЕЛЬЗЯ (первый запрос идёт с agent="title" — внутренний helper, исказит атрибуцию). Доп. находка: все 32 агента fleet mode=subagent, а `opencode run --agent <subagent>` отвечает "is a subagent... Falling back to default agent" (info.agent="build") => рантайм физически не может назвать fleet-агента.
+  ФИКС tracer.js v2.1 (аддитивный, .opencode/plugins/tracer.js): AGENT_SOURCE_RANK (:47) env > session.updated > chat.message; envAgent() (:89) читает AGENT_HQ_AGENT; rememberAgent() (:227) пишет ОДНУ связку type=session_agent (:242), если агент узнан ПОСЛЕ session_start; message_id из output.message.id; один bounded diagnostic type=plugin_diag на сессию (:454) с chat_message/session_updated_agent/tool_spans/agent_mismatch/runtime_agent.
+  ФИКС HARNESS: .agents/scripts/inbox-engine.ps1:335 — экспорт $env:AGENT_HQ_AGENT=$agent рядом с TASK_ID/ATTEMPT_ID (иначе fleet-агент до CLI не доедет).
+  АТРИБУЦИЯ budget.ps1: observed (agent в traces; первое непустое значение на session_id => смешанный файл безопасен) | inferred (fallback: task_id сессии -> агент из evidence, либо окно [ts-duration_ms, ts] против окна evidence-попытки; ровно ОДИН кандидат, иначе unknown — не угадываем) | unknown. Get-BudgetSessionAgents (:298), Get-BudgetEvidenceAttribution (:335), Resolve-BudgetInferredAgent (:389), блок attribution в JSON (:783), колонка ATTRIB + строка attrib в human, ключ -NoInference, ноты о легаси-записях/битых строках/амбивалентности. Артефакты observed/inferred/unknown попадают и в by_agent (observed_runs/inferred_runs/unknown_runs).
+  ДОКАЗАТЕЛЬСТВО END-TO-END (живой файл): run с AGENT_HQ_AGENT=dev-1 -> traces.jsonl: {"type":"session_agent","session_id":"ses_f512da10...","agent":"dev-1","agent_source":"env","task_id":"P3-3-GAP","attempt_id":"attempt-1"}; session_start/session_end с agent=dev-1+task_id; plugin_diag {"agent":"dev-1","runtime_agent":"build","agent_mismatch":1,"chat_message":1}. budget ДО: observed=0, unknown=45/45 (45 sessions -> unknown). ПОСЛЕ: attrib observed=2 inferred=0 unknown=48; by-agent: build(observed), dev-1(observed, model=opencode-go/deepseek-v4.1-flash); by-model: opencode-go/deepseek-v4.1-flash 1 run. Легаси 7144 записей в окне чтения пропущены, новые не сломали.
+  ТЕСТЫ: test-plugins.mjs 32/32 exit0 (было 26/26; +5 agent-resolution/session_agent/plugin_diag/env-приоритет/no-agent=empty, +1 смешанный traces для scoring); test-explain-budget.ps1 12/12 кейсов 100/100 чеков exit0 (было 10/10 75/75; +k смешанный traces observed/inferred/unknown/ambiguous+битая строка, +l -NoInference); test-pipeline.ps1 10/10 exit0 (кейс j расширен: воркер видит AGENT_HQ_AGENT=testagent, env-probe файл "<id>|attempt-1|testagent"); verify-phase.ps1 41/41 exit0.
+  CRLF: budget.ps1/inbox-engine.ps1/fake-opencode.ps1/test-pipeline.ps1/test-explain-budget.ps1 — CRLF (bareLF=0, BOM у inbox-engine/fake-opencode сохранён); tracer.js/test-plugins.mjs — LF (как в оригинале). Temp-пробник и его файл удалены, фон. процессов не оставлено, НЕ коммичено.
+  НЕ ПРОВЕРЕНО: inferred-ветка на ЖИВОМ файле не срабатывает — .memory/evidence ОТСУТСТВУЕТ (missing), проверено только на фикстурах. context7 MCP offline (fetch failed) — API opencode сверял по установленному .opencode/node_modules/@opencode-ai/plugin 1.18.21 .d.ts + живому hook-замеру. KNOWLEDGE-BASE.md не правил (зона tech-writer).
+SKILLS_LOADED: ["evidence-discipline", "windows-safety"]
+MCP_USED: ["sequential-thinking", "context7: offline (fetch failed)"]
+COMPLIANCE: true
+STATUS: resolved
+================================================================================

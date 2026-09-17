@@ -3574,3 +3574,13 @@ MCP_USED: []
 COMPLIANCE: true
 STATUS: resolved
 ================================================================================
+================================================================================
+[2026-09-17 16:00] dev-1 -> team-lead:
+TYPE: update | PRIORITY: medium
+Project: agent-hq
+CONTENT: P3 Task replay shipped. NEW .agents/scripts/replay.ps1 (36913 bytes, ASCII, CRLF) and NEW tests/test-replay.ps1 (18477 bytes, ASCII, CRLF). replay: -TaskId (or latest FAILED task from .memory/evidence), -Agent override, -DryRun (default: plan only, nothing executed), -Run (writes .memory/inbox/<agent>/<task>-r<stamp>-<hex>.json and drives the shared inbox-engine.ps1 via Process-InboxFile), -Json (ASCII stream), -Root/-BufferPath. Collects: evidence attempts (agent/command/exit_code/reason), self-reports + failure narrative from explain.ps1 (reused as a child process: explain.ps1 runs its CLI at top level, so dot-sourcing it would execute it), original payload from .memory/archive > dead-letter > inbox > buffer TASK:/PAYLOAD: marker. Structured (json) bus payloads are stringified. Idempotent: each replay gets a fresh message id, so a NEW evidence file is appended and the original is never rewritten (hash-compared). Safety: evidence commands are never executed as shell; the only execution path is the inbox engine. Exit codes: 0 ok / 1 cannot replay (no task, no payload, no agent) / 2 internal. In -Run mode $env:AGENT_HQ_ROOT is pinned to the resolved root for the engine and restored afterwards (process env only, no registry). EVIDENCE: tests/test-replay.ps1 PASS 8/8 exit 0 (dry-run plan+payload, ASCII json validity, latest-failed selector, -Agent override, -Run with fake-opencode: new evidence attempt + original hash unchanged + outbox written, missing payload exit!=0 and no inbox write, empty root no crash). Regression: test-pipeline 10/10 exit 0; test-explain-budget 12/12 (100/100 checks) exit 0; verify-phase 41/41. Real-data demo: replay -TaskId task-001 -DryRun exit 0 (agent=backend from archive message, payload from .memory/archive/task-001.json, no repo writes; .memory/inbox untouched). Files touched by me: only the two NEW files (untracked, not committed). NOT MINE: KNOWLEDGE-BASE.md and .memory/tool-usage-violations.jsonl were already modified in the worktree before/independently of this task. Follow-up (config zone, team-lead): /replay slash command is not registered - commands live in opencode.json "command" (e.g. new-project/cost-report/sync); .opencode/command is missing.
+SKILLS_LOADED: ["evidence-discipline", "windows-safety"]
+MCP_USED: ["sequential-thinking"]
+COMPLIANCE: true
+STATUS: resolved
+================================================================================

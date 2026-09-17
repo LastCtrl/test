@@ -3179,3 +3179,17 @@ MCP_USED: []
 COMPLIANCE: true
 STATUS: resolved
 ================================================================================
+[TIME] dev-2 -> team-lead:
+TYPE: update | PRIORITY: medium
+Project: agent-hq
+CONTENT: P3-2 "/doctor — единая самодиагностика системы" реализован.
+  1) Создан .agents\scripts\doctor.ps1 (read-only, PS 5.1, UTF-8 BOM + CRLF): секции ENV / CONFIG / MODELS / QUEUE / TESTS / EVIDENCE-DISAGREEMENT, статусы [OK]/[WARN]/[FAIL] + сводка + exit (0 нет WARN/FAIL, 2 только WARN, 1 есть FAIL). Переиспользует существующие проверки через dot-source: bash-policy.ps1 (Get-BashPermissionRules / Test-BashPolicyObject / Get-BashPolicyFromFile / Compare-BashPolicyRules), task-state.ps1 (Get-StaleClaims), model-router.ps1 (Read-ModelHealthState / Test-ModelOpen), review-disagreement.ps1 (Find-ReviewDisagreement). Schema-проверка top-level ключей opencode.json по $defs.Config.properties (как fail-closed в sync-agents.ps1), число агентов (32) и скиллов (31 SKILL.md). Внешние команды и тесты — в Start-Job + Wait-Job -Timeout (20s / 180s), job всегда снимается (Stop-Job/Remove-Job) — зависание opencode/git невозможно, осиротевших процессов нет. Флаги: -Fast (vault/pipeline/discovery/bash-policy/model-router), -Json (чистый ASCII: не-ASCII экранируется в \uXXXX), -NoTests.
+  2) Тест tests\test-doctor.ps1: SUMMARY cases passed=6 failed=0 total=6, checks passed=30 failed=0 total=30, EXITCODE=0. Изолированный $env:AGENT_HQ_ROOT (+явный -Root), копии opencode.json / schema / 4 helper-скриптов. Кейсы: syntax gate (PSParser 0), human report (6 секций + DOCTOR:), -Json (валидный JSON, ASCII-only, summary.exit_code = process exit, mapping 0/2/1), -Fast без падения на пустом tests/, read-only (снапшот дерева до/после -NoTests байт-идентичен), CRLF (lone LF=0).
+  3) Демонстрация (реальный root): `doctor.ps1 -NoTests` -> ENV[OK] CONFIG[OK] MODELS[OK] QUEUE[OK] TESTS[OK] EVIDENCE[WARN], ok=23 warn=2 fail=0, DOCTOR: WARN, EXIT=2 (WARN: 1 расхождение вердиктов P0; 288 записей tool-usage-violations.jsonl). `doctor.ps1 -Fast` -> 5/5 критичных тестов passed (bash-policy, discovery, model-router, pipeline, vault), ok=27 warn=2 fail=0, EXIT=2. `-Json` -> ASCII JSON, summary.exit_code=2.
+  4) Регресс: verify-phase 41/41 PASS, exit 0. Temp-хелперы удалены, коммитов нет, новых файлов 2 (untracked).
+  Найден и исправлен реальный баг doctor: плоский Start-Job -ArgumentList со [string[]]-параметром связывал только первый элемент -> `git -C <path> rev-parse` приходил с одним "-C" и падал (ложный WARN «не git-репозиторий»); заменено на передачу одного spec-объекта (проверено: code=0, text=true).
+SKILLS_LOADED: ["evidence-discipline", "windows-safety", "superpowers-implement"]
+MCP_USED: ["sequential-thinking"]
+COMPLIANCE: true
+STATUS: resolved
+================================================================================

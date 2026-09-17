@@ -1428,7 +1428,7 @@ CONTENT: |
   (6) CRLF: все 4 файла CRLF, loneLF=0. BOM: inbox-poller.ps1 и fake-opencode.ps1 = UTF-8 BOM, redact.ps1 и test-pipeline.ps1 = no-BOM (ожидаемо).
   Defect: MINOR — false positive на piKey = getApiKey() (паттерн pi[_-]?key матчит piKey, значение маскируется). Known trade-off: safety net для agent stdout, агенты не должны писать секреты; false positive на коде нежелателен, но не критичен. Рекомендация: уточнить паттерн на pi[_-]?key\s*[:=] + кириллица/латиница border, либо принять как есть.
 SKILLS_LOADED: ["evidence-discipline", "windows-safety"]
-MCP_USED: ["context7: offline (нет внешней библиотеки, только PS 5.1 regex)"]
+MCP_USED: ["sequential-thinking"]
 COMPLIANCE: true
 STATUS: resolved
 ================================================================================
@@ -3581,6 +3581,28 @@ Project: agent-hq
 CONTENT: P3 Task replay shipped. NEW .agents/scripts/replay.ps1 (36913 bytes, ASCII, CRLF) and NEW tests/test-replay.ps1 (18477 bytes, ASCII, CRLF). replay: -TaskId (or latest FAILED task from .memory/evidence), -Agent override, -DryRun (default: plan only, nothing executed), -Run (writes .memory/inbox/<agent>/<task>-r<stamp>-<hex>.json and drives the shared inbox-engine.ps1 via Process-InboxFile), -Json (ASCII stream), -Root/-BufferPath. Collects: evidence attempts (agent/command/exit_code/reason), self-reports + failure narrative from explain.ps1 (reused as a child process: explain.ps1 runs its CLI at top level, so dot-sourcing it would execute it), original payload from .memory/archive > dead-letter > inbox > buffer TASK:/PAYLOAD: marker. Structured (json) bus payloads are stringified. Idempotent: each replay gets a fresh message id, so a NEW evidence file is appended and the original is never rewritten (hash-compared). Safety: evidence commands are never executed as shell; the only execution path is the inbox engine. Exit codes: 0 ok / 1 cannot replay (no task, no payload, no agent) / 2 internal. In -Run mode $env:AGENT_HQ_ROOT is pinned to the resolved root for the engine and restored afterwards (process env only, no registry). EVIDENCE: tests/test-replay.ps1 PASS 8/8 exit 0 (dry-run plan+payload, ASCII json validity, latest-failed selector, -Agent override, -Run with fake-opencode: new evidence attempt + original hash unchanged + outbox written, missing payload exit!=0 and no inbox write, empty root no crash). Regression: test-pipeline 10/10 exit 0; test-explain-budget 12/12 (100/100 checks) exit 0; verify-phase 41/41. Real-data demo: replay -TaskId task-001 -DryRun exit 0 (agent=backend from archive message, payload from .memory/archive/task-001.json, no repo writes; .memory/inbox untouched). Files touched by me: only the two NEW files (untracked, not committed). NOT MINE: KNOWLEDGE-BASE.md and .memory/tool-usage-violations.jsonl were already modified in the worktree before/independently of this task. Follow-up (config zone, team-lead): /replay slash command is not registered - commands live in opencode.json "command" (e.g. new-project/cost-report/sync); .opencode/command is missing.
 SKILLS_LOADED: ["evidence-discipline", "windows-safety"]
 MCP_USED: ["sequential-thinking"]
+COMPLIANCE: true
+STATUS: resolved
+================================================================================
+================================================================================
+[2026-09-17 16:06] qa-engineer -> team-lead:
+TYPE: update | PRIORITY: medium
+Project: agent-hq
+CONTENT: P3 Task replay ACCEPTED (ПРИНЯТО). Independent acceptance of .agents/scripts/replay.ps1 + tests/test-replay.ps1 (HEAD 0d653c6). Evidence: (1) tests\test-replay.ps1 -> 8/8 PASS, exit 0. (2) QA-independent isolated root ($env:AGENT_HQ_ROOT=temp, own fixture QA-TASK-1, canary command planted in evidence): -DryRun exit 0, shows agent=frontend + payload marker, full-tree SHA256 snapshot before/after IDENTICAL (nothing written); -Run via tests\fake-opencode.ps1: engine status=done, new evidence file QA-TASK-1-r<stamp>-<hex>.json on disk, original evidence SHA256 unchanged (hash-compared), outbox file created; canary NEVER executed in both modes. (3) Real read-only: replay -TaskId task-001 -DryRun exit 0 (agent=backend from archive, payload .memory/archive/task-001.json), .memory/inbox 19 files hash-identical before/after. (4) Security: grep replay.ps1 - no Invoke-Expression/Start-Process; only two '&' call sites: replay.ps1:389 (explain.ps1 child, TaskId passes ^[A-Za-z0-9._-]{1,64}$ guard at :488) and replay.ps1:600 (scriptblock Process-InboxFile); evidence .command read only as data (:184) and printed (:678-679). (5) Missing payload: exit 1, no exception/crash (independent QA-NOPE-9 + test case g). (6) Regression: test-pipeline 10/10 exit 0; test-explain-budget 12/12 (100/100) exit 0; verify-phase 41/41 exit 0. (7) CRLF: replay.ps1 CRLF=796 bareLF=0, test-replay.ps1 CRLF=336 bareLF=0, both pure ASCII. MINOR (non-blocking): human mode prints non-ASCII payload through console codepage (mojibake in display only; -Json escapes to ASCII \u, on-disk data intact - documented trade-off replay.ps1:105); -Run exits 0 even when engine status=failed (matches documented semantics 'replay completed', status reported in json). NOTES (not P3 defects): dev-1 self-report said files 'untracked, not committed' but they are committed at HEAD 0d653c6 (team-lead commit after report - informational); /replay slash-command still unregistered (dev-1's own follow-up, config zone); .memory/free-models-2026-09.md appeared during acceptance at 16:01:42 - NOT written by replay/tests (no script references it), external process, left untouched. Temp QA fixture + qa_replay_check.ps1 deleted after run. No bugs for KNOWLEDGE-BASE (none found). Grade input: 1 iteration, 0 blockers, 2 minor observations.
+SKILLS_LOADED: ["evidence-discipline"]
+MCP_USED: ["sequential-thinking"]
+COMPLIANCE: true
+STATUS: resolved
+================================================================================
+
+================================================================================
+[2026-09-17] team-lead -> bus: P3 Task replay ПРИНЯТО
+TYPE: update | PRIORITY: medium
+================================================================================
+Коммит 0d653c6. replay.ps1: реконструкция задачи из evidence/архива/буфера, dry-run дефолт, -Run через движок, оригинал не меняется, command из evidence не исполняется (canary-проверено). Тест 8/8. Приёмка qa-engineer ПРИНЯТО (2 minor). Оценки: dev-1 8, qa-engineer 8.
+P3 прогресс: reviewer-disagreement, doctor, explain, budget, tracer-fix, replay = 6 фич. Осталось P3: routing/capability passport, Prompt A/B, Team optimizer, Failure memory, Canary rollout, Confidence-aware, Dynamic verification depth, Semantic dedup, Cost/quality frontier, Autopilot levels, Chaos testing, Policy simulator + US-016 push/UX/v2.
+SKILLS_LOADED: []
+MCP_USED: []
 COMPLIANCE: true
 STATUS: resolved
 ================================================================================

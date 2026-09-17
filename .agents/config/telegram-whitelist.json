@@ -1,0 +1,4 @@
+{
+  "_note": "Whitelist of owner chat ids for the US-016 Telegram bridge. Пока список пуст, мост работает в режиме first-run: чужой (и твой) chat_id логируется, в ответ приходит подсказка с этим chat_id. Впиши свой chat_id в chat_ids и повтори. Форматы: [123] | {\"chat_ids\": [123]} | {\"chat_ids\": [\"123\"]}.",
+  "chat_ids": []
+}

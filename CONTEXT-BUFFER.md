@@ -3410,3 +3410,59 @@ MCP_USED: []
 COMPLIANCE: true
 STATUS: resolved
 ================================================================================
+
+================================================================================
+[2026-09-17 14:05] dev-2 -> team-lead:
+TYPE: update | PRIORITY: medium
+================================================================================
+CONTENT: ЯДРО US-016 (Telegram-мост, MVP только чтение) реализовано.
+
+ФАЙЛЫ (артефакты на диске):
+  * projects/telegram-bridge/bridge.py (2352 строки) - сборщики, санитайзер, форматтеры, whitelist, state, Telegram-слой, CLI, --selftest.
+  * projects/telegram-bridge/requirements.txt (aiogram==3.29.1 - уже стоит в env, установка не потребовалась: proxy не нужен).
+  * projects/telegram-bridge/README.md - запуск, команды, конфиг, гарантии read-only, troubleshooting, ограничения.
+  * projects/telegram-bridge/queue.json ({"tasks":[]}) - чтобы проект не выглядел «без очереди» в /queue.
+  * projects/telegram-bridge/bridge-outbox.log - аудит исходящих (1 строка: kind=no-token), создан прогоном без токена.
+  * .agents/config/telegram-whitelist.json (new) - шаблон {"chat_ids": []} => сейчас режим first-run.
+  * .agents/scripts/run-bridge.ps1 (ИЗМЕНЁН, CRLF+BOM): проброс аргументов в bridge.py (@args) + резолв рабочего интерпретатора (py -3; bare `python` в этой оболочке - заглушка WindowsApps с exit 9009) + проверка наличия aiogram с понятной подсказкой. Без проброса аргументов `run-bridge.ps1 --once` был невозможен.
+
+ПОКРЫТИЕ AC:
+  16.1 /sessions: сессии из opencode.db (только SELECT, ?mode=ro + PRAGMA query_only=1), тег проекта (не путь), время последней активности, статус active/idle/archived, цепочка делегаций через parent_id (агент -> статус -> ТЗ одной строкой), /sessions <номер> и просто номер.
+  16.2 /agents: free/busy -> проект -> задача из .memory/agent-registry.json.
+  16.3 /queue: глубина всех projects/*/queue.json с разбивкой по статусам; отсутствие файла показывается явно.
+  16.4 /tasks: счётчики inbox/outbox/dead-letter + последние сообщения (from/to/type/priority/created/первые строки description).
+  16.5 /buffer: хвост CONTEXT-BUFFER.md (107 записей распарсены; блоки-продолжения склеиваются с записью, а не рубятся «====»-подчёркиванием).
+  16.7 whitelist: отвечает только chat_id из .agents/config/telegram-whitelist.json; чужому - сухой отказ + запись в аудит-лог; пустой список = first-run подсказка с его chat_id (и логирование).
+  16.8 токен: ТОЛЬКО os.environ["TG_TOKEN"] (bridge.py:1590); argv/config не читаются (grep: TG_TOKEN встречается лишь в docstring, сообщении об ошибке и в самом чтении). Нет токена -> понятная инструкция set-secret -> run-bridge, exit 2.
+  16.9 read-only: ?mode=ro + PRAGMA query_only=1; все запросы через ro_query() (не-SELECT отклоняется до БД); BUSY/locked -> вежливое «БД занята, тик пропущен»; нет subprocess/schtasks/реестра/os.system (статический чек в --selftest); запись только в свои 2 файла (bridge-state.json, bridge-outbox.log) - их адреса в каталоге проекта, .memory/queue/БД не пишутся (e2e-чек сравнивает дерево фикстуры до/после).
+  16.10 --once: дайджест в консоль + один цикл getUpdates, самозавершение, без фоновых процессов.
+  16.11 санитайзер: единый фаннел dyn()->sanitize() (redact -> пути в теги «agent-hq/1c-buh» -> html.escape) + вторая линия finalize_outgoing() в точке отправки; паттерны как в redact.ps1 (sk-, ghp_, github_pat_, xox*, AKIA, JWT, PEM, bearer, key=value) + connection strings + bot-token; сегментация <=4000 (лимит 4096, разрыв по строкам, без разрыва HTML-entity); sendMessage c disable_web_page_preview (LinkPreviewOptions(is_disabled=True)).
+  16.13 рабочие часы: пн-пт 08:00-17:00; вне окна main() выходит ДО сети и ДО чтения токена, пишет kind=skip-outside-hours, exit 0.
+  16.14 empty states: /sessions, /agents, /queue, /tasks, /buffer, /help при пустых/отсутствующих источниках дают внятный текст без traceback; недоступная БД -> «источник недоступен», остальные команды работают; нет токена -> инструкция + exit 2.
+  16.17 аудит-лог исходящих: только метаданные (kind/chat_id/project/segments/время), текст не пишется - проверено в e2e.
+
+СВЕРХ ЗАДАНИЯ (в рамках AC-спеки, дёшево): 16.15 анти-дубли (state: last_update_id + last_commands, окно 90с, атомарная запись) и 16.16 (метка «⏱ данные на ЧЧ:ММ» в каждом ответе, 26 русских фраз-синонимов, контракт задержки в /start-справке).
+НЕ ДЕЛАЛ (фазы A/C/UX): push-ярусы 16.6/16.12, inline-кнопки, setMyCommands, регистрация задачи планировщика (запрещена без ОК пользователя), v2-команды.
+
+ПРОВЕРКИ (артефакты):
+  1) py -3 -m py_compile + py -3 -c "import ast; ast.parse(open(...))" -> "AST PARSE OK", exit 0.
+  2) py -3 projects\telegram-bridge\bridge.py --selftest -> "checks passed=138 failed=0", exit 0. Внутри: 12 кейсов redaction (+идемпотентность), теги путей, escape, сегментация (в т.ч. HTML-entity), 14 кейсов парсера, 6 кейсов рабочего окна (вкл. сб/вс), whitelist-формы, анти-дубли, sql-guard (INSERT/PRAGMA/drop отклонены), sqlite ro на фикстуре (INSERT -> ошибка, query_only=1), парсер буфера, 20 e2e-проверок пути запроса на фикстуре агентского дерева (whitelist/отказ/first-run/анти-дубль/аудит без текста/read-only дерева), рендеры на враждебной фикстуре (секреты+`<script>`), статические чеки исходника.
+  3) .agents\scripts\run-bridge.ps1 --once (live): "[run-bridge] python: ...py.exe | aiogram 3.29.1", дайджест (sessions 11 в окне 24ч, agents 0/30, queue 0, bus 0/2/0, buffer 107), "updates=0 answered=0 ... mode=live", exit 0, процессов не осталось (getUpdates прошёл без ошибки => токен валиден, прокси cntlm работает).
+  4) .agents\scripts\run-bridge.ps1 --once --dry-run: то же + "DRY-RUN: сообщения не отправляются, offset не двигается", exit 0.
+  5) Read-only на РЕАЛЬНОЙ opencode.db: query_only=(1,), SELECT COUNT(*) FROM session -> 853, INSERT/UPDATE/DELETE -> "attempt to write a readonly database", ro_query("PRAGMA ...") -> отказ.
+  6) Без TG_TOKEN: понятный текст, exit=2, в аудит-логе "[...] outgoing kind=no-token" (текста нет).
+
+БЛОКЕРЫ/РАСХОЖДЕНИЯ:
+  * ТЗ разработчику говорило «нет токена -> exit 0», но AC 16.8/16.14 требуют exit!=0; выбран exit=2 (приоритет acceptance-критериям), поведение описано в README.
+  * Живой ответ в Telegram не показан: у бота 0 входящих updates (ни разу не писали), поэтому sendMessage не вызывался; путь ответа доказан e2e-проверкой с перехватом доставки (20 проверок) и dry-run.
+  * Живая ветка «вне рабочих часов» не запускалась (текущее время внутри окна; менять системные часы нельзя) - поведение доказано юнит-проверками is_working_hours (6 кейсов) + код-ревью порядка выхода.
+  * context7 MCP был недоступен (fetch failed) -> API aiogram 3.29.1 сверен интроспекцией установленного пакета (AiohttpSession(proxy=), Bot.get_updates, LinkPreviewOptions, DefaultBotProperties, start_polling).
+  * aiogram НЕ устанавливался: 3.29.1 уже в Python 3.13 (pip list) - прокси/установка не потребовались.
+ОСТАЛОСЬ: push-детектор (C), кнопки/навигация (A), setMyCommands (UX), whitelist с реальным chat_id владельца (first-run ждёт первого сообщения), запись в расписание (только с ОК пользователя).
+Коммит не делал. Временные файлы и __pycache__ удалены.
+
+SKILLS_LOADED: ["evidence-discipline", "windows-safety"]
+MCP_USED: ["sequential-thinking", "context7: offline"]
+COMPLIANCE: true
+STATUS: resolved
+================================================================================

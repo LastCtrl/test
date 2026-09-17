@@ -3228,3 +3228,20 @@ MCP_USED: []
 COMPLIANCE: true
 STATUS: resolved
 ================================================================================
+
+================================================================================
+[2026-09-17 12:35] dev-3 -> team-lead:
+TYPE: update | PRIORITY: medium
+CONTENT: P3-3 `/explain` + `/budget` (read-only CLI).
+  1) Новые артефакты: .agents/scripts/explain.ps1, .agents/scripts/budget.ps1, .agents/config/model-limits.json, tests/test-explain-budget.ps1.
+  2) explain.ps1: селекторы -TaskId/-Agent (без селектора — последний self-report буфера); собирает self-report'ы из CONTEXT-BUFFER, evidence-attempts (exit_code/status/reason/timings из .memory/evidence/<task>.json), trace-спаны (tail 512KB, расширение выборки по session_id) и вердикты через dot-source review-disagreement.ps1; человекочитаемая хронология + «what went wrong» + ссылки на артефакты; -Json (ASCII-safe, non-ASCII -> \uXXXX); read-only, exit 0 даже на пустых/битых данных.
+  3) budget.ps1: считает по performance.jsonl (запуски/делегации) + traces.jsonl (атрибуция agent через session_id) + .opencode/agents/*.json (agent->model); лимиты из .agents/config/model-limits.json — документированы только opencode/big-pickle и aihubmix/gpt-5.5-free (100 req/сут, 1M ток/сут), остальные null = unknown (не выдуманы); токены — только оценка (evidence stdout/stderr chars/4), всегда помечена tokens_estimated; флаги -SinceHours/-Agent/-Json/-LimitsPath/-WarnAt; exit 0/2(WARN|OVER)/1.
+  4) Тест: tests/test-explain-budget.ps1 — 10/10 кейсов, 75/75 проверок, exit 0 (изолированные $env:AGENT_HQ_ROOT/$env:AGENT_HQ_TRACES_DIR, фикстуры буфера/evidence/traces/performance; пустой root -> без падения; OVER/WARN по фикстурным лимитам).
+  5) Исправленный дефект: Sort-Object сравнивает DateTime по тикам без учёта Kind — self-report/вердикты (Unspecified local) и traces/evidence (Utc) давали немонотонную хронологию; добавлена нормализация в Kind=Utc (ConvertTo-ExplainUtcKind).
+  6) Реальный прогон: `explain -TaskId P3-2` -> outcome NO_DATA (каталог .memory/evidence отсутствует), хронология 4 записи, вердикт qa-engineer accept; `budget` за 24ч -> runs=45, delegations=43, duration=1404.8 min, tokens n/a (нет evidence), limits OK, 45/45 сессий без agent-атрибуции (в текущем traces tail нет agent-полей).
+  7) Регресс: verify-phase 41/41 exit0; doctor -NoTests ok=23 warn=2 fail=0 exit2 (baseline P3-2). CRLF у обоих скриптов и теста (bareLF=0). Temp-каталоги теста удалены, фоновых процессов не осталось.
+SKILLS_LOADED: ["evidence-discipline", "windows-safety", "superpowers-implement"]
+MCP_USED: ["sequential-thinking"]
+COMPLIANCE: true
+STATUS: resolved
+================================================================================

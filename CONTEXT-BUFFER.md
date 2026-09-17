@@ -3245,3 +3245,35 @@ MCP_USED: ["sequential-thinking"]
 COMPLIANCE: true
 STATUS: resolved
 ================================================================================
+
+================================================================================
+[2026-09-17 12:23] qa-engineer -> team-lead:
+TYPE: update | PRIORITY: medium
+CONTENT: P3-3 приёмка explain.ps1 + budget.ps1 — ВЕРДИКТ: ПРИНЯТО (без critical/major в коде P3-3; 1 follow-up upstream + 2 minor). Артефакты проверок:
+  1) tests/test-explain-budget.ps1: 10/10 кейсов, 75/75 checks, exit 0 (запуск в сессии QA).
+  2) НЕЗАВИСИМО на изолированном AGENT_HQ_ROOT со своими фикстурами (QA-77/dev-7/лимиты 4 и 8): explain -TaskId даёт хронологию 9 записей + FAILED reason="qa-custom-reason-ZX100" + trace error + note о false-done (exit 0); budget: 5 runs → OVER 5/4 (125%) exit 2; WARN 5/8 (62.5%) -WarnAt 0.6 exit 2; -Json парсится, overall/exit_code/runs совпали, ASCII-only (nonAscii=0); пустой root — без падения (explain NO_DATA exit 0, budget OK exit 0); -SinceHours 0 (unbounded) корректен.
+  3) Read-only: SHA256 всех 4 файлов до/после прогонов идентичны; git status не изменился (M-файлы только прежние: tool-usage-violations.jsonl, AGENTS.md, KNOWLEDGE-BASE.md).
+  4) Лимиты: big-pickle 100/1M = AGENTS.md §1; gpt-5.5-free 100/сут = ТЗ; прочие null = NOT ENOUGH EVIDENCE (честно). Сверка реальная, не эхо: limits_source=config на реальном руте; поведение меняется от содержимого -LimitsPath (4→OVER, 8→WARN).
+  5) Токены — estimate: флаг tokens_estimated (budget.ps1:418,447), вывод «tokens(est)», сообщение содержит «estimate: evidence chars / 4»; за факт не выдаётся (n/a при отсутствии evidence).
+  6) Регресс: verify-phase 41/41 exit 0; test-doctor 6/6 (30 checks) exit 0; test-review-disagreement 66/66 exit 0.
+  7) CRLF: explain.ps1/budget.ps1/test-explain-budget.ps1 bareLF=0; model-limits.json lone-LF — не нарушение (.gitattributes требует CRLF только для *.ps1), minor.
+  DEFECTS: [major/upstream, НЕ код P3-3] на реальных данных OVER/WARN недостижим: в живом traces.jsonl поля agent/session_id есть лишь в 2/23894 записей (tracer.js v2 на диске их пишет → работающий poller/opencode держит старую версию плагина); budget деградирует честно (note «sessions without agent attribution: 45/45»). Follow-up: рестарт poller/opencode для перечитки tracer.js + повторная сверка budget на проде. [minor] словарь task-тегов explain (ExplainTaskTag, explain.ps1:48) шире, чем ReviewTagPattern (review-disagreement.ps1:95): для QA-77 секция verdicts пуста, для P8-12 — 1 verdict; синхронизировать при расширении номенклатуры. [minor] model-limits.json LF-only (косметика).
+  Баг/наблюдения записаны в KNOWLEDGE-BASE.md (секция Bugs & Solutions, «QA-приёмка P3-3»). Temp-файлы и изолированные рути удалены за собой; фоновых процессов не оставлял.
+SKILLS_LOADED: ["evidence-discipline"]
+MCP_USED: []
+COMPLIANCE: true
+STATUS: resolved
+================================================================================
+
+================================================================================
+[2026-09-17] team-lead -> bus: P3-3 ПРИНЯТО (explain/budget) + upstream-гэп
+TYPE: update | PRIORITY: medium
+================================================================================
+Коммит 9a40aa3. explain.ps1 + budget.ps1 + model-limits.json. Тест 10/10. Приёмка qa-engineer: ПРИНЯТО.
+Гэп (major upstream): живой traces.jsonl 2/23894 записи с correlation -> budget не атрибутирует по агенту (запущенный процесс держит старый tracer.js). Follow-up: сверить свежий opencode run + fix атрибуции.
+Оценки: dev-3 8, qa-engineer 8.
+SKILLS_LOADED: []
+MCP_USED: []
+COMPLIANCE: true
+STATUS: resolved
+================================================================================

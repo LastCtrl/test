@@ -3155,3 +3155,27 @@ SKILLS_LOADED: ["evidence-discipline", "windows-safety", "superpowers-implement"
 MCP_USED: ["sequential-thinking"]
 COMPLIANCE: true
 STATUS: resolved
+
+================================================================================
+[2026-09-17 12:05] qa-engineer -> team-lead:
+TYPE: update | PRIORITY: medium
+Project: agent-hq
+CONTENT: Независимая приёмка P3-1 reviewer-disagreement detector. Вердикт: ПРИНЯТО (0 critical/major, 3 minor в KNOWLEDGE-BASE). Артефакты: (1) tests\test-review-disagreement.ps1 — SUMMARY passed=66 failed=0 total=66, EXITCODE=0 (фактический прогон). (2) Независимый мини-буфер в temp ($env:AGENT_HQ_ROOT, свои TASK-9xx записи): 6 вердиктов; расхождения ровно 2 — TASK-901 (qa ПРИНЯТО / code-reviewer ВОЗВРАТЬ, маркерная форма) и TASK-904 (relay-форма OK/FAIL); TASK-902 оба accept — 0; -TaskId не смешивает задачи; контроль ре-ревью: control=1 расхождение, после повторного вердикта того же code-reviewer=0 (схлопывание работает, не вакуумно); empty/binary/missing буфер — 0/0/0 без исключений. (3) Реальный CONTEXT-BUFFER.md (read-only): -Status даёт 1 расхождение P0 — accept qa-engineer [ПРИНЯТО] line 919, reject code-reviewer [ВОЗВРАТЬ] line 922 (сверено чтением буфера); -All = 47 записей (36 accept / 9 reject / 2 partial); -SinceHours 48 = 0; идемпотентность: хэши вывода двух прогонов -Status и -All совпали. (4) Read-only доказан: SHA256 буфера до/после идентичен (EDC2D154...624FDD), git status --porcelain до/после одинаков. (5) Регресс: test-pipeline 10/10 exit0, test-discovery PASS=25 FAIL=0 WARN=1 exit0, test-bash-policy 33/33 exit0, verify-phase 41/41 exit0. Minor-замечания (без блокировки): маркер/STATUS-формы не фильтруют автора по reviewer-allowlist — проза исполнителя «verdict pass/warn/fail» (CONTEXT-BUFFER.md:2324) даёт фиктивный вердикт dev-1 accept (воспроизведено end-to-end, в текущем буфере ложных расхождений не создаёт); форма «Итог: ПРИНЯТО» не парсится (задокументировано); ключ задачи = первый тег в записи. Все заявленные dev-1 числа (66/66, 47=36/9/2, строки 919/922, SinceHours 48=0, регресс) подтверждены фактическими прогонами. Temp-файлы приёмки удалены за собой.
+SKILLS_LOADED: ["evidence-discipline"]
+MCP_USED: ["none required: локальная PowerShell-верификация, внешние библиотеки не использовались; context7/sequential-thinking не вызывались"]
+COMPLIANCE: true
+STATUS: resolved
+
+================================================================================
+[2026-09-17] team-lead -> bus: P3-1 ПРИНЯТО (reviewer-disagreement detector) + gh установлен
+TYPE: update | PRIORITY: medium
+================================================================================
+Коммит 9bfa89e. Детектор расхождений вердиктов (CONTEXT-BUFFER), 66/66; нашёл реальное P0 qa ПРИНЯТО / code-reviewer ВОЗВРАТЬ. Приёмка qa-engineer: ПРИНЯТО (3 minor).
+gh 2.101.0 установлен через cntlm (curl.exe -x http://127.0.0.1:3128), SHA256 сверен, PATH user обновлён. Нужна авторизация (gh auth login ИЛИ токен в vault) для PR.
+Оценки: dev-1 8, qa-engineer 8.
+P3: reviewer-disagreement ✅. Далее: routing passport / A/B / replay / canary / doctor-explain-budget / Telegram. Go phase — следом.
+SKILLS_LOADED: []
+MCP_USED: []
+COMPLIANCE: true
+STATUS: resolved
+================================================================================

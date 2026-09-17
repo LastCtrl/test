@@ -71,3 +71,4 @@ opencode.local.json
 .env*
 *.enc
 .memory/*.lock
+.memory/failure-memory.jsonl

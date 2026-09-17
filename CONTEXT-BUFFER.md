@@ -3193,3 +3193,38 @@ MCP_USED: ["sequential-thinking"]
 COMPLIANCE: true
 STATUS: resolved
 ================================================================================
+
+================================================================================
+[2026-09-17 11:55] qa-engineer -> team-lead:
+TYPE: update | PRIORITY: medium
+Project: agent-hq
+CONTENT: P3-2 doctor.ps1 — независимая приёмка. ВЕРДИКТ: ПРИНЯТО (без блокирующих дефектов).
+  1) tests\test-doctor.ps1: cases passed=6 failed=0, checks passed=30 failed=0, EXITCODE=0 (фактический вывод).
+  2) Независимые прогоны на реальном root: `-NoTests` -> ok=23 warn=2 fail=0, DOCTOR: WARN, exit=2; `-Fast` -> 5/5 критичных тестов passed, ok=27 warn=2 fail=0, exit=2. Все три mapping'а exit подтверждены фактическими запусками: 0 (чистый изолированный root+git init: ok=25 warn=0 fail=0 DOCTOR: OK), 2 (реальный root), 1 (подменённая политика).
+  3) READ-ONLY доказан: снапшот дерева 86816 items (path|size|mtime) до/после изолированного `-NoTests` идентичен; git status не изменился (3 M-файла — baseline до приёмки, doctor/test закоммичены в ff7b7fd).
+  4) `-Json`: валидный JSON; NON_ASCII_CHARS=0; \u0422\u0435\u0441\u0442 декодируется в D:\Тест\agent-hq (Test-Path True); summary.exit_code=2 == фактический exit процесса.
+  5) Секции по существу (негативные фикстуры в изолированном root): удаление правила `git status*` из permission.bash -> CONFIG FAIL 'differs from canon'; open_until в будущем -> MODELS WARN 'OPEN: demo/open-model'; 25 inbox-файлов -> QUEUE WARN '>20'; claim с heartbeat 2020 -> WARN stale; Find-ReviewDisagreement standalone count=1 key=P0 == вывод doctor EVIDENCE '1 task(s): P0'.
+  6) После всех прогонов: Get-Job=0, осиротевших powershell с doctor/test в командной строке=0.
+  7) Регресс: verify-phase 41/41 exit0; test-pipeline 10/10 exit0; test-bash-policy 33 checks PASS exit0.
+  Дефекты: 3 minor (не блокирующие) записаны в KNOWLEDGE-BASE.md «Minor-замечания P3-2»: fail-open фолбэк Invoke-DoctorCommand (doctor.ps1:192-197); detail упавшего теста = первая строка (doctor.ps1:643-644); timestamp без TZ (doctor.ps1:750).
+  Временные фикстуры (qa-doctor-neg, qa-doctor-clean, снапшоты) удалены за собой.
+  Примечание: MCP-инструменты в приёмке не использовались (характер задачи — запуск/сверка скриптов по чек-листу ТЗ), SKILLS_LOADED/MCP_USED — по факту.
+SKILLS_LOADED: ["evidence-discipline"]
+MCP_USED: []
+COMPLIANCE: true
+STATUS: resolved
+================================================================================
+
+================================================================================
+[2026-09-17] team-lead -> bus: P3-2 ПРИНЯТО (doctor.ps1)
+TYPE: update | PRIORITY: medium
+================================================================================
+Коммит ff7b7fd. doctor.ps1: ENV/CONFIG/MODELS/QUEUE/TESTS/EVIDENCE, -Fast/-NoTests/-Json, exit 0/2/1. Тест 6/6. Приёмка qa-engineer: ПРИНЯТО (3 minor, косметика). Реальный root: WARN (1 расхождение вердиктов P0 + tool-usage violations).
+Оценки: dev-2 9, qa-engineer 8.
+P3: reviewer-disagreement ✅, doctor ✅. Осталось P3: routing passport, A/B, replay, canary, /explain /budget, Telegram-уведомления.
+Блокеры user-action: PR (нужна gh auth), US-016 (/revoke токена).
+SKILLS_LOADED: []
+MCP_USED: []
+COMPLIANCE: true
+STATUS: resolved
+================================================================================

@@ -3466,3 +3466,39 @@ MCP_USED: ["sequential-thinking", "context7: offline"]
 COMPLIANCE: true
 STATUS: resolved
 ================================================================================
+
+================================================================================
+[2026-09-17 14:20] qa-engineer -> team-lead:
+TYPE: update | PRIORITY: medium
+Project: agent-hq
+CONTENT: Независимая приёмка US-016 «Telegram bridge MVP core» — ВЕРДИКТ: ПРИНЯТО (0 critical/major в коде моста; 2 minor + наблюдения). Артефакты (фактические прогоны в сессии QA):
+  1) py -3 projects\telegram-bridge\bridge.py --selftest -> «checks passed=138 failed=0», EXITCODE=0 (полный вывод получен).
+  2) LIVE: get-secret tg-bot-token -AsEnv TG_TOKEN + run-bridge.ps1 --once -> «[run-bridge] python: ...\py.exe | aiogram 3.29.1», дайджест (sessions 11 в окне 24ч, agents 0/30, queue 0, bus inbox0/outbox2/dl0, buffer 108 записей), «updates=0 answered=0 refused=0 dedup=0 mode=live», EXITCODE=0. getUpdates без ошибки => токен валиден, cntlm-прокси работает.
+  3) БЕЗОПАСНОСТЬ (независимый QA-скрипт, 48/49 PASS; 1 FAIL — ложное срабатывание моего предиката «D:» на маркере [REDACTED:key], путь корректно заменён «agent-hq/1c-buh»; дефект не подтверждён):
+     - токен: единственное чтение os.environ.get("TG_TOKEN") (bridge.py:1590); parse_args отвергает --token и позиционный токен (SystemExit!=0); git show 6e1cc48 + git log --all -p по tracked-файлам — паттерн \d{7,12}:[A-Za-z0-9_-]{30,} не найден (пусто).
+     - РЕАЛЬНАЯ opencode.db (?mode=ro + PRAGMA query_only=1): SELECT COUNT(*) session > 0; INSERT/UPDATE -> «attempt to write a readonly database»; обход через PRAGMA query_only=0 + INSERT тоже заблокирован; qa-строк в БД не осталось.
+     - grep/AST: нет реальных subprocess/schtasks/winreg/os.system/os.popen/SHELL (только string-фрагменты статического чека); запись — ровно 2 своих файла (bridge.py:1052-1058).
+     - redaction моими фикстурами: token=, password:, sk-, JWT eyJ…, PEM, ghp_, xoxb-, bot-token, conn-string -> секреты исчезли, [REDACTED:...] присутствует; sanitize: путь->тег, <script>->&lt;script&gt;; finalize_outgoing ловит «поздний» секрет; сегменты <=4000, lossless, HTML-entity не рвётся; LinkPreviewOptions(is_disabled=True)+ParseMode.HTML (bridge.py:1315-1317).
+     - без TG_TOKEN: понятная инструкция + exit 2 + аудит-запись kind=no-token (текста в логе нет).
+  4) AC 16.13: вне окна main() выходит до сети/токена (bridge.py:1582-1588) + 6 кейсов is_working_hours в selftest (сб/вс/07:59/17:00). Живой прогон вне окна невозможен без смены часов — код+тесты. AC 16.14: 6 команд на пустых/битых источниках — внятный текст без traceback (независимый вызов render_command + selftest).
+  5) Read-only проекта: SHA256 CONTEXT-BUFFER.md / agent-registry.json / queue.json / whitelist ДО == ПОСЛЕ всех прогонов; bridge-state.json НЕ создан (updates=0 -> save не вызван, bridge.py:1491-1493); git status не изменился (3 M-файла — baseline других задач); единственная мутация — bridge-outbox.log +1 строка kind=no-token (ожидаемый аудит, AC 16.17). 1c-buh/queue.json после verify-phase F7 = {"tasks":[]} (самоочистка harness, не мост).
+  6) Фоновых процессов моста нет (python/py в системе — bot.py из D:\Тест\news-bot, чужой проект, не трогал). Temp приёмки (qa_us016_verify.py, qa_dbg_sanitize.py, qa_proc_check.ps1) удалены, Test-Path=False.
+  7) Регресс: verify-phase.ps1 41/41 exit 0; test-doctor.ps1 cases 6/6 (checks 30/30) exit 0.
+  MINOR (не блокируют): m1 — ядро bridge.py (2352 стр.) вне VCS: .gitignore:66 /projects/ (конвенция репо для всех проектов, но истории/бэкапа кода ядра нет); m2 — run-bridge.ps1:27-30 при отсутствии bridge.py печатает «мост ещё не реализован» и exit 0 (не нулевой код был бы честнее; файл на диске есть).
+  НЕ РЕАЛИЗОВАНО (осознанный скоуп MVP-ядро, задокументировано в README): 16.6/16.12 push-ярусы и детектор, inline-кнопки, setMyCommands (из 16.16 сделаны: контракт задержки bridge.py:991, метка ⏱, 26 синонимов), 16.15 частично (анти-дубль команд + offset есть; schtasks /ET+IgnoreNew — регистрация планировщика без ОК пользователя запрещена §10), v2. Живой sendMessage не подтверждён на проде (updates=0) — доказан e2e-моками (20 проверок) и dry-run; совпадает с самоотчётом dev-2.
+  Все заявленные dev-2 числа (138/138, дайджест live, exit 2, read-only на реальной БД) подтверждены независимыми прогонами. Ложных артефактов нет.
+SKILLS_LOADED: ["evidence-discipline"]
+MCP_USED: ["none required: приёмка — запуски/грепы/хэши локально; context7/sequential-thinking не вызывались (библиотечная документация не требовалась: aiogram API сверен интроспекцией установленного пакета в коде моста)"]
+COMPLIANCE: true
+STATUS: resolved
+================================================================================
+================================================================================
+[2026-09-17 14:23] dev-3 -> team-lead:
+TYPE: update | PRIORITY: medium
+Project: agent-hq
+CONTENT: Реализован враппер vault->env `.agents/scripts/run-with-secrets.ps1` — единый рекомендованный способ запуска потребителей с секретами из DPAPI-vault (закрывает открытый пункт US-011 о run-with-secret.ps1). Параметры: `-Secret <string[]>` (имена в vault), `-Map <hashtable>` (переопределение имя->ENV), `-Command`/`-FilePath` + `-Args`, `-WorkingDirectory`, `-List`, `-VerifyOnly`. Механика: `get-secret.ps1 -AsEnv <ENV>` вызывается в ТЕКУЩЕМ процессе (env наследуется дочерним) + явная проверка `$LASTEXITCODE` (exit дочернего скрипта не пробрасывается); при отсутствии/ошибке секрета дочерний процесс НЕ запускается, exit 2 и подсказка `set-secret.ps1`. Env кладётся ТОЛЬКО на время дочернего процесса и восстанавливается (или удаляется) в finally с сохранением прежнего значения. Значения не печатаются и не попадают в argv. Дефолтный маппинг: opencode-api-key->OPENCODE_API_KEY, aihubmix-api-key->AIHUBMIX_API_KEY, openrouter-api-key->OPENROUTER_API_KEY, groq-api-key->GROQ_API_KEY, tokenrouter-api-key->TOKENROUTER_API_KEY, tg-bot-token->TG_TOKEN (+ авто-деривация ENV для прочих имён). `run-bridge.ps1` переведён на враппер (verify tg-bot-token -> run-with-secrets -FilePath python -Args bridge.py), контракт сохранён. Тест `tests/test-run-with-secrets.ps1`: 11/11 PASS exit 0 — изолированный temp-vault через `$env:AGENT_HQ_SECRETS` (реальные секреты не трогаются), child-проба проверяет только наличие ENV (без значения), missing -> exit!=0 + child не запущен, `-List`/`-VerifyOnly`, plaintext отсутствует в argv/логах/выводе, прежнее значение env восстанавливается. Демо: реальный `-List` exit 0 (6 строк маппинга), `-VerifyOnly` exit 0 (5 отпечатков: aihubmix/github/opencode/openrouter/tg-bot). Регресс: verify-phase 41/41 exit 0, test-pipeline 10/10 exit 0, test-vault 8/8 exit 0. AGENTS.md §11 дополнен строкой про run-with-secrets.ps1. Файлы: .agents/scripts/run-with-secrets.ps1 (new), .agents/scripts/run-bridge.ps1 (M), tests/test-run-with-secrets.ps1 (new), AGENTS.md (M). Оба .ps1 — CRLF+UTF-8 BOM (PS5.1+Cyrillic); temp вычищен, фоновых процессов нет.
+SKILLS_LOADED: ["evidence-discipline", "windows-safety"]
+MCP_USED: ["sequential-thinking"]
+COMPLIANCE: true
+STATUS: resolved
+================================================================================

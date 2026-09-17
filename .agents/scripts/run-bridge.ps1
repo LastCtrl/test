@@ -1,8 +1,10 @@
 ﻿# run-bridge.ps1 - Wrapper to start the Telegram bridge (US-016).
 # Flow:
 #   1. Verify the tg-bot-token secret exists (get-secret -Verify, same process).
-#   2. If exists: put it into env:TG_TOKEN of the CURRENT process, then run bridge.py.
-#   3. If no secret: instruct how to save it, exit 1.
+#   2. Resolve the interpreter and check aiogram.
+#   3. Launch python bridge.py through run-with-secrets.ps1, which injects
+#      tg-bot-token as env:TG_TOKEN for the lifetime of that child only.
+#   4. If no secret: instruct how to save it, exit 1.
 # The token itself is never printed and never passed on the command line.
 # Extra arguments are forwarded to bridge.py as-is (examples: --once, --once --dry-run,
 # --selftest, --limit 5).
@@ -10,6 +12,7 @@
 $ErrorActionPreference = 'Continue'
 $here     = $PSScriptRoot
 $getToken = Join-Path $here 'get-secret.ps1'
+$runSecrets = Join-Path $here 'run-with-secrets.ps1'
 $bridgePy = Join-Path (Split-Path -Parent (Split-Path -Parent $here)) 'projects\telegram-bridge\bridge.py'
 
 # 1) secret presence check (exit 1 + error from get-secret if missing)
@@ -19,10 +22,6 @@ if ($LASTEXITCODE -ne 0) {
     Write-Host 'Секрет tg-bot-token не найден. Сначала: set-secret.ps1 -Name tg-bot-token'
     exit 1
 }
-
-# 2) token into env-var of this process, then launch the bridge
-& $getToken -Name tg-bot-token -AsEnv TG_TOKEN
-if ($LASTEXITCODE -ne 0) { exit 1 }
 
 if (-not (Test-Path -LiteralPath $bridgePy -PathType Leaf)) {
     Write-Host 'bridge.py не найден — мост ещё не реализован (US-016).'
@@ -54,5 +53,5 @@ if ($LASTEXITCODE -ne 0) {
 }
 Write-Host ("[run-bridge] python: {0} | aiogram {1}" -f $pythonExe, $aiogramVersion)
 
-& $pythonExe @pythonArgs $bridgePy @args
+& $runSecrets -Secret 'tg-bot-token' -FilePath $pythonExe -Args ($pythonArgs + @($bridgePy) + @($args))
 exit $LASTEXITCODE

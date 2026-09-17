@@ -3545,3 +3545,32 @@ COMPLIANCE: true
 STATUS: resolved
 ================================================================================
 ================================================================================
+================================================================================
+[2026-09-17 15:51] qa-engineer -> team-lead:
+TYPE: update | PRIORITY: medium
+Project: agent-hq
+CONTENT: Независимая приёмка тех-долга (коммит 8059fe3, 4 пункта). ВЕРДИКТ: ПРИНЯТО с minor.
+Артефакты прогонов: tests/test-orphan-sweep.ps1 26/26 exit 0; test-hygiene 30/30; test-prompt-gate 16/16 (C14 -Strict); test-review-disagreement 70/70; test-bash-policy PASS=33 FAIL=0; verify-phase 41/41; test-pipeline 10/10 exit 0.
+НЕЗАВИСИМО от тестов: (1) реальный сирота powershell PID 38860 с кириллическим маркером D:\Тест\agent-hq в cmdline (родитель-обёртка умер) — DryRun видит (порог 0: в таблице; по умолчанию: «1 skipped younger»), не убивает; чужой сирота PID 27160 без маркера — никогда в списке; (2) -Apply -OlderThanMinutes 1: killed ровно 38860, exit 2, чужой жив; guard'ы: -Apply+порог 0 → exit 1, -1 → exit 1, -Apply+-DryRun → exit 1; -Apply без параметра = безопасный default 30 (не отказ — см. замечание); (3) message-queue -Strict с runtime-секретом (изолированный AGENT_HQ_ROOT): exit 1, outbox=0; без -Strict: exit 0, payload c [REDACTED], секрет не утекает; реальный outbox не тронут (2 старых файла); (4) review-disagreement: проза dev-3 «VERDICT: pass»/dev-1 «STATUS: ok» → 0 вердиктов/0 расхождений; qa-engineer accept + code-reviewer reject → 1 расхождение P0-QA1; (5) run-bridge без bridge.py (temp-root + throwaway DPAPI vault): exit 1, путь назван; реальный bridge.py цел.
+Свои тестовые процессы убиты только по PID (27160 после сверки cmdline; 38860 — свипом). Временные файлы удалены (проверено Test-Path=False): qa-orph-acc, qa-mq-*, qa-rb-*; .memory/traces/orphan-sweep.log — штатный лог скрипта (оставлен, gitignored).
+DEFECTS: minor#1 orphan-sweep.ps1:276 — в APPLY-режиме печатает «(dry-run: nothing is killed)» (косметика, вводит в заблуждение). minor#2 (трактовка ТЗ): «-Apply без -OlderThanMinutes → отказ» не реализован — default 30 задокументирован в шапке, отказ только при <1; безопасного поведения достаточно, решить тимлиду. Follow-up (признан dev-3): git add --renormalize для 20+ JSON с mixed EOL не сделан.
+SKILLS_LOADED: ["evidence-discipline"]
+MCP_USED: ["sequential-thinking"]
+COMPLIANCE: true
+STATUS: resolved
+
+
+================================================================================
+[2026-09-17] team-lead -> bus: PR #3 MERGED + AMSI-fix + тех-долг ПРИНЯТО
+TYPE: update | PRIORITY: high
+================================================================================
+PR #3 MERGED (squash) -> main 54e2cd0.
+AMSI: профиль переписан без комментариев (кумулятивная эвристика), доки в .agents/docs/powershell-profile.md; -File/dot-source OK; E2E opencode 1.18.31 через vault exit 0. Скилл windows-safety §7 (AMSI-плейбук).
+Тех-долг: orphan-sweep, -Strict, allowlist маркерной формы, json eol, run-bridge exit1. Коммиты 1215b50, 8059fe3. Приёмка qa-engineer ПРИНЯТО (3 minor).
+Оценки: dev-3 8, qa-engineer 8.
+Reminder: 29 старых per-agent worktree (agent/*) на 30f3830 - НЕ удалены, напомнить пользователю.
+SKILLS_LOADED: []
+MCP_USED: []
+COMPLIANCE: true
+STATUS: resolved
+================================================================================

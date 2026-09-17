@@ -2,11 +2,14 @@
 
 ## 1. Модели
 
-- glm-5.3-free (mimo недоступен: квота opencode исчерпана) — основная
-- nemotron-3.5-lightning-free — быстрая
-- nemotron-3-ultra-free — запасная
-- nemotron-3-ultra-free — все проверяющие (qa-engineer, code-reviewer, security-auditor), fallback после ухода ox-alpha-free
-- Платные модели запрещены.
+- opencode-go/deepseek-v4.1-flash — основная для разработчиков (dev-*, backend*, frontend, devops и пр.)
+- opencode-go/qwen3.8-flash — senior-reviewer (крупные/значимые приёмки) — ПЛАТНАЯ, согласована
+- opencode-go/deepseek-v4.1-flash — senior-reviewer-1 (запасной senior, чтобы не подменять модели вручную)
+- opencode/big-pickle — code-reviewer (крупные ревью; free-лимит 100 req/сут, 1M ток/сут)
+- opencode/ling-3.0-flash-fin-free, opencode/mimo-v2.5-free, opencode/big-pickle, opencode/nemotron-3.5-lightning-free — остальные проверяющие (free)
+- aihubmix/coding-glm-5.1-free — security-auditor (free)
+- Платные модели запрещены, КРОМЕ opencode-go/qwen3.8-flash и opencode-go/deepseek-v4.1-flash для senior-reviewer/-1 (согласовано с пользователем 2026-09-15).
+- glm-5.3-free: больше не бесплатна/недоступна (tokenrouter distributor); баланс tokenrouter $0. model-router/sync сверять с этим списком.
 
 ## 2. Роли
 
@@ -193,7 +196,35 @@ STATUS: resolved
 - **СТРОГО ЗАПРЕЩЕНО (инцидент 10.09.2026, Kaspersky PDM-детект): агентам лезть в системные политики ЛЮБОГО уровня:**
   - Групповые политики (gpedit, `HKLM:\SOFTWARE\Policies\*`, `HKCU:\SOFTWARE\Policies\*`, gpo-скрипты) — не читать, не менять, не «исследовать».
   - Локальные политики безопасности (secpol, `secedit`, LocalSecurityPolicy.msc) — запрещены.
-  - Реестр вне проекта: только ЧТЕНИЕ текущей конфигурации, если прямо нужно для диагностики; ЛЮБАЯ запись в HKLM/HKCU вне D:\Тест\agent-hq — запрещена без явного ОК пользователя в текущей сессии.
+  - Реестр — зонирование: **HKLM** (любая запись) и **HKCU:\SOFTWARE\Policies\*** (групповые политики) — запрещены без явного ОК пользователя в текущей сессии; **остальной HKCU** (Environment/PATH, конфиги софта, npm и т.п.) — запись РАЗРЕШЕНА (это зона пользователя; npm config, установка тулов и т.д. легитимно пишут туда), но факт записи упомяни в self-report. Чтение реестра — свободно (диагностика).
   - Планировщик (schtasks): РЕГИСТРАЦИЯ новых задач — только с явного разрешения пользователя в ТЗ. Это не политика, но та же «системная зона», на которую Kaspersky реагирует.
   - Нарушение = мгновенный REJECT задачи (compliance-gate) + эскалация пользователю.
 - Полный чеклист: .agents/skills/windows-safety/SKILL.md — читать ПЕРЕД любыми загрузками/установками.
+
+## 11. Секреты (ОБЯЗАТЕЛЬНО)
+
+- Главный принцип: секрет (пароль, токен, ключ) НИКОГДА не проходит через чат/ТЗ/промпт/код/логи. В ТЗ фигурирует только ИМЯ секрета.
+- Хранилище: DPAPI (CurrentUser), каталог `C:\Users\Ermak_DS\.agent-secrets\secret.<имя>.enc` (вне git, вне external-паттернов). Имя: строчные латиница/цифры/дефис `^[a-z0-9-]{2,40}$`.
+- Скрипты (public API — ЗАФИКСИРОВАН, менять только с ревью integration-specialist + синхронной правкой regex-исключений сканера):
+  - `set-secret.ps1 -Name <имя> [-List]` — ввод секрета пользователем маскированно (Read-Host -AsSecureString; piped stdin НЕ работает — fail-safe против автоматики).
+  - `get-secret.ps1 -Name <имя> -AsEnv <ENV>` (env ТОЛЬКО текущего процесса) | `-Verify` (SHA256-отпечаток 12 hex). Секрет в stdout НЕ печатается НИКОГДА.
+  - `run-bridge.ps1` (US-016): verify tg-bot-token → env:TG_TOKEN → python bridge.py.
+- Паттерн вызова из агентов (ЕДИНСТВЕННЫЙ рабочий): get-secret + использование ОДНИМ bash-вызовом (`;`-цепочка), env живёт до конца вызова; ОБЯЗАТЕЛЬНО проверять `$LASTEXITCODE -ne 0` после get-secret (exit дочернего скрипта не пробрасывается). Два отдельных bash-вызова = env мёртв. В worktrees вызывать скрипты ТОЛЬКО по абсолютному пути из корня `D:\Тест\agent-hq\.agents\scripts\`.
+- Запрещено: plaintext-секрет в коде (даже комментарии), CLI-аргументах (виден в процессах), config-файлах репо, логах (строка подключения — без Pwd/токена).
+- Pre-commit сканер секретов (канонический хук: `.agents/hooks/pre-commit`, устанавливается в `.git/hooks` через sync-agents.ps1): блокирует коммит при паттернах password/pwd/token/JWT/ghp_/xoxb-/sk-/AKIA/PEM. `--no-verify` — ЗАПРЕЩЁН для агентов (REJECT задачи); при блокировке из worktree — эскалация тимлиду, не обход.
+- Известные границы (принятые trade-offs): entropy=null — защита от утечки в git/чужих юзеров, НЕ от малвари под твоим юзером; env наследуется дочерними процессами до конца вызова; ротация секрета = рестарт зависимых процессов; бэкап профиля = компрометация (мастер-ключ DPAPI в %APPDATA%\Microsoft\Protect); сканер не покрывает: бинарные файлы, имена файлов, удалённые строки diff, историю до внедрения (не ретроактивен).
+
+---
+
+## 12. Evidence-discipline (антигаллюцинации, ОБЯЗАТЕЛЬНО)
+
+Все агенты обязаны соблюдать `.agents/skills/evidence-discipline/SKILL.md`. Ключевое:
+
+1. Не утверждать существование файла/команды/API/скилла без проверки (Read/запуск).
+2. Не проверено → писать `NOT ENOUGH EVIDENCE: <что именно>`, а не догадку.
+3. `DONE` — только с артефактом (путь + вывод/diff). Нет артефакта → `PARTIAL`.
+4. Ссылки на код — `path:line`, только после чтения; отсутствующее называть `missing`.
+5. Различать «проверил» / «предполагаю» / «сделал».
+6. В self-report — только реально использованные `SKILLS_LOADED`/`MCP_USED`.
+
+Контроль: qa-engineer/code-reviewer сверяют заявленные артефакты с диском; несуществующий артефакт в `DONE` → REJECT (§3.5).

@@ -1,3 +1,8 @@
+---
+name: superpowers-spec
+description: "Фаза specification методологии Superpowers (obra) для SDLC: от идеи до User Stories с Acceptance Criteria. Применять для формализации требований на SDLC-задачах."
+---
+
 # Superpowers Spec — Specification Phase
 
 ## Описание

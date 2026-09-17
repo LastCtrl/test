@@ -1,3 +1,8 @@
+---
+name: summarization
+description: "Автоматическое сжатие контекста .memory/ по стратегии summary + archive. Применять при разрастании activeContext.md и по команде /sync."
+---
+
 # Summarization Skill
 
 ## Автоматическое сжатие контекста

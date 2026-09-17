@@ -1,7 +1,7 @@
 {
     "name":  "tech-writer-1",
     "description":  "Tech Writer (copy 1) — README, API docs, changelog, архитектурная документация для параллельной работы.",
-    "model":  "tokenrouter/z-ai/glm-5.3-free",
+    "model":  "opencode-go/deepseek-v4.1-flash",
     "mode":  "subagent",
     "temperature":  0.2,
     "permissions":  [

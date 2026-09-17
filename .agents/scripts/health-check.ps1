@@ -1,4 +1,4 @@
-param()
+﻿param()
 
 $ErrorActionPreference = "Continue"
 $root = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
@@ -125,7 +125,7 @@ $complianceScript = Join-Path $PSScriptRoot "compliance-gate.ps1"
 if (Test-Path $complianceScript) {
     try {
         $compResult = & $complianceScript -ReportPath (Join-Path $root "CONTEXT-BUFFER.md") -LookbackHours 24 -Strict:$false
-        if ($LASTEXITCODE -eq 0) {
+        if ($compResult -eq $true) {
             Write-Host "[OK] Compliance: PASS" -ForegroundColor Green
         } else {
             Write-Host "[WARN] Compliance: violations found (check .memory/tool-usage-violations.jsonl)" -ForegroundColor Yellow

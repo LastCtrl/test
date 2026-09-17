@@ -1,4 +1,4 @@
-# session-recovery.ps1 — Автовосстановление сессий при lock conflict
+﻿# session-recovery.ps1 — Автовосстановление сессий при lock conflict
 # Запускается в фоне, мониторит .local/share/opencode/snapshot/ на ошибки
 
 param(
@@ -8,6 +8,8 @@ param(
 )
 
 $ErrorActionPreference = "Continue"
+
+$RepoRoot = if ($env:AGENT_HQ_ROOT) { $env:AGENT_HQ_ROOT } else { Split-Path (Split-Path $PSScriptRoot -Parent) -Parent }
 
 $SnapshotsDir = Join-Path $env:LOCALAPPDATA "opencode\snapshot"
 $LockFile = Join-Path $SnapshotsDir "recovery.lock"
@@ -51,7 +53,7 @@ function Test-LockConflict {
 
 function Get-FreeTeamLeadCopy {
     # Проверяем какие team-lead копии свободны (нет активной задачи в inbox)
-    $Root = "D:\Тест\agent-hq"
+    $Root = $RepoRoot
     $InboxDir = Join-Path $Root ".memory\inbox"
     $copies = @("team-lead", "team-lead-1", "team-lead-2", "team-lead-3")
     foreach ($copy in $copies) {
@@ -74,7 +76,7 @@ function Delegate-To-Copy {
     Write-Log "DELEGATE: Переделегирование на $copyName"
 
     # Создаём задачу в inbox копии
-    $InboxDir = Join-Path "D:\Тест\agent-hq\.memory\inbox" $copyName
+    $InboxDir = Join-Path (Join-Path $RepoRoot ".memory\inbox") $copyName
     if (-not (Test-Path $InboxDir)) {
         New-Item -ItemType Directory -Path $InboxDir -Force | Out-Null
     }
@@ -98,7 +100,7 @@ function Delegate-To-Copy {
     Write-Log "DELEGATE: Задача $taskId создана в $copyName inbox"
 
     # Записываем в CONTEXT-BUFFER.md
-    $bufferPath = "D:\Тест\agent-hq\CONTEXT-BUFFER.md"
+    $bufferPath = Join-Path $RepoRoot "CONTEXT-BUFFER.md"
     $tsNow = Get-Date -Format "yyyy-MM-ddTHH:mm:ss"
     $entry = "[$tsNow] session-recovery -> ${copyName}:`nTYPE: update | PRIORITY: high`nCONTENT: Auto-recovery delegation from crashed session. Original task: $originalTask. Delegated to ${copyName}.`nSKILLS_LOADED: [""skill-enforcement"", ""model-router"", ""self-healing""]`nMCP_USED: [""context7: offline"", ""sequential-thinking: offline""]`nCOMPLIANCE: true`nSTATUS: resolved`n"
     Add-Content -Path $bufferPath -Value $entry -Encoding UTF8
@@ -117,7 +119,7 @@ function Main-Loop {
                     Write-Log "FREE COPY: $freeCopy available"
 
                     # Читаем последнюю задачу из CONTEXT-BUFFER
-                    $bufferPath = "D:\Тест\agent-hq\CONTEXT-BUFFER.md"
+                    $bufferPath = Join-Path $RepoRoot "CONTEXT-BUFFER.md"
                     if (Test-Path $bufferPath) {
                         $content = Get-Content $bufferPath -Raw
                         # Ищем последнюю задачу пользователя
@@ -136,7 +138,7 @@ function Main-Loop {
                 } else {
                     Write-Log "NO FREE COPY: All team-lead copies busy"
                     # Записываем blocker
-                    $bufferPath = "D:\Тест\agent-hq\CONTEXT-BUFFER.md"
+                    $bufferPath = Join-Path $RepoRoot "CONTEXT-BUFFER.md"
                     $tsNow2 = Get-Date -Format "yyyy-MM-ddTHH:mm:ss"
                     $entry = "[$tsNow2] session-recovery -> team-lead:`nTYPE: blocker | PRIORITY: critical`nCONTENT: Lock conflict detected but ALL team-lead copies busy. Manual intervention needed.`nSKILLS_LOADED: [""skill-enforcement"", ""model-router"", ""self-healing""]`nMCP_USED: []`nCOMPLIANCE: false`nSTATUS: open`n"
                     Add-Content -Path $bufferPath -Value $entry -Encoding UTF8

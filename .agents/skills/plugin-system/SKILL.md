@@ -1,3 +1,8 @@
+---
+name: plugin-system
+description: "Структура и формат плагинов opencode (.opencode/plugins, plugin.json). Применять при создании, установке и отладке плагинов."
+---
+
 # Plugin System
 
 ## Структура плагинов

@@ -1,7 +1,7 @@
 {
     "name":  "qa-engineer",
     "description":  "QA Engineer — тесты, edge cases, баг-репорты, регрессия.",
-    "model":  "tokenrouter/z-ai/glm-5.3-free",
+    "model":  "opencode-go/qwen3.8-flash",
     "mode":  "subagent",
     "temperature":  0.2,
     "permissions":  [

@@ -1,4 +1,4 @@
-param()
+﻿param()
 
 # CI auto-detect: GitHub Actions / generic CI runners have no local runtime artifacts
 $isCI = ($env:GITHUB_ACTIONS -eq "true") -or ($env:CI -eq "true")
@@ -105,9 +105,9 @@ Write-Host "Phase B2: Agent Registration" -ForegroundColor Yellow
 $ocRaw = Get-Content "opencode.json" -Raw -ErrorAction SilentlyContinue
 if ($ocRaw) {
     $oc = $ocRaw | ConvertFrom-Json
-    Test-Check "opencode.json has agents section" ($null -ne $oc.agents)
-    if ($null -ne $oc.agents) {
-        $agentCount = ($oc.agents | Get-Member -MemberType NoteProperty).Count
+    Test-Check "opencode.json has agents section" ($null -ne $oc.agent)
+    if ($null -ne $oc.agent) {
+        $agentCount = ($oc.agent | Get-Member -MemberType NoteProperty).Count
         Test-Check "agents section has >= 30 entries ($agentCount found)" ($agentCount -ge 30)
     } else {
         Test-Check "agents section has >= 30 entries" $false

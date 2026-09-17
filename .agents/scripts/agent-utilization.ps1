@@ -1,4 +1,4 @@
-# agent-utilization.ps1 - Agent utilization metrics and audit log
+﻿# agent-utilization.ps1 - Agent utilization metrics and audit log
 # US-014 Resource Awareness
 #
 # Parameters:

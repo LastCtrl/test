@@ -1,6 +1,5 @@
 ﻿param(
-    [switch]$DryRun,
-    [switch]$TestLegacyRemoval
+    [switch]$DryRun
 )
 
 $ErrorActionPreference = "Stop"
@@ -74,6 +73,130 @@ function ConvertTo-JsonString {
 }
 
 # ============================================================
+# P0-B: разбор metadata.task_allow — allowlist агентов, которым
+# ДАННЫЙ агент может делегировать через task (deny-by-default).
+# Fail-safe: нестроковые/небезопасные элементы ОТБРАСЫВАЮТСЯ с warning,
+# а не роняют sync. Инвариант anti-fork-bomb: ни сам агент, ни другой
+# оркестратор (team-lead*) не попадают в allow-список.
+# ============================================================
+function Get-TaskAllowList {
+    param(
+        [string]$AgentName,
+        $TaskAllow
+    )
+
+    $result = [System.Collections.ArrayList]::new()
+
+    if ($null -eq $TaskAllow) { return $result.ToArray() }
+
+    foreach ($item in @($TaskAllow)) {
+        if ($null -eq $item) {
+            Write-Warning "task_allow: null entry ignored for '$AgentName'"
+            continue
+        }
+        if (-not ($item -is [System.String])) {
+            Write-Warning "task_allow: non-string entry ignored for '$AgentName'"
+            continue
+        }
+
+        $candidate = $item.Trim()
+        if ($candidate.Length -eq 0) {
+            Write-Warning "task_allow: empty entry ignored for '$AgentName'"
+            continue
+        }
+        if ($candidate -notmatch '^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$') {
+            Write-Warning "task_allow: unsafe agent name '$candidate' ignored for '$AgentName'"
+            continue
+        }
+        if ($candidate -eq $AgentName) {
+            Write-Warning "task_allow: self-reference ('$candidate') ignored for '$AgentName' (anti-fork-bomb)"
+            continue
+        }
+        if ($candidate -match $script:TaskOrchestratorPattern) {
+            Write-Warning "task_allow: orchestrator '$candidate' ignored for '$AgentName' (anti-fork-bomb)"
+            continue
+        }
+        if (-not $result.Contains($candidate)) {
+            [void]$result.Add($candidate)
+        }
+    }
+
+    return $result.ToArray()
+}
+
+# ============================================================
+# P0-B: granular bash command policy — ЕДИНЫЙ ИСТОЧНИК правил.
+# opencode применяет ПОСЛЕДНЕЕ совпавшее правило (opencode.ai/docs/permissions),
+# поэтому порядок ключей критичен: сначала широкий catch-all "*", затем
+# allow, затем ask, а ВСЕ deny — В КОНЦЕ. Так запрет гарантированно побеждает
+# более широкие allow/ask: например "git push*": ask не должен перекрывать
+# "git push --force*": deny и "reg *": ask — не должен перекрывать "reg add*": deny.
+# Правила соответствуют целевому набору P0-B (allow/deny/ask), отличается
+# только порядок группировки — wide->specific, deny-last.
+# Возвращаем НОВЫЙ [ordered] на каждый вызов (не общий мутабельный объект),
+# чтобы агенты не делили одно состояние.
+# ============================================================
+function Get-BashPermissionRules {
+    $rules = [ordered]@{}
+
+    # --- catch-all: широкая политика идёт ПЕРВОЙ (иначе deny-правила ниже) ---
+    $rules['*'] = 'allow'
+
+    # --- allow (молча): безопасные read-only / сборка ---
+    $rules['git status*'] = 'allow'
+    $rules['git diff*'] = 'allow'
+    $rules['git log*'] = 'allow'
+    $rules['git show*'] = 'allow'
+    $rules['git add*'] = 'allow'
+    $rules['git commit*'] = 'allow'
+    $rules['Get-ChildItem*'] = 'allow'
+    $rules['Get-Content*'] = 'allow'
+    $rules['Select-String*'] = 'allow'
+    $rules['Test-Path*'] = 'allow'
+    $rules['Get-FileHash*'] = 'allow'
+    $rules['pwsh*'] = 'allow'
+    $rules['powershell*'] = 'allow'
+    $rules['node *'] = 'allow'
+    $rules['npm *'] = 'allow'
+    $rules['python*'] = 'allow'
+    $rules['dotnet *'] = 'allow'
+    $rules['opencode *'] = 'allow'
+
+    # --- ask: широкие команды, требующие подтверждения ---
+    $rules['git push*'] = 'ask'
+    $rules['reg *'] = 'ask'
+    $rules['schtasks*'] = 'ask'
+    $rules['Set-ItemProperty HKCU*'] = 'ask'
+
+    # --- deny: необратимые/опасные/системные — ПОСЛЕДНИМИ (всегда побеждают) ---
+    $rules['rm -rf*'] = 'deny'
+    $rules['rm -r *'] = 'deny'
+    $rules['Remove-Item*-Recurse*'] = 'deny'
+    $rules['git push --force*'] = 'deny'
+    $rules['git push -f*'] = 'deny'
+    $rules['git reset --hard*'] = 'deny'
+    $rules['git clean*'] = 'deny'
+    $rules['reg add*'] = 'deny'
+    $rules['*HKLM:*'] = 'deny'
+    $rules['secedit*'] = 'deny'
+    $rules['gpedit*'] = 'deny'
+    $rules['shutdown*'] = 'deny'
+    $rules['Stop-Computer*'] = 'deny'
+    $rules['Restart-Computer*'] = 'deny'
+    # Формат диска (disk format). ПРОБЕЛ обязателен: голый glob `format*`
+    # матчил безобидные Format-List/Format-Table (баг — блокировал команды
+    # тимлида). `format *` матчит `format C:`, но не `Format-List`.
+    $rules['format *'] = 'deny'
+    # Фоновый запуск процессов запрещён (AGENTS.md §3.7): Start-Process без
+    # остановки в том же вызове оставляет осиротевший процесс. Deny — последним
+    # правилом, чтобы «last-rule-wins» гарантированно побеждал allow-правила
+    # выше (например powershell*/pwsh*).
+    $rules['Start-Process*'] = 'deny'
+
+    return $rules
+}
+
+# ============================================================
 # Ручная сериализация одного агента в JSON (без ConvertTo-Json)
 # ============================================================
 function ConvertTo-AgentJson {
@@ -112,7 +235,10 @@ function ConvertTo-AgentJson {
         if ($v -is [System.Collections.IDictionary]) {
             # nested dict (external_directory patterns) — ручная сериализация
             [void]$sb.AppendLine('            ' + (ConvertTo-JsonString $k) + ': {')
-            $subKeys = @($v.Keys | Sort-Object)
+            # P0-B: порядок вложенных правил ВАЖЕН — opencode применяет
+            # ПОСЛЕДНЕЕ совпавшее правило. Сортировку НЕ применяем,
+            # порядок вставки сохраняется (широкое "*" задаётся первым).
+            $subKeys = @($v.Keys)
             for ($j = 0; $j -lt $subKeys.Count; $j++) {
                 $sk = $subKeys[$j]
                 $sv = $v[$sk]
@@ -138,179 +264,273 @@ function ConvertTo-AgentJson {
 }
 
 # ============================================================
-# Удаление top-level JSON-секции по имени ключа (text-based).
-# Корректная логика запятых: секция может быть первой, средней
-# или последней. Возвращает новый текст или $null, если ключ не найден.
+# Разрешение локальных $ref схемы (#/$defs/...). Внешние ссылки
+# (https://...) не разрешаются -> $null (узел пропускается, данных нет).
 # ============================================================
-function Remove-JsonTopLevelSection {
+function Resolve-JsonSchemaRef {
     param(
-        [string]$text,
-        [string]$keyName
+        $Schema,
+        [string]$Ref
     )
 
-    $pattern = '(?m)^[ \t]*"' + [regex]::Escape($keyName) + '"\s*:\s*\{'
-    $match = [regex]::Match($text, $pattern)
-    if (-not $match.Success) {
-        return $null
+    if ([string]::IsNullOrWhiteSpace($Ref)) { return $null }
+    if (-not $Ref.StartsWith('#/')) { return $null }
+
+    $pointer = $Ref.Substring(2)
+    $node = $Schema
+    foreach ($rawSegment in ($pointer -split '/')) {
+        $segment = $rawSegment.Replace('~1', '/').Replace('~0', '~')
+        if ($null -eq $node) { return $null }
+        $prop = $node.PSObject.Properties[$segment]
+        if ($null -eq $prop) { return $null }
+        $node = $prop.Value
     }
-
-    $braceStart = $match.Index + $match.Length - 1
-    $braceEnd = Find-JsonBlockEnd -text $text -startBraceIndex $braceStart
-    if ($braceEnd -lt 0) {
-        return $null
-    }
-
-    # 1. Удаляем секцию [start..end]
-    $delFrom = $match.Index
-    $delTo = $braceEnd + 1
-
-    # 2. Обрезаем пробелы по краям
-    $before = $text.Substring(0, $delFrom).TrimEnd()
-    $after = $text.Substring($delTo).TrimStart()
-
-    # Запятая в начале $after разделяла удаляемую секцию со следующим
-    # элементом — она больше не нужна, убираем (и повторные пробелы за ней).
-    if ($after -match '^,') {
-        $after = $after.Substring(1).TrimStart()
-    }
-
-    # Секция была последней: висячая запятая перед закрывающей } — убрать.
-    if ($after -match '^}' -and $before -match ',$') {
-        $before = $before.TrimEnd(',').TrimEnd()
-    }
-
-    # 3. Запятая нужна, только если по обе стороны остались элементы
-    #    (before не заканчивается на "{" или ",", after не начинается с "}" или ",")
-    $needComma = ($before -notmatch '[{,]$') -and ($after -notmatch '^[},]') -and ($after.Trim().Length -gt 0)
-
-    # 4. Собираем результат
-    $comma = if ($needComma) { "," } else { "" }
-    return $before + $comma + "`n" + $after
+    return $node
 }
 
 # ============================================================
-# ТЕСТ: -TestLegacyRemoval — удаление legacy-секции "agent"
-# в 3 позициях (первая / середина / последняя) во временных JSON.
+# Совместим ли узел схемы с фактическим значением (по ключу "type").
+# Нужно для ветвления anyOf/oneOf: неприменимую ветвь не считаем "пройденной".
 # ============================================================
-if ($TestLegacyRemoval) {
-    $tempDir = Join-Path $env:TEMP ("legacy-test-" + [System.IO.Path]::GetRandomFileName())
-    New-Item -ItemType Directory -Path $tempDir -Force | Out-Null
-
-    # Секция "agent" ПЕРВАЯ (за ней идут другие ключи)
-    $firstJson = @'
-{
-  "agent": {
-    "name": "legacy"
-  },
-  "agents": {
-    "dev-1": { "mode": "subagent" }
-  },
-  "theme": "dark"
-}
-'@
-
-    # Секция "agent" в СЕРЕДИНЕ
-    $middleJson = @'
-{
-  "theme": "dark",
-  "agent": {
-    "name": "legacy",
-    "nested": { "deep": true }
-  },
-  "agents": {
-    "dev-1": { "mode": "subagent" }
-  }
-}
-'@
-
-    # Секция "agent" ПОСЛЕДНЯЯ (за ней только закрывающая })
-    $lastJson = @'
-{
-  "agents": {
-    "dev-1": { "mode": "subagent" }
-  },
-  "theme": "dark",
-  "agent": {
-    "name": "legacy"
-  }
-}
-'@
-
-    $cases = @(
-        @{ Name = "first";   Json = $firstJson },
-        @{ Name = "middle";  Json = $middleJson },
-        @{ Name = "last";    Json = $lastJson }
+function Test-SchemaNodeApplicable {
+    param(
+        $Schema,
+        $SchemaNode,
+        $ConfigValue,
+        [int]$Depth = 0
     )
 
-    $passed = 0
-    $failed = 0
-    foreach ($case in $cases) {
-        $tmpFile = Join-Path $tempDir ("case-" + $case.Name + ".json")
-        [System.IO.File]::WriteAllText($tmpFile, $case.Json, (New-Object System.Text.UTF8Encoding($false)))
+    if ($null -eq $SchemaNode) { return $false }
+    if ($Depth -gt 16) { return $true }
 
-        $resultText = Remove-JsonTopLevelSection -text $case.Json -keyName "agent"
-        $casePass = $false
-        if ($null -eq $resultText) {
-            Write-Host "  [FAIL] $($case.Name): 'agent' section not found" -ForegroundColor Red
-        }
-        else {
-            try {
-                $null = $resultText | ConvertFrom-Json -ErrorAction Stop
-                $parsed = $resultText | ConvertFrom-Json
-                # 'agent' должен исчезнуть, 'agents' и 'theme' — остаться
-                $agentGone = ($null -eq $parsed.agent)
-                $agentsKept = ($null -ne $parsed.agents)
-                $themeKept = ($null -ne $parsed.theme)
-                if ($agentGone -and $agentsKept -and $themeKept) {
-                    $casePass = $true
-                }
-                else {
-                    Write-Host "  [FAIL] $($case.Name): wrong keys after removal (agentGone=$agentGone agentsKept=$agentsKept themeKept=$themeKept)" -ForegroundColor Red
-                }
-            }
-            catch {
-                Write-Host "  [FAIL] $($case.Name): invalid JSON after removal — $($_.Exception.Message)" -ForegroundColor Red
-            }
-        }
+    $refProp = $SchemaNode.PSObject.Properties['$ref']
+    if ($null -ne $refProp) {
+        $resolved = Resolve-JsonSchemaRef -Schema $Schema -Ref ([string]$refProp.Value)
+        if ($null -eq $resolved) { return $true }  # неразрешимая ссылка -> не исключаем ветвь
+        return (Test-SchemaNodeApplicable -Schema $Schema -SchemaNode $resolved -ConfigValue $ConfigValue -Depth ($Depth + 1))
+    }
 
-        if ($casePass) {
-            # Доп. проверка: удаление из файла на диске (тот же кодовый путь)
-            $onDisk = [System.IO.File]::ReadAllText($tmpFile, [System.Text.Encoding]::UTF8)
-            $diskResult = Remove-JsonTopLevelSection -text $onDisk -keyName "agent"
-            try {
-                $null = $diskResult | ConvertFrom-Json -ErrorAction Stop
-                Write-Host "  [PASS] $($case.Name)" -ForegroundColor Green
-                $passed++
+    $typeProp = $SchemaNode.PSObject.Properties['type']
+    if ($null -eq $typeProp) { return $true }
+
+    switch ([string]$typeProp.Value) {
+        'object'  { return ($ConfigValue -is [System.Management.Automation.PSCustomObject]) }
+        'array'   { return ($ConfigValue -is [System.Array]) }
+        'string'  { return ($ConfigValue -is [System.String]) }
+        'boolean' { return ($ConfigValue -is [System.Boolean]) }
+        'integer' { return ($ConfigValue -is [System.Int64] -or $ConfigValue -is [System.Int32] -or $ConfigValue -is [System.Double] -or $ConfigValue -is [System.Decimal]) }
+        'number'  { return ($ConfigValue -is [System.Int64] -or $ConfigValue -is [System.Int32] -or $ConfigValue -is [System.Double] -or $ConfigValue -is [System.Decimal]) }
+        'null'    { return ($null -eq $ConfigValue) }
+        default   { return $true }
+    }
+}
+
+# ============================================================
+# РЕКУРСИВНАЯ проверка структуры конфига по JSON-схеме.
+# Падает (throw) на неизвестный ключ в узле, где схема объявляет
+# additionalProperties: false. Обходит properties, $ref,
+# additionalProperties (как схему), anyOf/oneOf/allOf и items.
+# ============================================================
+$script:SchemaNodesChecked = 0
+
+function Assert-ConfigSchemaNode {
+    param(
+        $Schema,
+        $SchemaNode,
+        $ConfigValue,
+        [string]$Path,
+        [int]$Depth = 0
+    )
+
+    if ($null -eq $SchemaNode) { return }
+    if ($Depth -gt 64) {
+        throw "Schema recursion depth exceeded at '$Path' (possible `$ref cycle)."
+    }
+
+    # 1. $ref: локальные разворачиваем; внешние пропускаем (нет данных для сверки).
+    $refProp = $SchemaNode.PSObject.Properties['$ref']
+    if ($null -ne $refProp) {
+        $resolved = Resolve-JsonSchemaRef -Schema $Schema -Ref ([string]$refProp.Value)
+        if ($null -eq $resolved) { return }
+        Assert-ConfigSchemaNode -Schema $Schema -SchemaNode $resolved -ConfigValue $ConfigValue -Path $Path -Depth ($Depth + 1)
+        return
+    }
+
+    # 2. anyOf / oneOf: значение обязано удовлетворять хотя бы одной применимой ветви.
+    foreach ($combiner in @('anyOf', 'oneOf')) {
+        $combinerProp = $SchemaNode.PSObject.Properties[$combiner]
+        if ($null -ne $combinerProp) {
+            $branches = @($combinerProp.Value)
+            $applicable = @($branches | Where-Object { Test-SchemaNodeApplicable -Schema $Schema -SchemaNode $_ -ConfigValue $ConfigValue })
+            if ($applicable.Count -eq 0) { $applicable = $branches }  # тип не определить -> судим по всем
+
+            $branchErrors = @()
+            $branchOk = $false
+            foreach ($branch in $applicable) {
+                try {
+                    Assert-ConfigSchemaNode -Schema $Schema -SchemaNode $branch -ConfigValue $ConfigValue -Path $Path -Depth ($Depth + 1)
+                    $branchOk = $true
+                    break
+                }
+                catch {
+                    $branchErrors += $_.Exception.Message
+                }
             }
-            catch {
-                Write-Host "  [FAIL] $($case.Name): on-disk variant invalid — $($_.Exception.Message)" -ForegroundColor Red
-                $failed++
+            if (-not $branchOk) {
+                $firstError = if ($branchErrors.Count -gt 0) { $branchErrors[0] } else { 'no branch matched' }
+                throw "Config node '$Path' violates schema ${combiner}: $firstError"
             }
-        }
-        else {
-            $failed++
+            return
         }
     }
 
-    # Чистим временные файлы
-    Remove-Item -LiteralPath $tempDir -Recurse -Force -ErrorAction SilentlyContinue
+    # 3. allOf: проверяем все ветви, затем продолжаем обход прочих ключевых слов.
+    $allOfProp = $SchemaNode.PSObject.Properties['allOf']
+    if ($null -ne $allOfProp) {
+        foreach ($branch in @($allOfProp.Value)) {
+            Assert-ConfigSchemaNode -Schema $Schema -SchemaNode $branch -ConfigValue $ConfigValue -Path $Path -Depth ($Depth + 1)
+        }
+    }
 
-    Write-Host ""
-    Write-Host "=== Legacy removal test: $passed passed, $failed failed ===" -ForegroundColor $(if ($failed -eq 0) { "Green" } else { "Red" })
-    if ($failed -eq 0) { exit 0 } else { exit 1 }
+    # 4. Массивы: элементы проверяем по items.
+    if ($ConfigValue -is [System.Array]) {
+        $itemsProp = $SchemaNode.PSObject.Properties['items']
+        if ($null -ne $itemsProp) {
+            for ($i = 0; $i -lt $ConfigValue.Count; $i++) {
+                Assert-ConfigSchemaNode -Schema $Schema -SchemaNode $itemsProp.Value -ConfigValue $ConfigValue[$i] -Path ("{0}[{1}]" -f $Path, $i) -Depth ($Depth + 1)
+            }
+        }
+        return
+    }
+
+    # 5. Объекты: контроль неизвестных ключей там, где additionalProperties: false.
+    if (-not ($ConfigValue -is [System.Management.Automation.PSCustomObject])) { return }
+    $script:SchemaNodesChecked++
+
+    $propertiesProp = $SchemaNode.PSObject.Properties['properties']
+    $declaredProps = if ($null -ne $propertiesProp) { $propertiesProp.Value } else { $null }
+
+    $addlProp = $SchemaNode.PSObject.Properties['additionalProperties']
+    $addlValue = if ($null -ne $addlProp) { $addlProp.Value } else { $null }
+    $addlIsFalse = ($null -ne $addlProp) -and ($addlValue -is [System.Boolean]) -and ($addlValue -eq $false)
+
+    foreach ($member in @($ConfigValue.PSObject.Properties)) {
+        $key = $member.Name
+        $childPath = if ($Path.Length -gt 0) { "$Path.$key" } else { $key }
+
+        $declared = $null
+        if ($null -ne $declaredProps) {
+            $declared = $declaredProps.PSObject.Properties[$key]
+        }
+
+        if ($null -ne $declared) {
+            Assert-ConfigSchemaNode -Schema $Schema -SchemaNode $declared.Value -ConfigValue $member.Value -Path $childPath -Depth ($Depth + 1)
+        }
+        elseif ($addlIsFalse) {
+            throw "Unknown key '$key' at config path '$childPath' — not allowed by schema (additionalProperties: false)."
+        }
+        elseif ($null -ne $addlProp) {
+            # additionalProperties задана схемой -> валидируем значение как запись map.
+            Assert-ConfigSchemaNode -Schema $Schema -SchemaNode $addlValue -ConfigValue $member.Value -Path $childPath -Depth ($Depth + 1)
+        }
+    }
 }
 
-$root = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
+# ============================================================
+# Валидация opencode.json против схемы schemas/opencode.config.schema.json:
+#   1) top-level ключи ⊆ $defs.Config.properties;
+#   2) РЕКУРСИВНО — неизвестные ключи во ВСЕХ вложенных узлах, где схема
+#      объявляет additionalProperties: false (properties/$ref/anyOf/items/map).
+# Неизвестный ключ → throw (fail-closed).
+# ============================================================
+function Assert-ConfigSchemaKeys {
+    param(
+        [string]$ConfigPath,
+        [string]$SchemaPath
+    )
+
+    if (-not (Test-Path -LiteralPath $SchemaPath)) {
+        throw "Schema not found: $SchemaPath — schema validation cannot run (fail-closed)."
+    }
+
+    try {
+        $schemaRaw = [System.IO.File]::ReadAllText($SchemaPath, [System.Text.Encoding]::UTF8)
+        $schema = $schemaRaw | ConvertFrom-Json
+    }
+    catch {
+        throw "Cannot parse schema ($SchemaPath): $($_.Exception.Message)"
+    }
+
+    $configDef = $schema.'$defs'.Config
+    if (($null -eq $configDef) -or ($null -eq $configDef.properties)) {
+        throw "Schema has no `$defs.Config.properties — cannot validate top-level keys (fail-closed)."
+    }
+
+    $allowed = @($configDef.properties.PSObject.Properties.Name)
+
+    $configRaw = [System.IO.File]::ReadAllText($ConfigPath, [System.Text.Encoding]::UTF8)
+    $config = $configRaw | ConvertFrom-Json
+    $actual = @($config.PSObject.Properties.Name)
+
+    Write-Host "Top-level keys in opencode.json: $($actual -join ', ')" -ForegroundColor Cyan
+
+    $unknown = @($actual | Where-Object { $allowed -cnotcontains $_ })
+    if ($unknown.Count -gt 0) {
+        throw "Unknown top-level key(s) in opencode.json not present in schema `$defs.Config.properties: $($unknown -join ', ')"
+    }
+
+    # Рекурсивный обход вложенной структуры.
+    $script:SchemaNodesChecked = 0
+    Assert-ConfigSchemaNode -Schema $schema -SchemaNode $configDef -ConfigValue $config -Path '' -Depth 0
+
+    Write-Host "Schema validation OK (recursive, fail-closed): $($actual.Count) top-level keys, $($script:SchemaNodesChecked) object node(s) checked; unknown keys rejected where additionalProperties=false." -ForegroundColor Green
+}
+
+# Portability: предпочитаем явный AGENT_HQ_ROOT, иначе выводим корень из расположения скрипта.
+$root = if ($env:AGENT_HQ_ROOT) { $env:AGENT_HQ_ROOT } else { Split-Path (Split-Path $PSScriptRoot -Parent) -Parent }
+# Нормализация: убрать завершающий разделитель (кроме корня диска "X:\"),
+# иначе шаблон "{0}\**" даст двойной слэш.
+if ($root.Length -gt 3 -and ($root.EndsWith('\') -or $root.EndsWith('/'))) {
+    $root = $root.Substring(0, $root.Length - 1)
+}
 $agentsDir = Join-Path $root ".opencode\agents"
 $promptsDir = Join-Path $agentsDir "prompts"
 $configPath = Join-Path $root "opencode.json"
+$schemaPath = Join-Path $root "schemas\opencode.config.schema.json"
 
 if (-not (Test-Path $promptsDir)) {
     New-Item -ItemType Directory -Path $promptsDir -Force | Out-Null
 }
 
-$allowKeys = @("read", "edit", "bash", "glob", "grep", "skill", "question", "webfetch", "websearch", "task", "list")
-$denyIfMissing = @("edit", "bash", "task")
+# P0-B: "task" СОЗНАТЕЛЬНО исключён из allowKeys/denyIfMissing — он
+# вычисляется отдельно из metadata.task_allow (allowlist, deny-by-default).
+# Непустой task_allow -> permission.task = { "*": "deny", "<agent>": "allow", ... }
+# Пусто/отсутствует  -> permission.task = "deny"
+$allowKeys = @("read", "edit", "bash", "glob", "grep", "skill", "question", "webfetch", "websearch", "list")
+$denyIfMissing = @("edit", "bash")
+
+# Агенты-оркестраторы: не могут быть целью делегирования (anti-fork-bomb).
+$script:TaskOrchestratorPattern = '^team-lead(-\d+)?$'
+
+# ============================================================
+# Блок evidence-discipline, добавляемый в начало КАЖДОГО промпта
+# (6 правил + запрет DONE без артефакта). Verbatim here-string —
+# одинарные кавычки, чтобы backtick-символы не интерпретировались.
+# ============================================================
+$evidenceHeader = @'
+## EVIDENCE-DISCIPLINE (обязательно; нарушение = REJECT)
+1. Не утверждай существование файла/команды/API/скилла без проверки (Read или запуск).
+2. Не проверено — пиши `NOT ENOUGH EVIDENCE: <что именно>`, не догадывайся.
+3. `DONE` — только с артефактом (путь + вывод/diff). Нет артефакта — `PARTIAL`.
+4. Ссылки на код — `path:line`, только после чтения.
+5. Отсутствующее называй `missing`, не подменяй похожим.
+6. Различай: «проверил» / «предполагаю» / «сделал».
+
+ЗАПРЕЩЕНО писать `DONE` без артефакта — это ложный отчёт (REJECT).
+
+---
+
+'@
 
 $jsonFiles = Get-ChildItem -Path $agentsDir -Filter "*.json" | Where-Object { $_.Name -ne "registry.json" }
 
@@ -360,23 +580,46 @@ foreach ($file in $jsonFiles) {
     $name = if ($data.name) { $data.name } else { [System.IO.Path]::GetFileNameWithoutExtension($file.Name) }
 
     $promptFile = Join-Path $promptsDir "$name.txt"
-    [System.IO.File]::WriteAllText($promptFile, $data.prompt, (New-Object System.Text.UTF8Encoding($false)))
+    [System.IO.File]::WriteAllText($promptFile, ($evidenceHeader + $data.prompt), (New-Object System.Text.UTF8Encoding($false)))
 
     $perm = [ordered]@{}
     foreach ($key in $allowKeys) {
         if ($data.permissions -contains $key) {
-            $perm[$key] = "allow"
+            if ($key -eq "bash") {
+                # P0-B: bash — не "allow", а гранулярный объект правил
+                # (единый источник — Get-BashPermissionRules).
+                $perm[$key] = Get-BashPermissionRules
+            } else {
+                $perm[$key] = "allow"
+            }
         } elseif ($denyIfMissing -contains $key) {
+            # Агенты без "bash" в permissions получают bash: "deny" (не меняем).
             $perm[$key] = "deny"
         }
     }
-    # external_directory: глобальные доверенные зоны (D:\Тест + opencode-пути на C:)
-    # Без этого per-agent permission перекрывает top-level и агенты просят подтверждение
+
+    # P0-B: task — allowlist с deny-by-default.
+    # Правило "*" обязано идти ПЕРВЫМ (opencode применяет последнее
+    # совпавшее правило), поэтому [ordered] с "*" в начале, allow после.
+    $taskAllow = @(Get-TaskAllowList -AgentName $name -TaskAllow $data.task_allow)
+    if ($taskAllow.Count -gt 0) {
+        $taskPerm = [ordered]@{ "*" = "deny" }
+        foreach ($target in $taskAllow) {
+            $taskPerm[$target] = "allow"
+        }
+        $perm["task"] = $taskPerm
+        Write-Host "      task: allowlist ($($taskAllow.Count) targets) + '*' deny" -ForegroundColor DarkCyan
+    } else {
+        $perm["task"] = "deny"
+        if ($data.permissions -contains "task") {
+            Write-Warning "  $name has 'task' in permissions but no non-empty task_allow — task set to 'deny' (deny-by-default)"
+        }
+    }
+
+    # external_directory: ТОЛЬКО корень репо (worktrees — внутри репо).
+    # Конфиг/креды opencode и прочие пути C: агентам недоступны.
     $perm["external_directory"] = [ordered]@{
-        "D:\Тест\**"                                        = "allow"
-        "C:\Users\Ermak_DS\.local\share\opencode\**"        = "allow"
-        "C:\Users\Ermak_DS\AppData\Local\opencode\**"       = "allow"
-        "C:\Users\Ermak_DS\.config\opencode\**"             = "allow"
+        ("{0}\**" -f $root) = "allow"
     }
 
     # Собираем entry как хэштаблицу (не PSCustomObject — для ручной сериализации)
@@ -419,6 +662,8 @@ if ($DryRun) {
 # ТОЧЕЧНАЯ ТЕКСТОВАЯ ЗАМЕНА секции "agent" в opencode.json
 # НЕ используем ConvertFrom-Json/ConvertTo-Json на всём файле —
 # PS 5.1 теряет NoteProperty-секции и портит кириллицу.
+# ВАЖНО: единственный корректный ключ схемы — "agent" (ед.ч.).
+# Легаси-ключ "agents" (мн.ч.) больше НЕ поддерживается и не ищется.
 # ============================================================
 
 if (-not (Test-Path $configPath)) {
@@ -430,7 +675,7 @@ $configText = [System.IO.File]::ReadAllText($configPath, [System.Text.Encoding]:
 
 # 2. Собрать JSON секции agent вручную (без ConvertTo-Json — PS 5.1 ломает кириллицу)
 $agentLines = [System.Collections.ArrayList]::new()
-[void]$agentLines.Add('  "agents": {')
+[void]$agentLines.Add('  "agent": {')
 for ($i = 0; $i -lt $agentEntries.Count; $i++) {
     $e = $agentEntries[$i]
     $jsonBlock = ConvertTo-AgentJson -name $e.name -description $e.description -mode $e.mode -model $e.model -temperature $e.temperature -permission $e.permission -prompt $e.prompt
@@ -440,26 +685,13 @@ for ($i = 0; $i -lt $agentEntries.Count; $i++) {
 [void]$agentLines.Add('  }')
 $agentJsonBlock = $agentLines -join "`n"
 
-# 3. Найти верхнеуровневый ключ "agents" (любой отступ, но ТОЛЬКО top-level)
-#    Устойчиво к отступам; дубль-защита: секция "agent" (ед.ч., легаси-баг) удаляется
-$agentPattern = '(?m)^[ \t]*"agents"\s*:\s*\{'
+# 3. Найти верхнеуровневый ключ "agent" (любой отступ, но ТОЛЬКО top-level).
+#    Ключ "agent" — канонический ключ схемы; НЕ удаляем его как legacy.
+$agentPattern = '(?m)^[ \t]*"agent"\s*:\s*\{'
 $agentMatch = [regex]::Match($configText, $agentPattern)
 
-# Легаси-дубль: удалить top-level "agent" (единственное число) если существует
-$legacyPattern = '(?m)^[ \t]*"agent"\s*:\s*\{'
-$legacyMatch = [regex]::Match($configText, $legacyPattern)
-if ($legacyMatch.Success) {
-    $newText = Remove-JsonTopLevelSection -text $configText -keyName "agent"
-    if ($null -ne $newText) {
-        $configText = $newText
-        Write-Warning "Legacy duplicate 'agent' section removed"
-        # Повторно ищем agents (позиции сместились)
-        $agentMatch = [regex]::Match($configText, $agentPattern)
-    }
-}
-
 if (-not $agentMatch.Success) {
-    Write-Warning "Top-level 'agents' key not found — appending before final }"
+    Write-Warning "Top-level 'agent' key not found — appending before final }"
     $lastBrace = $configText.LastIndexOf("}")
     if ($lastBrace -lt 0) {
         throw "opencode.json has no closing brace — cannot inject agent section"
@@ -520,8 +752,21 @@ catch {
     exit 1
 }
 
+# 9b. Валидация top-level ключей против схемы; неизвестный ключ → откат
+try {
+    Assert-ConfigSchemaKeys -ConfigPath $configPath -SchemaPath $schemaPath
+}
+catch {
+    Write-Error "$($_.Exception.Message) — rolling back from backup"
+    Copy-Item -LiteralPath $backupPath -Destination $configPath -Force
+    exit 1
+}
+
 # 10. Удаление старых бэкапов — оставить только последние 3
-$allBackups = Get-ChildItem -LiteralPath $root -Filter "opencode.json.bak.*" | Sort-Object Name -Descending
+#     (pre-migration бэкап — исключение, не удаляем)
+$allBackups = Get-ChildItem -LiteralPath $root -Filter "opencode.json.bak.*" |
+    Where-Object { $_.Name -notlike "*.pre-migration" } |
+    Sort-Object Name -Descending
 if ($allBackups.Count -gt 3) {
     $toDelete = $allBackups | Select-Object -Skip 3
     foreach ($old in $toDelete) {
@@ -529,6 +774,9 @@ if ($allBackups.Count -gt 3) {
         Write-Host "Old backup removed: $($old.Name)" -ForegroundColor Gray
     }
 }
+
+# 11. Установка git-хука (отдельный скрипт; безопасно при CRLF).
+& (Join-Path $PSScriptRoot "install-hooks.ps1")
 
 Write-Host "`n=== DONE: $count agents written to opencode.json (text replacement, manual JSON serialization) ===" -ForegroundColor Cyan
 Write-Host "Prompts saved to: $promptsDir" -ForegroundColor Gray

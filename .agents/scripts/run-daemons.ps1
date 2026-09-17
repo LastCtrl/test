@@ -1,8 +1,8 @@
-# run-daemons.ps1 — Запуск фоновых демонов agent-hq
+﻿# run-daemons.ps1 — Запуск фоновых демонов agent-hq
 # Запускать от имени пользователя (не от администратора)
 
 $ErrorActionPreference = "Continue"
-$Root = "D:\Тест\agent-hq"
+$Root = if ($env:AGENT_HQ_ROOT) { $env:AGENT_HQ_ROOT } else { Split-Path (Split-Path $PSScriptRoot -Parent) -Parent }
 
 # --- Session Recovery Daemon ---
 # Singleton-lock уже реализован в скрипте (recovery.lock + PID-проверка):

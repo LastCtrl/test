@@ -1,3 +1,8 @@
+---
+name: superpowers-test
+description: "Фаза testing методологии Superpowers (obra) для SDLC: unit/integration/e2e, coverage, edge cases, regression. Применять для проверки качества реализованного кода."
+---
+
 # Superpowers Test — Testing Phase
 
 ## Описание

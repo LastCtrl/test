@@ -313,6 +313,41 @@ function Test-FileInvariantsCase {
     Write-Check "инвариант: PSParser 0 ошибок" ($errors.Count -eq 0)
 }
 
+function Test-ProseVerdictNotReviewerCase {
+    # Проза исполнителя ("verdict pass", автономная строка "STATUS: ok") НЕ должна
+    # создавать "проверяющего": иначе accept исполнителя спорит с reject реального
+    # проверяющего и рождается ложное расхождение.
+    $buffer = @(
+        "[2026-09-17 18:00] dev-3 -> team-lead:"
+        "TYPE: update | PRIORITY: low"
+        "Project: agent-hq"
+        "CONTENT: Фикс P2-1 готов, локально verdict pass, прошу приёмку."
+        "STATUS: ok"
+        ""
+        "[2026-09-17 18:10] qa-engineer -> team-lead:"
+        "TYPE: update | PRIORITY: medium"
+        "CONTENT: Приёмка P2-1. VERDICT: REJECT. Найден дефект."
+        "STATUS: resolved"
+        ""
+    ) -join "`r`n"
+    $root = New-FixtureRoot -BufferText $buffer
+    try {
+        $verdicts = @(Get-ReviewVerdicts -Root $root)
+        Write-Check "п) проза исполнителя не создаёт вердикта" (@($verdicts | Where-Object { $_.agent -eq 'dev-3' }).Count -eq 0)
+        Write-Check "п) остался только вердикт проверяющего" ($verdicts.Count -eq 1 -and $verdicts[0].agent -eq 'qa-engineer' -and $verdicts[0].verdict -eq 'reject')
+        Write-Check "п) ложного расхождения нет" (@(Find-ReviewDisagreement -Root $root).Count -eq 0)
+    } finally { Remove-FixtureRoot $root }
+
+    # Парный контроль: настоящие accept/reject от РАЗНЫХ проверяющих -> расхождение есть.
+    $buffer = (New-Report "2026-09-17 19:00" "qa-engineer"   "PASS"   "P2-1") +
+              (New-Report "2026-09-17 19:10" "code-reviewer" "REJECT" "P2-1")
+    $root = New-FixtureRoot -BufferText $buffer
+    try {
+        $d = @(Find-ReviewDisagreement -Root $root)
+        Write-Check "п) реальные accept+reject -> расхождение найдено" ($d.Count -eq 1 -and $d[0].task_key -eq 'P2-1')
+    } finally { Remove-FixtureRoot $root }
+}
+
 # --- runner ----------------------------------------------------------------
 
 if (-not (Test-Path -LiteralPath $Target -PathType Leaf)) {
@@ -338,6 +373,7 @@ try {
     Test-NormalizationCase
     Test-LatestVerdictWinsCase
     Test-RelayLineCase
+    Test-ProseVerdictNotReviewerCase
     Test-CliCase
     Test-FileInvariantsCase
 } finally {

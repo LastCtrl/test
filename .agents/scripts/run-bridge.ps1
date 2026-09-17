@@ -5,6 +5,8 @@
 #   3. Launch python bridge.py through run-with-secrets.ps1, which injects
 #      tg-bot-token as env:TG_TOKEN for the lifetime of that child only.
 #   4. If no secret: instruct how to save it, exit 1.
+#   5. If bridge.py is missing: clear message naming the expected path, exit 1
+#      (previously exit 0, which masked the unfinished bridge as success).
 # The token itself is never printed and never passed on the command line.
 # Extra arguments are forwarded to bridge.py as-is (examples: --once, --once --dry-run,
 # --selftest, --limit 5).
@@ -24,8 +26,9 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 if (-not (Test-Path -LiteralPath $bridgePy -PathType Leaf)) {
-    Write-Host 'bridge.py не найден — мост ещё не реализован (US-016).'
-    exit 0
+    Write-Host 'bridge.py не найден — мост ещё не реализован (US-016). Ожидался файл:'
+    Write-Host ("  " + $bridgePy)
+    exit 1
 }
 
 # 3) resolve a working interpreter. The bare 'python' shim from WindowsApps is a

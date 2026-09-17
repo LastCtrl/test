@@ -22,6 +22,8 @@
 #        из строки (именно так записан инцидент P0);
 #     3) поле "STATUS: <токен>", если токен - известный вердикт
 #        (STATUS: resolved - это workflow-статус, НЕ вердикт).
+#   ВСЕ три формы принимаются только от агентов из ReviewReviewerAllowlist:
+#   проза исполнителя ("verdict pass", "STATUS: ok") вердиктом не считается.
 #   Ключ задачи: явный task_id, иначе первый тег вида P#/US-#/BUG-#/TASK-#.
 #   Хронология: позиция в файле (шина append-only), а не разбор метки.
 #   Для каждой пары (задача, агент) остаётся ПОСЛЕДНИЙ вердикт - поэтому
@@ -305,22 +307,31 @@ function Read-ReviewVerdictEntries {
             # Ключ задачи записи: явный task_id > первый тег.
             $primaryTask = Get-ReviewTaskKey -Text $body
 
+            # Вердикты проставляют только проверяющие (тот же allowlist, что и для
+            # релей-строк): проза исполнителя ("verdict pass", "STATUS: ok" и т.п.)
+            # не должна создавать "проверяющего" и ложное расхождение.
+            $authorIsReviewer = ($author -match $script:ReviewReviewerAllowlist)
+
             # --- форма 1: маркер VERDICT/ВЕРДИКТ (автор = автор записи) ---
-            foreach ($marker in [regex]::Matches($body, $script:ReviewMarkerPattern)) {
-                $category = Get-ReviewVerdictCategory -Token $marker.Groups['tok'].Value
-                if ($null -eq $category) { continue }
-                $lineNo = Get-ReviewLineNumber -Text $text -Index ($bodyStart + $marker.Index)
-                $lineText = ($text -split "\r?\n")[$lineNo - 1]
-                & $addEntry $author $primaryTask $category $marker.Groups['tok'].Value 'verdict-marker' $recordTime $lineNo (Get-ReviewSnippet -Line $lineText)
+            if ($authorIsReviewer) {
+                foreach ($marker in [regex]::Matches($body, $script:ReviewMarkerPattern)) {
+                    $category = Get-ReviewVerdictCategory -Token $marker.Groups['tok'].Value
+                    if ($null -eq $category) { continue }
+                    $lineNo = Get-ReviewLineNumber -Text $text -Index ($bodyStart + $marker.Index)
+                    $lineText = ($text -split "\r?\n")[$lineNo - 1]
+                    & $addEntry $author $primaryTask $category $marker.Groups['tok'].Value 'verdict-marker' $recordTime $lineNo (Get-ReviewSnippet -Line $lineText)
+                }
             }
 
             # --- форма 3: поле STATUS: <токен> (только известные вердикты) ---
-            foreach ($status in [regex]::Matches($body, $script:ReviewStatusFieldPattern)) {
-                $category = Get-ReviewVerdictCategory -Token $status.Groups['tok'].Value
-                if ($null -eq $category) { continue }
-                $lineNo = Get-ReviewLineNumber -Text $text -Index ($bodyStart + $status.Index)
-                $lineText = ($text -split "\r?\n")[$lineNo - 1]
-                & $addEntry $author $primaryTask $category $status.Groups['tok'].Value 'status-field' $recordTime $lineNo (Get-ReviewSnippet -Line $lineText)
+            if ($authorIsReviewer) {
+                foreach ($status in [regex]::Matches($body, $script:ReviewStatusFieldPattern)) {
+                    $category = Get-ReviewVerdictCategory -Token $status.Groups['tok'].Value
+                    if ($null -eq $category) { continue }
+                    $lineNo = Get-ReviewLineNumber -Text $text -Index ($bodyStart + $status.Index)
+                    $lineText = ($text -split "\r?\n")[$lineNo - 1]
+                    & $addEntry $author $primaryTask $category $status.Groups['tok'].Value 'status-field' $recordTime $lineNo (Get-ReviewSnippet -Line $lineText)
+                }
             }
 
             # --- форма 2: релей-строки "<reviewer>: <токен>" ---

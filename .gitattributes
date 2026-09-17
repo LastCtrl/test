@@ -1,3 +1,5 @@
 ﻿# Agent HQ: PowerShell scripts must use CRLF (PS 5.1 + UTF-8 BOM + LF => false 'ScriptContainedMaliciousContent' / AMSI block)
 *.ps1 text eol=crlf
 *.sh text eol=lf
+# JSON: explicit rule. core.autocrlf alone left the worktree mixed (LF / CRLF / mixed).
+*.json text eol=crlf

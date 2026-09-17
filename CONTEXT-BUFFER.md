@@ -3519,3 +3519,29 @@ SKILLS_LOADED: ["evidence-discipline", "windows-safety"]
 MCP_USED: ["sequential-thinking"]
 COMPLIANCE: true
 STATUS: resolved
+================================================================================
+================================================================================
+[2026-09-17 15:31] dev-3 -> team-lead:
+TYPE: update | PRIORITY: low
+Project: agent-hq
+CONTENT: Тех-долг, 4 пункта закрыты (без коммита, всё в рабочем дереве).
+
+10) NEW .agents/scripts/orphan-sweep.ps1 (308 строк): поиск/уборка осиротевших процессов НАШЕГО проекта (powershell/node/opencode/python, cmdline ссылается на корень репо ИЛИ на наши temp-каталоги %TEMP%\opencode, %TEMP%\agent-hq). Осиротевший = родитель мёртв, причём PID-reuse распознаётся (родитель со временем старта ПОЗЖЕ ребёнка = мёртв). По умолчанию DryRun (только PID+cmdline+возраст); -DryRun явный; -Apply убивает ТОЛЬКО подтверждённые PID через Stop-Process -Id с повторной верификацией (имя + CreationDate) непосредственно перед kill; -OlderThanMinutes (дефолт 30). Защищены: текущий PID, его предки и потомки, PID из активных job-маркеров (*.lock/*.pid в .memory и %LOCALAPPDATA%\opencode\snapshot) и их потомки. НИКАКИХ убийств по порту/маске/диапазону; чужие/системные процессы не трогаются (фильтр: имя + маркер + мёртвый родитель). Гарды: -Apply требует порог >= 1 мин, -Apply+-DryRun = ошибка. Лог: .memory/traces/orphan-sweep.log. В задаче -Apply НЕ запускался (только DryRun). Найден и исправлен собственный баг: в PS 5.1 -Include игнорируется вместе с -LiteralPath, из-за чего под *.lock/*.pid попадали ВСЕ файлы .memory и давали 9 мусорных «live job PIDs» (после фикса — 0, фильтр по Extension явный).
+
+11) message-queue.ps1: добавлен ключ -Strict в -Action send. При секретоподобном payload гейт возвращает Blocked -> в outbox НИЧЕГО не пишется, exit 1 (дефолтная политика scrub+warn не изменилась). Найден и исправлен настоящий баг: prompt-gate.ps1 объявляет СВОЙ param([switch]$Strict), и dot-source перезаписывал $Strict в области видимости message-queue (передача -Strict молча терялась) — значение снимается в $strictMode ДО dot-source.
+
+12) review-disagreement.ps1: allowlist проверяющих (ReviewReviewerAllowlist) теперь применяется не только к релей-форме, но и к формам verdict-marker и STATUS-поля ($authorIsReviewer): проза исполнителя («verdict pass», отдельная строка «STATUS: ok») больше НЕ создаёт «проверяющего» и ложного расхождения. Релей-форма не изменилась.
+
+13) Гигиена: model-limits.json переведён в CRLF (был lone-LF, 71 строка) — единый EOL с эталоном .opencode/agents/*.json; в .gitattributes добавлено явное правило `*.json text eol=crlf` (раньше политика для JSON была неявной и рабочие деревья были вперемешку LF/CRLF/mixed; проверено git check-attr eol=crlf для model-limits.json, .opencode/agents/qa-engineer.json, schemas/opencode.config.schema.json). run-bridge.ps1 при отсутствии bridge.py возвращает exit 1 (был 0 — маскировал незавершённый мост) и печатает ожидаемый путь; порядок проверок (secret -> bridge.py -> python) не менялся.
+
+ТЕСТЫ (фактические прогоны, exit 0): NEW tests/test-orphan-sweep.ps1 26/26 (unit: маркер/мёртвый родитель/PID-reuse/возраст/имена/защита self+job; integration: два РЕАЛЬНЫХ процесса-сироты (родитель-обёртка завершена) — «наш» DryRun находит, «чужой» (иная cmdline) не находит, оба живы после DryRun = ничего не убито; гарды -Apply); NEW tests/test-hygiene.ps1 30/30 (CRLF model-limits + правило gitattributes + check-attr + валидность JSON + run-bridge без bridge.py -> exit 1 с сообщением bridge.py + инварианты скриптов); tests/test-prompt-gate.ps1 16/16 (+C14: send -Strict с секретом -> exit 1, outbox пуст, секрет не утёк; C5/C10/C11 подтверждают неизменность дефолта); tests/test-review-disagreement.ps1 70/70 (было 66; +4 новых: проза исполнителя не создаёт вердикта/проверяющего/ложного расхождения, а реальные accept+reject расхождение дают). РЕГРЕСС: test-pipeline 10/10 exit 0; test-bash-policy PASS=33 FAIL=0 exit 0; verify-phase 41/41 exit 0.
+
+Файлы: .agents/scripts/orphan-sweep.ps1 (new), .agents/scripts/message-queue.ps1 (M), .agents/scripts/review-disagreement.ps1 (M), .agents/scripts/run-bridge.ps1 (M), .agents/config/model-limits.json (M, только EOL), .gitattributes (M), tests/test-orphan-sweep.ps1 (new), tests/test-hygiene.ps1 (new), tests/test-prompt-gate.ps1 (M, +C14), tests/test-review-disagreement.ps1 (M, +1 кейс). Кодировки: все правленые/новые .ps1 — UTF-8 BOM + CRLF (PSParser 0 ошибок); JSON — CRLF без BOM. Не коммитил. Temp-артефакты удалены (repro/dbg/os-wrap-test*), фоновых процессов не осталось (тестовые сироты убиты по PID, чужие/системные не трогались).
+
+NOT ENOUGH EVIDENCE / вне объёма: (a) остальные JSON с lone-LF в рабочем дереве (agent-hq.json, .agents/config/telegram-whitelist.json, .opencode/agents/senior-reviewer*.json, schemas/*, .memory/archive/*) НЕ конвертировал: правило *.json text eol=crlf теперь даёт CRLF при checkout, а массовая EOL-правка 20+ файлов без коммита дала бы необозреваемый diff — решение осознанное, при желании закрывается `git add --renormalize`; (b) реальные осиротевшие процессы нашего проекта на момент сдачи отсутствуют (DryRun: «no orphaned project processes found») — поведения на живом проде не наблюдал; (c) orphan-sweep.ps1 не включён в перечень скриптов AGENTS.md §9 (правка доков не входила в ТЗ).
+SKILLS_LOADED: ["evidence-discipline", "windows-safety"]
+MCP_USED: ["sequential-thinking"]
+COMPLIANCE: true
+STATUS: resolved
+================================================================================
+================================================================================

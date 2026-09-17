@@ -3139,3 +3139,19 @@ SKILLS_LOADED: ["evidence-discipline", "windows-safety"]
 MCP_USED: ["sequential-thinking", "context7: offline (fetch failed)"]
 COMPLIANCE: true
 STATUS: resolved
+
+[2026-09-17 11:16] dev-1 -> team-lead:
+TYPE: update | PRIORITY: medium
+Project: agent-hq
+CONTENT: P3-1 «reviewer-disagreement detector» готов (retry не требовался).
+  1) СОЗДАНО .agents\scripts\review-disagreement.ps1 — детектор расхождений вердиктов проверяющих: dot-source-безопасная библиотека + CLI (guard $MyInvocation.InvocationName -ne '.'), параметры Review*-префиксом с Alias(-Status/-All/-SinceHours/-TaskId/-Json/-BufferPath/-Root), только чтение. Функции: Get-ReviewVerdicts (нормализованные вердикты), Find-ReviewDisagreement (конфликты accept vs reject), Get-ReviewVerdictCategory, Get-ReviewTaskKey, ConvertTo-ReviewJson.
+  2) ЭВРИСТИКА. Источник — CONTEXT-BUFFER.md (по факту: .memory\evidence ОТСУТСТВУЕТ, .memory\traces содержит только .log, .memory\reports — свободный текст без per-task вердиктов => артефакты приёмки как источник вердиктов не используются). Запись шины = блок от заголовка [stamp] agent -> to: до следующего. Вердикт берётся из 3 форм: (a) маркер VERDICT|ВЕРДИКТ|вердикт + известный токен рядом (автор = автор записи); (b) релей-строка <reviewer>: <токен> (автор = reviewer из строки, allowlist ролей — это форма реального инцидента P0); (c) поле STATUS: <токен> только если токен — известный вердикт (resolved отбрасывается). Нормализация: PASS/ПРИНЯТО/ACCEPT/ACCEPTED/OK/APPROVE/APPROVED/PRINJATO -> accept; REJECT/ВОЗВРАТ/ВОЗВРАТЬ/FAIL/REQUEST_CHANGES/VOZVRAT -> reject; ЧАСТИЧНО -> partial; БЛОКЕР -> blocker. Ключ задачи: явный task_id, иначе первый тег P#/US-#/BUG-#/TASK-#. Хронология — позиция в append-only файле. Для пары (задача, агент) остаётся ПОСЛЕДНИЙ вердикт, поэтому ре-ревью того же проверяющего снимает его старый ВОЗВРАТ. Расхождение = у задачи есть и accept, и reject от РАЗНЫХ агентов. Пустой/битый/бинарь/отсутствующий буфер -> пустой результат без throw.
+  3) ТЕСТ tests\test-review-disagreement.ps1 (PS 5.1, изолированный $env:AGENT_HQ_ROOT, dot-source + CLI в дочернем процессе): (а) accept+accept -> 0 расхождений; (б) qa accept / code-reviewer reject -> 1 расхождение с деталями; (в) разные задачи не путаются (+ -TaskId фильтр); (г) пустой/отсутствующий/битый/бинарный буфер — без падения, 0 вердиктов; (д) нормализация (прямые токены + STATUS: REJECT + markdown-обёртка). Доп.: ре-ревью того же агента снимает конфликт; релей-строки (P0); CLI -Status/-All/-Json (пустой JSON = []); инварианты файла. ИТОГ: SUMMARY passed=66 failed=0 total=66, EXITCODE=0.
+  4) ДЕМОНСТРАЦИЯ на текущем CONTEXT-BUFFER.md: -Status -> 1 расхождение: task P0, accept qa-engineer [ПРИНЯТО] line 919, reject code-reviewer [ВОЗВРАТЬ] line 922 (реальный инцидент из мотивации задачи); -All -> 47 вердиктов (36 accept / 9 reject / 2 partial); -SinceHours 48 -> 0 (окно отсекает историческое).
+  5) РЕГРЕСС (все exit 0): test-pipeline 10/10; test-discovery PASS=25 FAIL=0 WARN=1; verify-phase 41/41.
+  6) ФОРМАТ: оба файла UTF-8 BOM + CRLF, lone LF=0 (review-disagreement.ps1 523 CRLF, test-review-disagreement.ps1 357 CRLF), PSParser 0 ошибок на обоих. Temp-каталоги тестов удалены; фоновых процессов не запускалось; коммитов нет.
+  NOT ENOUGH EVIDENCE: 1) история вердиктов из .memory\evidence не проверялась как источник — каталог missing (решение задокументировано в шапке скрипта); 2) ограничение эвристики: запись-резолюция с агентом ВНУТРИ скобок («РЕ-РЕВЬЮ фикса (code-reviewer, ...): ПРИНЯТО») не сворачивается в серию этого агента, поэтому исторический P0 остаётся видимым без -SinceHours (канонический self-report того же агента сворачивается корректно — тест e).
+SKILLS_LOADED: ["evidence-discipline", "windows-safety", "superpowers-implement"]
+MCP_USED: ["sequential-thinking"]
+COMPLIANCE: true
+STATUS: resolved

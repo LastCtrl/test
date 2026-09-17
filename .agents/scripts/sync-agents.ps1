@@ -1,8 +1,22 @@
 ﻿param(
-    [switch]$DryRun
+    [switch]$DryRun,
+    # Применить ту же (единый источник) bash-политику к ВНЕШНЕМУ конфигу —
+    # по умолчанию к глобальному opencode.jsonc. Repo-файл обновляется всегда.
+    [switch]$SyncGlobalPolicy,
+    # Явный путь внешнего конфига (для тестов/нестандартных установок).
+    [string]$GlobalConfigPath
 )
 
 $ErrorActionPreference = "Stop"
+
+# Единый источник bash-политики (канон + генератор top-level permission.bash).
+# Dot-source выполняет ТОЛЬКО определения (см. guard по InvocationName внутри),
+# параметры библиотеки префиксованы, поэтому $DryRun не затирается.
+$bashPolicyPath = Join-Path $PSScriptRoot "bash-policy.ps1"
+if (-not (Test-Path -LiteralPath $bashPolicyPath)) {
+    throw "bash-policy.ps1 not found: $bashPolicyPath"
+}
+. $bashPolicyPath
 
 
 # ============================================================
@@ -125,76 +139,11 @@ function Get-TaskAllowList {
 }
 
 # ============================================================
-# P0-B: granular bash command policy — ЕДИНЫЙ ИСТОЧНИК правил.
-# opencode применяет ПОСЛЕДНЕЕ совпавшее правило (opencode.ai/docs/permissions),
-# поэтому порядок ключей критичен: сначала широкий catch-all "*", затем
-# allow, затем ask, а ВСЕ deny — В КОНЦЕ. Так запрет гарантированно побеждает
-# более широкие allow/ask: например "git push*": ask не должен перекрывать
-# "git push --force*": deny и "reg *": ask — не должен перекрывать "reg add*": deny.
-# Правила соответствуют целевому набору P0-B (allow/deny/ask), отличается
-# только порядок группировки — wide->specific, deny-last.
-# Возвращаем НОВЫЙ [ordered] на каждый вызов (не общий мутабельный объект),
-# чтобы агенты не делили одно состояние.
+# P0-B: granular bash command policy. КАНОН вынесен в
+# .agents\scripts\bash-policy.ps1 (Get-BashPermissionRules), который
+# dot-source'ится выше. Оттуда же берётся top-level permission.bash repo
+# opencode.json — repo-копия больше НЕ ведётся руками (единый источник).
 # ============================================================
-function Get-BashPermissionRules {
-    $rules = [ordered]@{}
-
-    # --- catch-all: широкая политика идёт ПЕРВОЙ (иначе deny-правила ниже) ---
-    $rules['*'] = 'allow'
-
-    # --- allow (молча): безопасные read-only / сборка ---
-    $rules['git status*'] = 'allow'
-    $rules['git diff*'] = 'allow'
-    $rules['git log*'] = 'allow'
-    $rules['git show*'] = 'allow'
-    $rules['git add*'] = 'allow'
-    $rules['git commit*'] = 'allow'
-    $rules['Get-ChildItem*'] = 'allow'
-    $rules['Get-Content*'] = 'allow'
-    $rules['Select-String*'] = 'allow'
-    $rules['Test-Path*'] = 'allow'
-    $rules['Get-FileHash*'] = 'allow'
-    $rules['pwsh*'] = 'allow'
-    $rules['powershell*'] = 'allow'
-    $rules['node *'] = 'allow'
-    $rules['npm *'] = 'allow'
-    $rules['python*'] = 'allow'
-    $rules['dotnet *'] = 'allow'
-    $rules['opencode *'] = 'allow'
-
-    # --- ask: широкие команды, требующие подтверждения ---
-    $rules['git push*'] = 'ask'
-    $rules['reg *'] = 'ask'
-    $rules['schtasks*'] = 'ask'
-    $rules['Set-ItemProperty HKCU*'] = 'ask'
-
-    # --- deny: необратимые/опасные/системные — ПОСЛЕДНИМИ (всегда побеждают) ---
-    $rules['rm -rf*'] = 'deny'
-    $rules['rm -r *'] = 'deny'
-    $rules['Remove-Item*-Recurse*'] = 'deny'
-    $rules['git push --force*'] = 'deny'
-    $rules['git push -f*'] = 'deny'
-    $rules['git reset --hard*'] = 'deny'
-    $rules['git clean*'] = 'deny'
-    $rules['reg add*'] = 'deny'
-    $rules['*HKLM:*'] = 'deny'
-    $rules['secedit*'] = 'deny'
-    $rules['gpedit*'] = 'deny'
-    $rules['shutdown*'] = 'deny'
-    $rules['Stop-Computer*'] = 'deny'
-    $rules['Restart-Computer*'] = 'deny'
-    # Формат диска (disk format). ПРОБЕЛ обязателен: голый glob `format*`
-    # матчил безобидные Format-List/Format-Table (баг — блокировал команды
-    # тимлида). `format *` матчит `format C:`, но не `Format-List`.
-    $rules['format *'] = 'deny'
-    # Фоновый запуск процессов запрещён (AGENTS.md §3.7): Start-Process без
-    # остановки в том же вызове оставляет осиротевший процесс. Deny — последним
-    # правилом, чтобы «last-rule-wins» гарантированно побеждал allow-правила
-    # выше (например powershell*/pwsh*).
-    $rules['Start-Process*'] = 'deny'
-
-    return $rules
-}
 
 # ============================================================
 # Ручная сериализация одного агента в JSON (без ConvertTo-Json)
@@ -655,6 +604,23 @@ if ($DryRun) {
     }
     Write-Host '  }'
     Write-Host "`n=== DRY RUN: opencode.json NOT modified ===" -ForegroundColor Yellow
+    if ($SyncGlobalPolicy) {
+        $globalPath = if ([string]::IsNullOrWhiteSpace($GlobalConfigPath)) { Get-DefaultGlobalPolicyPath } else { $GlobalConfigPath }
+        if (Test-Path -LiteralPath $globalPath -PathType Leaf) {
+            try {
+                $graw = [System.IO.File]::ReadAllText($globalPath, [System.Text.Encoding]::UTF8)
+                $gnew = Set-BashPolicyText -Text $graw -Rules (Get-BashPermissionRules)
+                $gchanged = -not ($gnew -ceq $graw)
+                Write-Host ("DRY RUN: global policy " + $globalPath + " changed=" + $gchanged) -ForegroundColor Yellow
+            }
+            catch {
+                Write-Warning "DRY RUN: global check failed: $($_.Exception.Message)"
+            }
+        }
+        else {
+            Write-Warning "DRY RUN: global config not found: $globalPath"
+        }
+    }
     exit 0
 }
 
@@ -717,6 +683,14 @@ else {
     $configText = $configText.Remove($replaceFrom, $replaceTo - $replaceFrom).Insert($replaceFrom, $agentJsonBlock)
 }
 
+# 5b. Top-level permission.bash в repo opencode.json — генерируется из ТОГО ЖЕ
+#     источника (Get-BashPermissionRules / Set-BashPolicyText). Файл уже собран
+#     как текст, поэтому правка делается в памяти до бэкапа/записи/валидации:
+#     один атомарный write и одна схема-проверка.
+$bashRules = Get-BashPermissionRules
+$configText = Set-BashPolicyText -Text $configText -Rules $bashRules
+Write-Host "Top-level permission.bash: generated from bash-policy.ps1 ($($bashRules.Count) rules)" -ForegroundColor DarkCyan
+
 # 6. Бэкап ПЕРЕД перезаписью
 $timestamp = Get-Date -Format "yyyyMMdd-HHmmss"
 $backupPath = Join-Path $root "opencode.json.bak.$timestamp"
@@ -760,6 +734,33 @@ catch {
     Write-Error "$($_.Exception.Message) — rolling back from backup"
     Copy-Item -LiteralPath $backupPath -Destination $configPath -Force
     exit 1
+}
+
+# 9c. -SyncGlobalPolicy: та же (единый источник) политика во ВНЕШНИЙ конфиг.
+#     По умолчанию — глобальный opencode.jsonc. Отсутствующий/битый внешний
+#     файл — предупреждение, НЕ ошибка: repo-синк не должен падать из-за него.
+if ($SyncGlobalPolicy) {
+    $globalPath = if ([string]::IsNullOrWhiteSpace($GlobalConfigPath)) { Get-DefaultGlobalPolicyPath } else { $GlobalConfigPath }
+    Write-Host "`n=== Global policy sync: $globalPath ===" -ForegroundColor Cyan
+    if (-not (Test-Path -LiteralPath $globalPath -PathType Leaf)) {
+        Write-Warning "Global config not found: $globalPath - skipped"
+    }
+    else {
+        try {
+            $gRules = Get-BashPermissionRules
+            $gres = Set-BashPolicyInFile -Path $globalPath -Rules $gRules -Backup
+            if ($gres.Changed) {
+                Write-Host "Global permission.bash updated ($($gRules.Count) rules)" -ForegroundColor Green
+                if ($null -ne $gres.Backup) { Write-Host "  backup: $($gres.Backup)" -ForegroundColor Gray }
+            }
+            else {
+                Write-Host "Global permission.bash already in sync" -ForegroundColor Green
+            }
+        }
+        catch {
+            Write-Warning "Global policy sync failed (repo sync unaffected): $($_.Exception.Message)"
+        }
+    }
 }
 
 # 10. Удаление старых бэкапов — оставить только последние 3

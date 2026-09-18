@@ -3834,3 +3834,39 @@ SKILLS_LOADED: ["evidence-discipline","windows-safety"]
 MCP_USED: ["none: не использовались; context7 не требовался (PowerShell 5.1, внешних библиотек нет), sequential-thinking не вызывался, hermes-atlas не требовался"]
 COMPLIANCE: true
 STATUS: resolved
+
+================================================================================
+[2026-09-18 10:40] dev-1 -> team-lead:
+TYPE: update | PRIORITY: medium
+Project: сим-карты+бд
+CONTENT: Restored both lost Node.js CommonJS scripts under projects/сим-карты+бд/. (1) ip_normalize.js (6891 bytes): CLI `node ip_normalize.js <input.xlsx> <output.json> [fieldName]` (default 1C field AjPiAdres); exports { extractIPv4, normalizeOneC }; output array items {ip,reason,raw,row}; reason null / 'пустой' / 'мусор: <raw>'. Best-effort recovery: removes ¶, Cyrillic Ю/ю -> '.', 'IP:'/'minks2-' prefixes, ','/'/' -> '.', fixes inner spaces, collapses double dots, strips hanging punctuation, first IPv4 of multi-IP/domain suffixes, canonicalizes leading-zero octets, validates 0-255 with digit/dot boundary guard. EVIDENCE: `node ip_normalize.js "1сВсеКорректныеТелефоны.xlsx" ip_normalized.json` => total 55749, valid 37933, clean 37476, recovered 457, empty 15841, garbage 1975 (all == expected). Artifact ip_normalized.json = 63,437,723 bytes, 55749 items, keys [ip,reason,raw,row], verified via JSON.parse + require exports. (2) db_read.js (4070 bytes): CLI `node --max-old-space-size=8192 db_read.js <input.xlsx> <output.json>`; groups rows by dst_host into {key:[row,...]} with NO aggregation; converts Excel-serial first_seen/last_seen to ISO YYYY-MM-DD (1900 leap correction, serial>60 -> -1 day); try/catch read -> process.exit(1); atomic write via .tmp + renameSync; exports { readDb }. EVIDENCE: `node --max-old-space-size=8192 db_read.js "выгрузка.xlsx" db_rows.json` => total 146170, unique dst_host 38906, min 2026-07-12, max 2026-08-26 (all == expected). Artifact db_rows.json = 45,047,514 bytes, 38906 keys, sample dst 10.177.168.56 has 2 rows with 13 fields + ISO dates, verified.
+NOTE: Pre-existing helper files (analyze2.js, analyze3.js, analyze_source.js, inspect2.js, inspect3.js, inspect_ref.js) were NOT created by me and were left untouched. Both output JSONs left in the project folder for the next agent (NOT deleted); my only temp analysis files in %TEMP%\opencode removed.
+SKILLS_LOADED: ["clean-code", "evidence-discipline"]
+MCP_USED: ["sequential-thinking", "context7: offline (fetch failed twice)"]
+COMPLIANCE: true
+STATUS: resolved
+
+================================================================================
+[2026-09-18 10:45] qa-engineer -> team-lead:
+TYPE: update | PRIORITY: medium
+Project: agent-hq
+CONTENT: РЕ-РЕВЬЮ фикса BUG-027 (chaos root guard) = ПРИНЯТО. Коммит ebc5c57 'fix(P3-chaos-review): refuse real repo without -Root (BUG-027)...' (chaos.ps1 +18, test-chaos.ps1 +31; на старте ревью фикс лежал в working tree, закоммичен в ходе 10:24:58 — состав commit == просмотренный diff, дрейфа нет). Проверено НЕЗАВИСИМО: (1) Guard-репро: env AGENT_HQ_ROOT=repo без -Root (-Json) -> exit 2 + «refusing to run chaos in the real repository without -Root» (JSON error); без env и без -Root -> exit 2; -DryRun без -Root -> тоже exit 2 (guard chaos.ps1:537 стоит до New-RunId:543, до DryRun-ветки:545, до Save-Env:564 и до mkdir-цикла:569-574; код до guard'а read-only: -List exit 0, usage/scenario exit 2; dot-source task-state.ps1 чист — только 3 присваивания task-state.ps1:28-30). Снапшот .memory до/после 3 репро: 84->84 элементов, Compare-Object пуст; git status --porcelain не изменился (остались только pre-existing: M .memory/tool-usage-violations.jsonl (tracer), ?? .memory/free-models-2026-09.md (не chaos)). (2) Засорение очищено: Get-ChildItem -Recurse .memory — chaos-* файлов=0; .memory\chaos exists=False; .memory\inbox\chaos-a exists=False; реальные логи целы: poller.log 51154B, orphan-sweep.log 80B, tui-cleanup.log 302B. (3) Defense-in-depth: Write-ReportFile chaos.ps1:478 throw при root==repo. (4) tests\test-chaos.ps1 -> passed=10 failed=0 exit 0; кейс j) guard (exit 2, «refusing», нет отчёта, 0 chaos-артефактов) + кейс i) forbidden-token (маскировка имени helper-скрипта рантайм-конкатенацией) присутствуют и PASS. (5) Регресс: test-daemon.ps1 9/9 exit 0; verify-phase.ps1 41/41 exit 0. (6) Байт-чек независимо: chaos.ps1 loneLF=0 nonAscii=0 BOM=False; test-chaos.ps1 loneLF=0 nonAscii=0 BOM=False; PSParser errors=0 оба; подстрока s+k+дефис: chaos.ps1 raw=1 (именно chaos.ps1:19 — имя файла task-state.ps1, легитимное), после рантайм-маскировки=0; test-chaos.ps1 raw=0 (токены собраны конкатенацией). Scanner-паттерн sk-[A-Za-z0-9][A-Za-z0-9_-]{19,} (pre-commit-secrets.ps1:46) на имя файла не срабатывает. KNOWLEDGE-BASE BUG-027 -> FIXED (проверено чтением diff коммита). Наблюдение (НЕ дефект этого ТЗ, принято ранее как DEFECT-3/trade-off): явный -Root <repo> guard'ом не блокируется (только отказ записи отчёта на chaos.ps1:478, каталоги/daemon-записи до этого могут пройти) — вне рамок пункта «без -Root», эскалации не требует. ИТОГО: все 6 пунктов ТЗ подтверждены артефактами; новых дефектов нет.
+SKILLS_LOADED: ["evidence-discipline"]
+MCP_USED: ["none: ре-ревью по фиксированному чек-листу (bash/read/grep/write-to-temp helpers); context7 не требовался (внешних библиотек нет: PowerShell 5.1 + in-repo); sequential-thinking не задействовался (линейный чек-лист <=3 веток); hermes-atlas не требовался"]
+COMPLIANCE: true
+STATUS: resolved
+
+================================================================================
+[2026-09-18] team-lead -> bus: *** P3 ЗАВЕРШЁН (все 13 фич) ***
+TYPE: update | PRIORITY: high
+================================================================================
+P3 готово: reviewer-disagreement, doctor, explain, budget, tracer-fix, replay, capability passport+explainable routing, failure memory, confidence, dynamic verification depth, prompt A/B, team optimizer, semantic dedup, canary, cost/quality frontier, autopilot, chaos, policy simulator. + тех-долг (orphan-sweep, -Strict, allowlist, eol).
+Коммиты: 638ff46, 0f9ff33, 6255b17, ebc5c57 (+ранее). BUG-026/027 исправлены.
+Оценки: dev-* 8-9, qa-engineer 8-9.
+Осталось: US-016 push/UX/v2/schtasks(OK), Go-фаза (control plane+CLI+SQLite). PR #3 merged.
+Reminder: 29 per-agent worktree (не удалены).
+SKILLS_LOADED: []
+MCP_USED: []
+COMPLIANCE: true
+STATUS: resolved
+================================================================================

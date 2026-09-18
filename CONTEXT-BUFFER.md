@@ -3870,3 +3870,20 @@ MCP_USED: []
 COMPLIANCE: true
 STATUS: resolved
 ================================================================================
+
+================================================================================
+[2026-09-18 10:45] dev-1 -> team-lead:
+TYPE: update | PRIORITY: medium
+Project: agent-hq
+CONTENT: US-016 (Telegram bridge) — push-уведомления + UX (AC 16.6/16.12/16.15/16.16), без регистрации schtasks.
+Файлы: projects/telegram-bridge/bridge.py (+~1085 строк, 2352->3437), projects/telegram-bridge/README.md, tests/test-bridge-push.ps1 (новый, UTF-8 BOM для PS 5.1).
+1) Push (16.6/16.12): структурный парсер parse_structured_fields (bridge.py:1509) — поле только если строка начинается с "KEY: value" (| на строке TYPE), всё после ключа CONTENT игнорируется, поэтому подстрока "blocker PRIORITY:critical" в тексте НЕ триггерит. Ярусы: critical=dead-letter (все имена, BusSnapshot.dead_letter_names) | buffer TYPE:blocker+PRIORITY:critical | bus type=blocker+priority=critical -> instant (silent=False, до 3 событий/сообщение); reject=VERDICT:REJECT/STATUS:rejected -> один тихий дайджест; done=STATUS:resolved -> один тихий дайджест (bridge.py:1558/1617/1659). Дедуп sha256(event)[:16] в bridge-state.json (push_seen), cap 5 сообщений/тик (bridge.py:94), шторм-контроль 20/час (bridge.py:96, скользящее окно 3600с), тумблер /alerts on|off в state.alerts_enabled, аудит bridge-outbox.log без текста.
+2) UX (16.16): setMyCommands 8 команд (bridge.py:1792 setup_commands, BOT_COMMANDS), /status с inline-кнопкой "Обновить" (callback_data=refresh:status; callback-хендлер в build_dispatcher), подпись "⏱ данные на ЧЧ:ММ · ответ за X.X с" (with_timestamp), русские синонимы (+8, ALIASES 34).
+3) 16.15 частично: анти-дубль команд (state+90с окно) сохранён, добавлен TickLock O_EXCL (bridge.py:1745) против наложения тиков (stale>5мин перехват), режимы --once/--watch --interval для внешнего планировщика. schtasks НЕ регистрировался; точная команда /Create задокументирована в README (помечена "не зарегистрирована").
+4) README: разделы Push, UX, анти-дубли+schtasks, обновлены состав/запуск/read-only/out-of-scope.
+Тест: tests/test-bridge-push.ps1 (PS 5.1, UTF-8 BOM) -> checks=31 failed=0 exit 0; bridge.py --selftest -> passed=186 failed=0 exit 0 (база 138); --demo-push exit 0 (5 событий: 3 critical instant + reject + done; tick1 sent=3, tick2 sent=0 анти-дубль). Read-only шины: selftest-проверка "push: детектор read-only" (tree до/после без изменений). Регресс: verify-phase.ps1 41/41 exit 0. Секретов нет, токен только env:TG_TOKEN, schtasks/реестр/subprocess не вызывались (source-guard PASS), фоновых процессов нет, bridge.lock/temp удалены.
+SKILLS_LOADED: ["evidence-discipline", "windows-safety"]
+MCP_USED: ["sequential-thinking", "context7: offline (fetch failed; aiogram API сверен интроспекцией установленного aiogram 3.29.1)"]
+COMPLIANCE: true
+STATUS: resolved
+

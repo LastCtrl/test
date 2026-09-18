@@ -28,7 +28,8 @@ const (
 	// DBFileName is the index database file name inside <root>/.memory.
 	DBFileName = "agent-hq.db"
 	// SchemaVersion is the schema revision this build creates and understands.
-	SchemaVersion = 1
+	// v2 adds the durable write path (run claims, runs, attempts, events).
+	SchemaVersion = 2
 )
 
 // ErrNotIndexed reports that no index database exists for a root. Callers use
@@ -146,23 +147,28 @@ func migrate(db *sql.DB, path string) error {
 		return fmt.Errorf("read schema version of %s: %w", path, err)
 	}
 
-	switch {
-	case current == SchemaVersion:
-		return nil
-	case current == 0:
+	if current > SchemaVersion {
+		return fmt.Errorf("index %s has schema version %d, newer than supported %d: upgrade the CLI or delete the database", path, current, SchemaVersion)
+	}
+	if current == 0 {
 		if err := apply(db, schemaV1); err != nil {
 			return fmt.Errorf("create schema in %s: %w", path, err)
 		}
-		if _, err := db.Exec(fmt.Sprintf("PRAGMA user_version = %d", SchemaVersion)); err != nil {
-			return fmt.Errorf("set schema version of %s: %w", path, err)
-		}
-		return nil
-	case current < SchemaVersion:
-		// No intermediate revisions exist yet; a future release appends here.
-		return fmt.Errorf("index %s has schema version %d, cannot upgrade to %d", path, current, SchemaVersion)
-	default:
-		return fmt.Errorf("index %s has schema version %d, newer than supported %d: upgrade the CLI or delete the database", path, current, SchemaVersion)
+		current = 1
 	}
+	if current == 1 && SchemaVersion >= 2 {
+		if err := apply(db, schemaV2); err != nil {
+			return fmt.Errorf("upgrade schema in %s: %w", path, err)
+		}
+		current = 2
+	}
+	if current != SchemaVersion {
+		return fmt.Errorf("index %s has schema version %d, cannot upgrade to %d", path, current, SchemaVersion)
+	}
+	if _, err := db.Exec(fmt.Sprintf("PRAGMA user_version = %d", SchemaVersion)); err != nil {
+		return fmt.Errorf("set schema version of %s: %w", path, err)
+	}
+	return nil
 }
 
 // schemaVersionOf reads PRAGMA user_version, SQLite's built-in schema marker.

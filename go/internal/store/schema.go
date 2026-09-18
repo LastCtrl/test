@@ -123,3 +123,73 @@ var schemaV1 = []string{
 	`CREATE INDEX IF NOT EXISTS idx_messages_status ON messages (scope, status)`,
 	`CREATE INDEX IF NOT EXISTS idx_messages_created ON messages (created_at)`,
 }
+
+// schemaV2 adds the durable write path of G3-M1. Unlike the derived tables of
+// schemaV1 (which `agent-hq index` rebuilds from the files), these tables are
+// authoritative: the control plane writes claims, runs, attempts and events
+// here and never reconstructs them from disk. They are deliberately excluded
+// from resetTables so a re-index cannot destroy execution history.
+//
+// Raw worker output is NOT stored: attempts keep only hashes and lengths, which
+// is enough for tamper-evidence and keeps credentials out of the database.
+var schemaV2 = []string{
+	`CREATE TABLE IF NOT EXISTS run_claims (
+		task_id       TEXT PRIMARY KEY,
+		owner         TEXT NOT NULL DEFAULT '',
+		agent         TEXT NOT NULL DEFAULT '',
+		attempt       INTEGER NOT NULL DEFAULT 0,
+		claimed_at    TEXT NOT NULL DEFAULT '',
+		heartbeat_at  TEXT NOT NULL DEFAULT '',
+		lease_seconds INTEGER NOT NULL DEFAULT 0
+	)`,
+
+	`CREATE TABLE IF NOT EXISTS runs (
+		task_id     TEXT PRIMARY KEY,
+		agent       TEXT NOT NULL DEFAULT '',
+		executor    TEXT NOT NULL DEFAULT '',
+		model       TEXT NOT NULL DEFAULT '',
+		payload     TEXT NOT NULL DEFAULT '',
+		status      TEXT NOT NULL DEFAULT '',
+		attempt     INTEGER NOT NULL DEFAULT 0,
+		started_at  TEXT NOT NULL DEFAULT '',
+		finished_at TEXT NOT NULL DEFAULT '',
+		exit_code   INTEGER,
+		duration_ms INTEGER,
+		error       TEXT NOT NULL DEFAULT '',
+		created_at  TEXT NOT NULL DEFAULT '',
+		updated_at  TEXT NOT NULL DEFAULT ''
+	)`,
+
+	`CREATE TABLE IF NOT EXISTS run_attempts (
+		task_id       TEXT NOT NULL,
+		seq           INTEGER NOT NULL,
+		attempt_id    TEXT NOT NULL DEFAULT '',
+		agent         TEXT NOT NULL DEFAULT '',
+		executor      TEXT NOT NULL DEFAULT '',
+		command       TEXT NOT NULL DEFAULT '',
+		exit_code     INTEGER,
+		stdout_sha256 TEXT NOT NULL DEFAULT '',
+		stdout_length INTEGER,
+		stderr_sha256 TEXT NOT NULL DEFAULT '',
+		stderr_length INTEGER,
+		started_at    TEXT NOT NULL DEFAULT '',
+		finished_at   TEXT NOT NULL DEFAULT '',
+		duration_ms   INTEGER,
+		status        TEXT NOT NULL DEFAULT '',
+		error         TEXT NOT NULL DEFAULT '',
+		PRIMARY KEY (task_id, seq)
+	)`,
+
+	`CREATE TABLE IF NOT EXISTS run_events (
+		id         INTEGER PRIMARY KEY AUTOINCREMENT,
+		task_id    TEXT NOT NULL DEFAULT '',
+		attempt    INTEGER NOT NULL DEFAULT 0,
+		kind       TEXT NOT NULL DEFAULT '',
+		detail     TEXT NOT NULL DEFAULT '',
+		created_at TEXT NOT NULL DEFAULT ''
+	)`,
+
+	`CREATE INDEX IF NOT EXISTS idx_run_attempts_status ON run_attempts (status)`,
+	`CREATE INDEX IF NOT EXISTS idx_run_events_task ON run_events (task_id, id)`,
+	`CREATE INDEX IF NOT EXISTS idx_runs_status ON runs (status)`,
+}

@@ -20,7 +20,9 @@
 #     1) маркер VERDICT|ВЕРДИКТ|вердикт с известным токеном рядом;
 #     2) релей-строка "<reviewer> [(модель)]: <токен>" - автор = reviewer
 #        из строки (именно так записан инцидент P0);
-#     3) поле "STATUS: <токен>", если токен - известный вердикт
+#     3) поле "STATUS: <токен>", если токен - известный вердикт и строка лежит
+#        в структурной части записи (ведущий блок до CONTENT / канонический
+#        хвост); продолжение свободного текста полем не считается
 #        (STATUS: resolved - это workflow-статус, НЕ вердикт).
 #   ВСЕ три формы принимаются только от агентов из ReviewReviewerAllowlist:
 #   проза исполнителя ("verdict pass", "STATUS: ok") вердиктом не считается.
@@ -89,15 +91,24 @@ $script:ReviewVerdictMap = @{
 }
 
 # Шаблоны разбора (см. эвристику в заголовке файла).
+$script:ReviewReviewerNames      = 'qa-engineer|code-reviewer|security-auditor|senior-reviewer|team-lead'
 $script:ReviewHeaderPattern      = '(?m)^\[(?<stamp>[^\]]+)\]\s+(?<agent>[^\r\n]+?)\s*(?:->|\u2192|>>)\s*(?<to>[^\r\n:]+):'
 $script:ReviewMarkerPattern      = '(?i)(?:VERDICT|ВЕРДИКТ|вердикт)\s*(?::|=|\u2014|-|\s)\s*\**\s*(?<tok>[A-Za-zА-Яа-я_]+)'
-$script:ReviewRelayPattern       = '^\s*(?:[-*]\s+)?(?<agent>[A-Za-z][A-Za-z0-9._-]{1,40})\s*(?:\([^)\r\n]*\))?\s*[:=]\s*\**\s*(?<tok>[A-Za-zА-Яа-я_]+)'
+# Релей-строка принимается только от явного имени проверяющего: продолжение
+# свободного текста вида "PRIORITY: PASS" полем вердикта не считается.
+$script:ReviewRelayPattern       = '^\s*(?:[-*]\s+)?(?<agent>(?:' + $script:ReviewReviewerNames + ')(?:-\d+)?)\s*(?:\([^)\r\n]*\))?\s*[:=]\s*\**\s*(?<tok>[A-Za-zА-Яа-я_]+)'
 $script:ReviewStatusFieldPattern = '(?im)^\s*STATUS\s*:\s*(?<tok>[A-Za-zА-Яа-я_]+)'
 $script:ReviewTaskIdPattern      = '(?i)\btask_id\s*[:=]\s*["'']?(?<id>[A-Za-z0-9._-]{1,64})'
 $script:ReviewTagPattern         = '(?<![\w-])(?:(?:TASK|US|BUG|SPR)-\d{1,4}|P\d{1,2}(?:-[A-Z0-9]{1,4})?(?:-\d{1,4})?)(?![\w-])'
 
 # Вердикты проставляют только проверяющие; прочие "<word>: <токен>" игнорируются.
-$script:ReviewReviewerAllowlist  = '^(?:qa-engineer|code-reviewer|security-auditor|senior-reviewer|team-lead)(?:-\d+)?$'
+$script:ReviewReviewerAllowlist  = '^(?:' + $script:ReviewReviewerNames + ')(?:-\d+)?$'
+
+# Структурные поля записи: ведущий блок ключей до CONTENT и канонический хвост
+# после него. После первой строки свободного текста поля больше не признаются,
+# поэтому его продолжение не может выдать себя за поле.
+$script:ReviewLeadFieldKeys      = @('TYPE', 'PRIORITY', 'PROJECT', 'CONTENT', 'VERDICT', 'ВЕРДИКТ', 'TASK_ID')
+$script:ReviewTailFieldKeys      = @('STATUS', 'SKILLS_LOADED', 'MCP_USED', 'COMPLIANCE', 'VERDICT', 'ВЕРДИКТ', 'TASK_ID')
 
 # ============================================================
 # Корень репозитория: -Root > $env:AGENT_HQ_ROOT > производный от
@@ -228,6 +239,45 @@ function Get-ReviewSnippet {
 }
 
 # ============================================================
+# Индексы (0-based) строк тела, которые являются структурными полями записи.
+# Ведущий блок ключей -> CONTENT -> канонический хвост; первая строка
+# свободного текста закрывает структуру, и дальше поля не признаются.
+# ============================================================
+function Get-ReviewStructuralLineSet {
+    param([string]$Body)
+
+    $set = New-Object 'System.Collections.Generic.HashSet[int]'
+    if ([string]::IsNullOrEmpty($Body)) { return ,$set }
+    $lines = @($Body -split "\r?\n")
+    $state = 'lead'
+    for ($i = 0; $i -lt $lines.Count; $i++) {
+        $line = [string]$lines[$i]
+        if ([string]::IsNullOrWhiteSpace($line)) { continue }
+        $match = [regex]::Match($line, '^\s*([A-Za-zА-Яа-я_]+)\s*[:=]')
+        if (-not $match.Success) { $state = 'free'; continue }
+        $key = $match.Groups[1].Value.ToUpperInvariant()
+        if ($state -eq 'lead') {
+            if (@($script:ReviewLeadFieldKeys) -contains $key) {
+                [void]$set.Add($i)
+                if ($key -eq 'CONTENT') { $state = 'content' }
+            } else {
+                $state = 'free'
+            }
+        } elseif ($state -eq 'content') {
+            if (@($script:ReviewTailFieldKeys) -contains $key) {
+                [void]$set.Add($i)
+                $state = 'tail'
+            } else {
+                $state = 'free'
+            }
+        } elseif ($state -eq 'tail') {
+            if (@($script:ReviewTailFieldKeys) -contains $key) { [void]$set.Add($i) } else { $state = 'free' }
+        }
+    }
+    return ,$set
+}
+
+# ============================================================
 # Чтение буфера. Любая проблема (нет файла, нет доступа, бинарь) -> '' без throw.
 # File.ReadAllText: UTF-8 c определением BOM; для битых байт даёт replacement-символы,
 # не исключение, поэтому парсер безопасно вернёт пустой список.
@@ -306,6 +356,7 @@ function Read-ReviewVerdictEntries {
 
             # Ключ задачи записи: явный task_id > первый тег.
             $primaryTask = Get-ReviewTaskKey -Text $body
+            $structuralLines = Get-ReviewStructuralLineSet -Body $body
 
             # Вердикты проставляют только проверяющие (тот же allowlist, что и для
             # релей-строк): проза исполнителя ("verdict pass", "STATUS: ok" и т.п.)
@@ -328,6 +379,8 @@ function Read-ReviewVerdictEntries {
                 foreach ($status in [regex]::Matches($body, $script:ReviewStatusFieldPattern)) {
                     $category = Get-ReviewVerdictCategory -Token $status.Groups['tok'].Value
                     if ($null -eq $category) { continue }
+                    $bodyLineIndex = (Get-ReviewLineNumber -Text $body -Index $status.Index) - 1
+                    if (-not $structuralLines.Contains($bodyLineIndex)) { continue }
                     $lineNo = Get-ReviewLineNumber -Text $text -Index ($bodyStart + $status.Index)
                     $lineText = ($text -split "\r?\n")[$lineNo - 1]
                     & $addEntry $author $primaryTask $category $status.Groups['tok'].Value 'status-field' $recordTime $lineNo (Get-ReviewSnippet -Line $lineText)

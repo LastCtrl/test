@@ -70,6 +70,7 @@ $script:DoctorFastTestNames = @(
     'test-model-router.ps1'
 )
 $script:DoctorRecursionGuard = 'test-doctor.ps1'
+$script:DoctorPassportMaxAgeDays = 30
 
 # ===========================================================================
 # Helpers
@@ -244,6 +245,27 @@ function Get-DoctorFirstLine {
     return ''
 }
 
+# Свежесть паспорта: updated_at разбирается в инвариантной культуре; пустое или
+# нечитаемое значение -> WARN, а не исключение (read-only диагностика).
+function Get-DoctorPassportFreshness {
+    param([string]$UpdatedAt)
+
+    if ([string]::IsNullOrWhiteSpace($UpdatedAt)) {
+        return [pscustomobject]@{ ok = $false; detail = 'updated_at is absent' }
+    }
+    $parsed = [datetime]::MinValue
+    $styles = [System.Globalization.DateTimeStyles]::None
+    if (-not [datetime]::TryParse($UpdatedAt, [System.Globalization.CultureInfo]::InvariantCulture, $styles, [ref]$parsed)) {
+        return [pscustomobject]@{ ok = $false; detail = ("updated_at is not parseable: " + $UpdatedAt) }
+    }
+    $ageDays = [math]::Round(((Get-Date) - $parsed).TotalDays, 1)
+    if ($ageDays -lt 0) { $ageDays = 0 }
+    if ($ageDays -le $script:DoctorPassportMaxAgeDays) {
+        return [pscustomobject]@{ ok = $true; detail = ("updated " + $UpdatedAt + " (" + $ageDays + " day(s) old)") }
+    }
+    return [pscustomobject]@{ ok = $false; detail = ("stale: updated " + $UpdatedAt + " (" + $ageDays + " day(s) old > " + $script:DoctorPassportMaxAgeDays + ")") }
+}
+
 # ===========================================================================
 # Root + модули (единственный источник проверок; dot-source только определения)
 # ===========================================================================
@@ -291,6 +313,16 @@ if (Test-Path -LiteralPath $reviewPath -PathType Leaf) {
     catch { $reviewError = $_.Exception.Message }
 } else {
     $reviewError = "missing: $reviewPath"
+}
+
+$passportLoaded = $false
+$passportLoadError = ''
+$passportPath = Join-Path $doctorScriptsDir 'capability-passport.ps1'
+if (Test-Path -LiteralPath $passportPath -PathType Leaf) {
+    try { . $passportPath; $passportLoaded = $true }
+    catch { $passportLoadError = $_.Exception.Message }
+} else {
+    $passportLoadError = "missing: $passportPath"
 }
 
 $sections = New-Object System.Collections.ArrayList
@@ -530,6 +562,42 @@ if (-not $modelRouterLoaded) {
 }
 
 [void]$sections.Add($modelsSection)
+
+# ===========================================================================
+# PASSPORT - capability passport: availability, counts, freshness (read-only)
+# ===========================================================================
+
+$passportSection = New-DoctorSection -Name 'PASSPORT'
+
+if ((-not $passportLoaded) -and ($null -eq (Get-Command -Name 'Read-PassportDocument' -ErrorAction SilentlyContinue))) {
+    Add-DoctorCheck -Section $passportSection -Name 'passport module' -Status 'WARN' -Detail ("capability-passport.ps1 unavailable: " + $passportLoadError)
+} else {
+    Add-DoctorCheck -Section $passportSection -Name 'passport module' -Status 'OK' -Detail $passportPath
+    try {
+        $passportDoc = Read-PassportDocument -Root $doctorRoot
+        if (-not $passportDoc.ok) {
+            Add-DoctorCheck -Section $passportSection -Name 'passport document' -Status 'WARN' -Detail ([string]$passportDoc.error)
+        } else {
+            $passportAgentCount = @($passportDoc.agents.Keys).Count
+            $passportModelCount = @($passportDoc.models.Keys).Count
+            if ($passportAgentCount -gt 0 -and $passportModelCount -gt 0) {
+                Add-DoctorCheck -Section $passportSection -Name 'passport document' -Status 'OK' -Detail ("$passportAgentCount agent(s), $passportModelCount model(s)")
+            } else {
+                Add-DoctorCheck -Section $passportSection -Name 'passport document' -Status 'WARN' -Detail ("agents=$passportAgentCount models=$passportModelCount")
+            }
+            $freshness = Get-DoctorPassportFreshness -UpdatedAt ([string]$passportDoc.updated_at)
+            if ($freshness.ok) {
+                Add-DoctorCheck -Section $passportSection -Name 'passport freshness' -Status 'OK' -Detail $freshness.detail
+            } else {
+                Add-DoctorCheck -Section $passportSection -Name 'passport freshness' -Status 'WARN' -Detail $freshness.detail
+            }
+        }
+    } catch {
+        Add-DoctorCheck -Section $passportSection -Name 'passport document' -Status 'WARN' -Detail $_.Exception.Message
+    }
+}
+
+[void]$sections.Add($passportSection)
 
 # ===========================================================================
 # QUEUE - inbox / outbox / dead-letter / claims (+ stale)

@@ -520,6 +520,11 @@ function Invoke-TeamOptimizerCommandLine {
         Write-Host "-Size must be >= 1" -ForegroundColor Red
         exit 1
     }
+    if ($options.Size -gt 10) {
+        Write-Host "-Size must be between 1 and 10" -ForegroundColor Red
+        Show-TeamOptimizerUsage
+        exit 1
+    }
 
     $recommendation = Get-TeamRecommendation -TaskType $options.TaskType -Risk $options.Risk -MaxCostTier $options.MaxCostTier -Size $options.Size -Root $options.Root
     if ($options.Json) {

@@ -1,26 +1,32 @@
-# agent-hq Go CLI (этап G1)
+# agent-hq Go CLI (этапы G1-G3)
 
-Read-only CLI для инспекции состояния agent-hq. Это фундамент Go-фазы из
-`AUDIT-CONSOLIDATED-2026-09-14.md` (P1 «Go foundation»): сначала безопасный
-читатель состояния, потом — запись (SQLite, claims, daemon).
+Go-фаза control plane из `AUDIT-CONSOLIDATED-2026-09-14.md`: G1 — read-only
+инспекция состояния, G2 — SQLite-индекс, G3-M1 — версионируемый Executor и
+durable write-path (claim/attempt/event в SQLite). Движок на PowerShell
+остаётся основным: Go-путь сосуществует с ним и не изменяет PS-скрипты.
 
-## Границы G1 (что сознательно НЕ сделано)
+## Границы этапов
 
-Реализовано: чтение и вывод состояния.
+Реализовано:
 
-Не реализовано (следующие этапы, не входит в G1):
+- G1: чтение состояния (evidence, claims, очереди проектов, шина);
+- G2: SQLite-индекс `.memory/agent-hq.db` (схема v1) с freshness-фолбэком;
+- G3-M1: версионируемый `Executor`, команда `run`, durable write-path
+  (`run_claims`, `runs`, `run_attempts`, `run_events`, схема v2).
 
-- любые записи на диск (CLI строго read-only);
-- SQLite / `tasks` / `attempts` / `events` / `checkpoints`;
-- атомарный claim, lease/heartbeat, release, stale-sweep;
-- daemon, worker pool, watchdog/checkpoint/restart;
-- сеть, MCP, внешние Go-модули (только стандартная библиотека);
-- запись и миграции состояния — по-прежнему на PowerShell-скриптах.
+Сознательно НЕ сделано (следующие этапы):
+
+- watchdog, heartbeat-петля, checkpoint/handoff и restart (M2);
+- daemon, worker pool, scheduler, RBAC;
+- stale-sweep durable-аренд (в M1 аренда освобождается в `defer`);
+- запись файлового состояния — по-прежнему на PowerShell-скриптах; PS-движок
+  остаётся основным, Go-путь его не заменяет и не изменяет.
 
 ## Требования
 
 - Go 1.27+ (проверено на `go1.27.1 windows/amd64`).
-- Внешние зависимости не нужны: модуль использует только stdlib.
+- Единственная внешняя зависимость: `modernc.org/sqlite` (чистый Go-драйвер,
+  G2/G3). Сеть в рантайме не нужна.
 
 ## Сборка и проверки
 
@@ -66,12 +72,76 @@ go\bin\agent-hq.exe doctor
 | `leases` | аренды (claim) и их состояние по TTL | `-ttl <секунды>`, `-stale` |
 | `evidence <id>` | детали одного evidence-документа (попытки, exit code, длительности, длины и SHA256 stdout/stderr) | — |
 | `doctor` | здоровье каталогов и конфигов, версия CLI | — |
+| `run <agent> <text>` | claim в SQLite, запуск через Executor, durable-запись результата | `-executor opencode\|fake`, `-id <id>`, `-model <имя>`, `-lease <секунд>` |
 | `version` | версия CLI | — |
 
 Все команды поддерживают `-json`.
 
 Коды выхода: `0` — успех; `1` — проблемы (не найден evidence-документ,
-нездоровый `doctor`); `2` — ошибка использования CLI.
+нездоровый `doctor`, неуспешный/пропущенный `run`); `2` — ошибка
+использования CLI.
+
+## G3-M1: Executor и write-path
+
+Цель M1 — научить Go control plane запускать работу через версионируемый
+интерфейс и надёжно фиксировать результат, не ломая PowerShell-движок.
+
+### Интерфейс `internal/executor`
+
+- `Executor` — `Version() int`, `Name() string`, `Execute(ctx, TaskSpec) (Result, error)`.
+  `InterfaceVersion = 1` фиксирует контракт.
+- `TaskSpec` — `ID`, `Agent`, `Payload`, `Model` (опционально, только
+  фиксируется, в CLI не форвардится), `AttemptID`.
+- `Result` — `Status` (`success|failed|timeout|error`), `ExitCode`, `Stdout`,
+  `Stderr`, `Duration`, `Error`.
+- `Classify(exitCode, stdout, stderr)` — единое правило успеха, зеркало
+  `inbox-engine.ps1`: exit 0 + непустой stdout + маркер `STATUS: resolved|done|completed`
+  + отсутствие error-маркера (`Error:`, `permission denied`, `not found`,
+  `auto-rejecting`, `rejected permission`).
+- `OpenCodeExecutor` — запускает `opencode run --agent <agent> <prompt>`:
+  - CLI резолвится как в PS: `AGENT_HQ_OPENCODE` (raw, обходит vault),
+    `AGENT_HQ_OPENCODE_PATH`, npm-shim, затем PATH;
+  - при наличии vault и ключей провайдера запуск идёт через
+    `run-with-secrets.ps1` (секреты только в env дочернего процесса, значения
+    не печатаются и не логируются);
+  - env-хуки `AGENT_HQ_TASK_ID`, `AGENT_HQ_ATTEMPT_ID`, `AGENT_HQ_AGENT`,
+    `AGENT_HQ_MODEL`;
+  - таймаут `AGENT_HQ_JOB_TIMEOUT` (по умолчанию 900 с), выход по таймауту —
+    `timeout`/exit 124, как в PS.
+- `FakeExecutor` — режимы `success|fail|timeout|empty` для тестов;
+  `AGENT_HQ_FAKE_MODE`, `AGENT_HQ_FAKE_DELAY_MS`, `AGENT_HQ_FAKE_TIMEOUT_MS`.
+
+### Команда `run`
+
+```
+agent-hq run <agent> "текст" [-executor opencode|fake] [-id <id>] [-json]
+```
+
+Порядок durable-операций (crash-safe «до/после»):
+
+1. атомарный claim в SQLite (`run_claims`): один `INSERT ... ON CONFLICT DO
+   UPDATE ... WHERE <lease истёк>`, победитель один; проигравший выходит со
+   статусом `skipped`/`already-claimed`;
+2. запись `runs` и `run_attempts` со статусом `running` ДО запуска;
+3. `Executor.Execute`;
+4. запись результата ПОСЛЕ: статус, exit code, duration, длины и SHA256
+   stdout/stderr (сырой вывод в БД не пишется);
+5. release аренды в `defer` (owner-guarded).
+
+События `run_events` (append-only): `claim.acquired`, `claim.conflict`,
+`attempt.started`, `attempt.finished`, `run.finished`, `claim.released` —
+задел для M2 (watchdog/recovery). Повторный `run` с тем же
+`-id` не теряет прошлые попытки: `run_attempts` только дополняется.
+
+Watchdog/heartbeat-петля и checkpoint — вне M1.
+
+### Хранилище
+
+Схема SQLite поднята до версии 2 (append-only миграция v1→v2): добавлены
+`run_claims`, `runs`, `run_attempts`, `run_events`. Они авторитетны и не
+входят в full-resync `agent-hq index`, поэтому переиндексация файлов историю
+запусков не затирает. Индекс G2 (`projects/tasks/evidence/claims/messages`)
+не изменён.
 
 ## Форматы состояния (что читает CLI)
 
@@ -108,8 +178,9 @@ go\bin\agent-hq.exe doctor
 
 ```
 go/
-  go.mod                    module agent-hq (без внешних зависимостей)
+  go.mod                    module agent-hq (SQLite через modernc.org/sqlite)
   cmd/agent-hq/main.go      CLI: подкоманды, флаги, вывод (text/JSON)
+  cmd/agent-hq/run.go       команда run: claim, durable-запись, Executor
   internal/state/
     root.go                 корень, пути, листинг JSON-файлов, снятие BOM
     time.go                 разбор/форматирование времени, возраст
@@ -120,6 +191,19 @@ go/
     snapshot.go             единая сводка + лента активностей
     doctor.go               проверки окружения
     state_test.go           юнит-тесты парсеров
+  internal/store/
+    store.go                открытие/миграции SQLite (schema v2)
+    schema.go               схема индекса (v1) и write-path (v2)
+    index.go                full-resync индекса из файлов
+    query.go                чтение индекса
+    fingerprint.go          fingerprint состояния для freshness
+    run.go                  durable claim/run/attempt/event
+    *_test.go               тесты индекса и write-path
+  internal/executor/
+    executor.go             интерфейс Executor, TaskSpec, Result, Classify
+    opencode.go             OpenCodeExecutor через vault-враппер
+    fake.go                 FakeExecutor для тестов
+    executor_test.go        тесты классификации и планирования запуска
   README.md
   bin/                      собранные бинарники (в .gitignore)
 ```
@@ -127,5 +211,7 @@ go/
 ## Ответственность пакетов
 
 - `internal/state` — только разбор и агрегация. Никакого вывода в консоль.
-- `cmd/agent-hq` — только CLI: разбор аргументов, форматирование, коды
-  выхода.
+- `internal/store` — SQLite: индекс G2 и durable write-path G3-M1.
+- `internal/executor` — версионируемый запуск работы; не знает про БД.
+- `cmd/agent-hq` — CLI: разбор аргументов, оркестрация claim/run/release,
+  форматирование, коды выхода.

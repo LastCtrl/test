@@ -348,6 +348,55 @@ function Test-ProseVerdictNotReviewerCase {
     } finally { Remove-FixtureRoot $root }
 }
 
+function Test-StructuralContinuationCase {
+    # Продолжение свободного текста после CONTENT — не структурное поле: строка
+    # "PRIORITY: ..." не должна распознаваться как поле вердикта. Статус-поле
+    # принимается только в структурной части записи (до CONTENT / канонический хвост).
+    $buffer = @(
+        "[2026-09-17 20:00] qa-engineer -> team-lead:"
+        "TYPE: update | PRIORITY: medium"
+        "CONTENT: Приёмка P2-7. Ниже — цитата self-report'а исполнителя."
+        "PRIORITY: critical"
+        "STATUS: ok"
+        ""
+    ) -join "`r`n"
+    $root = New-FixtureRoot -BufferText $buffer
+    try {
+        Write-Check "с) continuation PRIORITY/STATUS не даёт вердикта" (@(Get-ReviewVerdicts -Root $root).Count -eq 0)
+        Write-Check "с) relay-шаблон не признаёт PRIORITY полем вердикта" (-not ([regex]::Match('PRIORITY: PASS', $script:ReviewRelayPattern).Success))
+    } finally { Remove-FixtureRoot $root }
+
+    # Буквально: продолжение, начинающееся ровно с "PRIORITY: <вердикт>".
+    $buffer2 = @(
+        "[2026-09-17 20:10] qa-engineer -> team-lead:"
+        "TYPE: update | PRIORITY: medium"
+        "CONTENT: Приёмка P2-8. Продолжение текста:"
+        "PRIORITY: PASS"
+        "STATUS: resolved"
+        ""
+    ) -join "`r`n"
+    $root2 = New-FixtureRoot -BufferText $buffer2
+    try {
+        Write-Check "с) свободный 'PRIORITY: PASS' не даёт вердикта" (@(Get-ReviewVerdicts -Root $root2).Count -eq 0)
+    } finally { Remove-FixtureRoot $root2 }
+
+    # Положительный контроль: канонический STATUS: REJECT в структурном хвосте.
+    $buffer3 = @(
+        "[2026-09-17 20:20] code-reviewer -> team-lead:"
+        "TYPE: update | PRIORITY: medium"
+        "Project: agent-hq"
+        "CONTENT: Разбор P2-9 без отдельного маркера."
+        "COMPLIANCE: true"
+        "STATUS: REJECT"
+        ""
+    ) -join "`r`n"
+    $root3 = New-FixtureRoot -BufferText $buffer3
+    try {
+        $verdicts3 = @(Get-ReviewVerdicts -Root $root3)
+        Write-Check "с) канонический STATUS: REJECT распознан" (@($verdicts3 | Where-Object { $_.source -eq 'status-field' -and $_.verdict -eq 'reject' }).Count -eq 1)
+    } finally { Remove-FixtureRoot $root3 }
+}
+
 # --- runner ----------------------------------------------------------------
 
 if (-not (Test-Path -LiteralPath $Target -PathType Leaf)) {
@@ -374,6 +423,7 @@ try {
     Test-LatestVerdictWinsCase
     Test-RelayLineCase
     Test-ProseVerdictNotReviewerCase
+    Test-StructuralContinuationCase
     Test-CliCase
     Test-FileInvariantsCase
 } finally {

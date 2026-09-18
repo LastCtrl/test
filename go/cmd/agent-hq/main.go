@@ -22,7 +22,7 @@ import (
 
 const (
 	cliName = "agent-hq"
-	version = "0.2.0-g2"
+	version = "0.3.0-g3m1"
 )
 
 const usageText = `agent-hq <command> [flags]
@@ -37,6 +37,7 @@ Commands:
   index               (re)build the SQLite index of .memory and project queues
   db status           report what the SQLite index contains
   doctor              health of directories and configs
+  run <agent> <text>  claim an id, execute it through an Executor and record the result
   version             print the CLI version
 
 Shared flags (before or after the command):
@@ -56,6 +57,8 @@ Examples:
   agent-hq index
   agent-hq db status -json
   agent-hq doctor -json
+  agent-hq run dev-2 "summarise the open tasks" -executor fake
+  agent-hq run dev-2 "summarise the open tasks" -executor opencode -json
 `
 
 func main() {
@@ -93,6 +96,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return runDB(globals, commandArgs, stdout, stderr)
 	case "doctor":
 		return runDoctor(globals, commandArgs, stdout, stderr)
+	case "run":
+		return runRun(globals, commandArgs, stdout, stderr)
 	default:
 		fmt.Fprintf(stderr, "%s: unknown command %q\n\n%s", cliName, rest[0], usageText)
 		return 2

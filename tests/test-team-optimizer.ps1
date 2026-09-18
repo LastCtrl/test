@@ -297,6 +297,14 @@ $caseOk = (Write-Check "an unknown argument exits 1" ($LASTEXITCODE -eq 1)) -and
 $noTask = (& $Script -Risk "high" -Root $Root *>&1 | Out-String)
 $caseOk = (Write-Check "a missing task type exits 1" ($LASTEXITCODE -eq 1)) -and $caseOk
 
+$zeroSize = (& $Script -TaskType "code" -Risk "low" -Size 0 -Root $Root *>&1 | Out-String)
+$caseOk = (Write-Check "a zero size exits 1" ($LASTEXITCODE -eq 1)) -and $caseOk
+
+$bigSize = (& $Script -TaskType "code" -Risk "low" -Size 11 -Root $Root *>&1 | Out-String)
+$caseOk = (Write-Check "a size above the range exits 1" ($LASTEXITCODE -eq 1)) -and $caseOk
+$caseOk = (Write-Check "a size above the range prints the usage" ($bigSize -match "team-optimizer.ps1 - recommend")) -and $caseOk
+$caseOk = (Write-Check "a size above the range has no raw range exception" (-not ($bigSize -match "ValidateRange|ParameterBindingValidationException"))) -and $caseOk
+
 Close-Case "f) command line" $caseOk
 
 # --- g) hygiene --------------------------------------------------------------

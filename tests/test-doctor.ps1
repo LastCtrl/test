@@ -7,7 +7,7 @@
 #
 # Covered:
 #   a) syntax gate   - doctor.ps1 parses with zero PSParser errors
-#   b) human report  - `-NoTests` exits 0/1/2, prints all six section headers and
+#   b) human report  - `-NoTests` exits 0/1/2, prints all seven section headers and
 #                      a DOCTOR: verdict; the CONFIG section is OK for a valid root
 #   c) json report   - `-NoTests -Json` emits parseable JSON with root/sections/
 #                      summary; summary.exit_code matches the process exit code and
@@ -93,6 +93,7 @@ foreach ($rel in @(
     ".memory\claims",
     ".agents\skills\demo",
     ".agents\scripts",
+    ".agents\config",
     ".opencode\agents",
     "schemas"
 )) {
@@ -122,7 +123,7 @@ Close-Case "a) syntax" $caseOk
 
 Copy-Item -LiteralPath (Join-Path $RepoRoot "opencode.json") -Destination (Join-Path $Root "opencode.json") -Force
 Copy-Item -LiteralPath (Join-Path $RepoRoot "schemas\opencode.config.schema.json") -Destination (Join-Path $Root "schemas\opencode.config.schema.json") -Force
-foreach ($helper in @("bash-policy.ps1", "task-state.ps1", "model-router.ps1", "review-disagreement.ps1")) {
+foreach ($helper in @("bash-policy.ps1", "task-state.ps1", "model-router.ps1", "review-disagreement.ps1", "capability-passport.ps1")) {
     Copy-Item -LiteralPath (Join-Path $RepoRoot (".agents\scripts\" + $helper)) -Destination (Join-Path $Root (".agents\scripts\" + $helper)) -Force
 }
 
@@ -142,6 +143,10 @@ foreach ($helper in @("bash-policy.ps1", "task-state.ps1", "model-router.ps1", "
     "[2026-01-01T00:00:00] dev-x -> team-lead:`r`nTYPE: update | PRIORITY: low`r`nCONTENT: isolated doctor test fixture.`r`nSTATUS: resolved`r`n",
     $Utf8NoBom)
 
+# Fresh passport fixture: 1 agent + 1 model with a current updated_at.
+$passportFixture = '{"version":1,"updated_at":"' + (Get-Date).ToString('yyyy-MM-ddTHH:mm:ss') + '","agents":{"dev-x":{}},"models":{"demo/model-a":{}}}'
+[System.IO.File]::WriteAllText((Join-Path $Root ".agents\config\capability-passport.json"), $passportFixture, $Utf8NoBom)
+
 $isoAgentsDir = Join-Path $Root ".opencode\agents"
 $isoSkillsDir = Join-Path $Root ".agents\skills"
 
@@ -153,13 +158,24 @@ $caseOk = $true
 $human = Invoke-Doctor -RootPath $Root -ExtraArgs @('-NoTests')
 $caseOk = (Write-Check "exit code is 0/1/2" (@(0, 1, 2) -contains $human.code) ("exit=" + $human.code)) -and $caseOk
 $caseOk = (Write-Check "prints the doctor header" ($human.text -match '===\s*agent-hq doctor\s*===')) -and $caseOk
-foreach ($section in @('ENV', 'CONFIG', 'MODELS', 'QUEUE', 'TESTS', 'EVIDENCE/DISAGREEMENT')) {
+foreach ($section in @('ENV', 'CONFIG', 'MODELS', 'PASSPORT', 'QUEUE', 'TESTS', 'EVIDENCE/DISAGREEMENT')) {
     $pattern = '---\s*' + [regex]::Escape($section) + '\s*\['
     $caseOk = (Write-Check ("section header " + $section) ($human.text -match $pattern)) -and $caseOk
 }
 $caseOk = (Write-Check "prints a DOCTOR: verdict" ($human.text -match 'DOCTOR:\s*(OK|WARN|FAIL)')) -and $caseOk
 $caseOk = (Write-Check "CONFIG section is OK on a valid root" ($human.text -match '---\s*CONFIG\s*\[OK\]')) -and $caseOk
+$caseOk = (Write-Check "PASSPORT section is OK with a fresh passport" ($human.text -match '---\s*PASSPORT\s*\[OK\]')) -and $caseOk
+$caseOk = (Write-Check "PASSPORT reports agent/model counts" ($human.text -match '\[OK\] passport document - 1 agent\(s\), 1 model\(s\)')) -and $caseOk
 $caseOk = (Write-Check "-NoTests marks the test run as skipped" ($human.text -match 'skipped \(-NoTests\)')) -and $caseOk
+
+# Missing passport must degrade to WARN without crashing (read-only).
+$isoPassport = Join-Path $Root ".agents\config\capability-passport.json"
+$isoPassportOff = $isoPassport + ".off"
+Rename-Item -LiteralPath $isoPassport -NewName "capability-passport.json.off"
+$humanMissing = Invoke-Doctor -RootPath $Root -ExtraArgs @('-NoTests')
+Rename-Item -LiteralPath $isoPassportOff -NewName "capability-passport.json"
+$caseOk = (Write-Check "missing passport keeps exit 0/1/2" (@(0, 1, 2) -contains $humanMissing.code)) -and $caseOk
+$caseOk = (Write-Check "missing passport is section-WARN, not a crash" ($humanMissing.text -match '---\s*PASSPORT\s*\[WARN\]')) -and $caseOk
 Close-Case "b) human report" $caseOk
 
 # --- c) json report ---------------------------------------------------------
@@ -178,17 +194,17 @@ $caseOk = (Write-Check "json stdout is pure ASCII (codepage-independent)" ($nonA
 if ($null -ne $parsed) {
     $caseOk = (Write-Check "has root" (-not [string]::IsNullOrWhiteSpace([string]$parsed.root))) -and $caseOk
     $caseOk = (Write-Check "has timestamp" (-not [string]::IsNullOrWhiteSpace([string]$parsed.timestamp))) -and $caseOk
-    $caseOk = (Write-Check "has six sections" (@($parsed.sections).Count -eq 6) ("count=" + @($parsed.sections).Count)) -and $caseOk
+    $caseOk = (Write-Check "has seven sections" (@($parsed.sections).Count -eq 7) ("count=" + @($parsed.sections).Count)) -and $caseOk
 
     $sectionNames = @($parsed.sections | ForEach-Object { $_.name })
     if ($sectionNames.Count -gt 0) {
         $hasAll = $true
-        foreach ($wanted in @('ENV', 'CONFIG', 'MODELS', 'QUEUE', 'TESTS', 'EVIDENCE/DISAGREEMENT')) {
+        foreach ($wanted in @('ENV', 'CONFIG', 'MODELS', 'PASSPORT', 'QUEUE', 'TESTS', 'EVIDENCE/DISAGREEMENT')) {
             if ($sectionNames -cnotcontains $wanted) { $hasAll = $false }
         }
-        $caseOk = (Write-Check "section names are the documented six" $hasAll ("names=" + ($sectionNames -join ','))) -and $caseOk
+        $caseOk = (Write-Check "section names are the documented seven" $hasAll ("names=" + ($sectionNames -join ','))) -and $caseOk
     } else {
-        $caseOk = (Write-Check "section names are the documented six" $false "no sections") -and $caseOk
+        $caseOk = (Write-Check "section names are the documented seven" $false "no sections") -and $caseOk
     }
 
     $validStatuses = $true

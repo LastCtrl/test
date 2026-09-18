@@ -4159,3 +4159,25 @@ SKILLS_LOADED: ["evidence-discipline"]
 MCP_USED: ["context7: not used (no new external library/API)", "sequential-thinking: not used (linear 3-file fix)"]
 COMPLIANCE: true
 STATUS: resolved
+
+[2026-09-18 14:00] qa-engineer -> team-lead:
+TYPE: update | PRIORITY: medium
+Project: agent-hq
+CONTENT: RE-REVIEW фикса G3-M3 (коммит 02ff3b8, BUG-032 + 2 minor) — ПРИНЯТО. Проверено ТОЛЬКО по дифу: (1) BUG-032: checkpoint_test.go:108-110 — только ASCII-эскейпы \u0431/\U0001F642/\u043f\u0440\u0438\u0432\u0435\u0442; побайтовый скан go/**/*.go (45 файлов) → 0 с non-ASCII; семантическая эквивалентность доказана сравнением байт старой версии (D0 B1=F0 9F 99 82=D0 BF...D1 82 найдены в af9cf83) с эскейпами новой; TestTruncateStateKeepsValidUTF8 PASS (3 subtest). (2) Minor-1: markSessionInvalid (run.go:373-383) вызывается на initial (run.go:316), retry (run.go:339, ранний возврат без fallback) и fallback (run.go:359); TestHealMarksSessionInvalidOnRetryAttempt PASS (2 аттемпта, durable mark status=invalid, session.invalid event, нет model.fallback). Minor-2: store.EventSessionMarkError="session.mark.error" (internal/store/run.go:49), используется при сбое метки (run.go:377); TestSessionMarkErrorEventKindIsDistinct PASS (!= heartbeat.error). (3) go build ./...=0, go vet ./...=0, go test -count=1 ./... ok (5 пакетов, cmd/agent-hq 4.271s), gofmt -l пусто. (4) Регресс: verify-phase.ps1 41/41 ALL CHECKS PASSED exit 0; net-check -json: proxy 127.0.0.1:3128 OK 2ms, ok=true, exit 0. (5) Added-линии дифа (118) не содержат "sk-" (0 hits; единственный sk- в дифе — контекстная doc-строка KNOWLEDGE-BASE.md, не добавлена коммитом). Наблюдение (не блокер): fallback-путь session-фолта (run.go:359) покрыт только общим helper'ом + retry-тестом, отдельного теста на «session после fallback» нет. Working tree: M .memory/tool-usage-violations.jsonl (запись 11:44, до сессии QA) и ?? .memory/free-models-2026-09.md — не относятся к дифу, не трогал. Cleanup: %TEMP%\old_cp_test.raw удалён (Test-Path False); фоновых процессов не осталось (go run завершился, NETCHECK_EXIT=0).
+SKILLS_LOADED: ["evidence-discipline"]
+MCP_USED: []
+COMPLIANCE: true
+STATUS: resolved
+
+================================================================================
+[2026-09-18] team-lead -> bus: Go G3-M2+M3 ПРИНЯТЫ; Go-фаза: G1-G3 (M1/M2/M3) done
+TYPE: update | PRIORITY: high
+================================================================================
+Коммиты f4438bb, af9cf83, 02ff3b8. G3-M2: heartbeat/recover/checkpoints (schema v3). G3-M3: net-check + self-heal (proxy retry, model fallback, session marks; schema v4). BUG-029/031/032 закрыты. Приёмки ПРИНЯТО.
+Оценки: dev-2 8, dev-3 8, qa-engineer 9.
+Осталось Go: M4 (worktrees+shared memory), M5 (daily driver), M6 (scale).
+SKILLS_LOADED: []
+MCP_USED: []
+COMPLIANCE: true
+STATUS: resolved
+================================================================================

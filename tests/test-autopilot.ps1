@@ -22,7 +22,7 @@ $RepoRoot = Split-Path -Parent $Here
 $Autopilot = Join-Path $RepoRoot ".agents\scripts\autopilot.ps1"
 $TestPath  = $PSCommandPath
 
-$TempBase = Join-Path $env:TEMP "agent-hq-autopilot-tests"
+$TempBase = Join-Path $env:TEMP ("agent-hq-autopilot-tests\" + [guid]::NewGuid().ToString('N'))
 $EmptyRoot       = Join-Path $TempBase ([guid]::NewGuid().ToString("N"))
 $ConfigRootL3    = Join-Path $TempBase ([guid]::NewGuid().ToString("N"))
 $ConfigRootBad   = Join-Path $TempBase ([guid]::NewGuid().ToString("N"))

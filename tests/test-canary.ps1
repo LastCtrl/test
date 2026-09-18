@@ -26,7 +26,7 @@ $Here     = $PSScriptRoot
 $RepoRoot = Split-Path -Parent $Here
 $Canary   = Join-Path $RepoRoot ".agents\scripts\canary.ps1"
 
-$TempBase   = Join-Path $env:TEMP "agent-hq-canary-tests"
+$TempBase   = Join-Path $env:TEMP ("agent-hq-canary-tests\" + [guid]::NewGuid().ToString('N'))
 $MainRoot   = Join-Path $TempBase ([guid]::NewGuid().ToString("N"))
 $BadRoot    = Join-Path $TempBase ([guid]::NewGuid().ToString("N"))
 $EmptyRoot  = Join-Path $TempBase ([guid]::NewGuid().ToString("N"))

@@ -20,7 +20,7 @@ $Here     = $PSScriptRoot
 $RepoRoot = Split-Path -Parent $Here
 $Script   = Join-Path $RepoRoot ".agents\scripts\cost-quality.ps1"
 
-$TempBase     = Join-Path $env:TEMP "agent-hq-cost-quality-tests"
+$TempBase     = Join-Path $env:TEMP ("agent-hq-cost-quality-tests\" + [guid]::NewGuid().ToString('N'))
 $Root         = Join-Path $TempBase ([guid]::NewGuid().ToString("N"))
 $ConfigDir    = Join-Path $Root ".agents\config"
 $MemoryDir    = Join-Path $Root ".memory"

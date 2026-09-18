@@ -25,7 +25,7 @@ $Here     = $PSScriptRoot
 $RepoRoot = Split-Path -Parent $Here
 $Ab       = Join-Path $RepoRoot ".agents\scripts\ab-experiment.ps1"
 
-$TempBase   = Join-Path $env:TEMP "agent-hq-ab-tests"
+$TempBase   = Join-Path $env:TEMP ("agent-hq-ab-tests\" + [guid]::NewGuid().ToString('N'))
 $MainRoot   = Join-Path $TempBase ([guid]::NewGuid().ToString("N"))
 $EmptyRoot  = Join-Path $TempBase ([guid]::NewGuid().ToString("N"))
 $VerdictRoot = Join-Path $TempBase ([guid]::NewGuid().ToString("N"))

@@ -22,7 +22,7 @@ import (
 
 const (
 	cliName = "agent-hq"
-	version = "0.5.0-g3m3"
+	version = "0.6.0-g4m4"
 )
 
 const usageText = `agent-hq <command> [flags]
@@ -41,6 +41,8 @@ Commands:
   run <agent> <text>  claim an id, execute it through an Executor and record the result
   recover             mark stale running attempts stale, release their lease (flags: -requeue, -ttl, -json, -net)
   checkpoint <op>     save|list|latest durable handoff points of a run
+  worktree <op>       list|add <name>|remove <name> per-project git worktrees (branch project/<name>)
+  project buffer <name>  read the project CONTEXT-BUFFER (flags: -tail N, -append, -source)
   version             print the CLI version
 
 Shared flags (before or after the command):
@@ -67,6 +69,10 @@ Examples:
   agent-hq recover -json
   agent-hq recover -requeue
   agent-hq checkpoint save run-1 -state "step 2 done" -path src/app.go
+  agent-hq worktree list -json
+  agent-hq worktree add dev-2
+  agent-hq worktree remove dev-2 -force
+  agent-hq project buffer dev-2 -tail 20
 `
 
 func main() {
@@ -112,6 +118,10 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return runRecover(globals, commandArgs, stdout, stderr)
 	case "checkpoint":
 		return runCheckpoint(globals, commandArgs, stdout, stderr)
+	case "worktree":
+		return runWorktree(globals, commandArgs, stdout, stderr)
+	case "project":
+		return runProject(globals, commandArgs, stdout, stderr)
 	default:
 		fmt.Fprintf(stderr, "%s: unknown command %q\n\n%s", cliName, rest[0], usageText)
 		return 2

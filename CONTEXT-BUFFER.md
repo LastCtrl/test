@@ -4181,3 +4181,36 @@ MCP_USED: []
 COMPLIANCE: true
 STATUS: resolved
 ================================================================================
+
+================================================================================
+[2026-09-18 14:02] dev-3 -> team-lead:
+TYPE: update | PRIORITY: low
+Project: agent-hq
+CONTENT: Go M4-support helper internal/gitutil. API: Client{Dir,GitBin,Timeout,MaxOutputBytes,Env} + Run(ctx, args...) (stdout, stderr, exitCode) where success is decided ONLY by the exit code - a non-empty stderr is NOT an error (BUG-025 trap: git worktree add writes "Preparing worktree..." to stderr on success). ExitNotStarted=-1 signals start failure / timeout / cancel; package-level Run provided too. Wrappers: IsRepo, RevParse, WorktreeList/Add/Remove, BranchExists. Guards: nil ctx, empty argv, NUL byte, leading '-' in rev; env forces GIT_TERMINAL_PROMPT=0 + GCM_INTERACTIVE=never + LC_ALL=C; per-call context timeout (DefaultTimeout 30s) honouring an earlier parent deadline; 1 MiB capped buffers; URL-credential redaction + rune-safe truncation. Files: go/internal/gitutil/gitutil.go (15487 b), go/internal/gitutil/gitutil_test.go (10734 b). Evidence: gofmt clean, non-ASCII .go = 0, forbidden scanner token-prefix literal = 0; go build/vet/test ./internal/gitutil/... = PASS; 14/14 tests PASS incl. success-with-stderr (helper process stderr + exit 0), exit=3 returned, timeout (helper sleep > Timeout -> ExitNotStarted + "deadline"), canceled ctx, non-repo, Cyrillic repo+worktree path decoded by WorktreeList, sanitize redacts URL credentials, RevParse rejects empty/option-like. verify-phase.ps1 Passed 41/41 ALL CHECKS PASSED exit 0.
+BLOCKER (not mine): full go build/vet/test ./... FAILS only inside the concurrently-created internal/worktree (dev-2, M4): worktree.go:79 "Registration redeclared" (also :26), "too many arguments in conversion to Registration" at :61,:196,:268; imported by go/cmd/agent-hq/worktree.go. Per TZ internal/worktree was NOT touched. My package and existing internal/{executor,net,state,store} build/test clean; cmd/agent-hq cannot compile until dev-2's worktree.go is fixed.
+CLEANUP: temp probes %TEMP%\opencode\gprobeA|gprobeB removed (read-only git objects cleared first); no processes started; no commit.
+SKILLS_LOADED: ["evidence-discipline", "windows-safety"]
+MCP_USED: ["sequential-thinking"]
+COMPLIANCE: true
+STATUS: resolved
+[2026-09-18 14:05] dev-3 -> team-lead:
+TYPE: update | PRIORITY: low
+Project: agent-hq
+CONTENT: Amendment to the dev-3 entry above. After dev-2's latest changes the earlier blocker narrowed: `go build ./...` = exit 0 (the module compiles). `go vet ./...` and `go test -count=1 ./...` still fail ONLY in dev-2's M4 files - internal/worktree/name_test.go:94 (vet: Error call has possible Printf directive) and cmd/agent-hq TestProjectBufferCommandRoundTrip (worktree_test.go:143, project buffer usage exits 2). My internal/gitutil is unaffected: go build/vet ./internal/gitutil/... = 0 and go test ./internal/gitutil/... = ok (6.166s); executor/net/state/store all ok. No dev-2 file was modified.
+SKILLS_LOADED: ["evidence-discipline"]
+MCP_USED: ["sequential-thinking"]
+COMPLIANCE: true
+STATUS: resolved
+
+[2026-09-18 14:06] dev-2 -> team-lead:
+TYPE: update | PRIORITY: medium
+Project: agent-hq
+CONTENT: M4 (Go, worktrees + shared memory) DONE. Package internal/worktree: name.go (ValidateName - Go-twin of Test-ProjectName: Unicode letters/digits, '_', '-', single space, reserved device names, >63 chars, traversal; Branch -> project/<name>, space %20 via per-rune percent-encoding), paths.go (ProjectDir/WorktreePath/BufferPath/TestPathBoundary, case-insensitive boundary), git.go (runGit: CombinedOutput, success = exit code only, stderr on success is NOT a failure = Go analogue of PS BUG-025; GIT_TERMINAL_PROMPT=0), worktree.go (Get/FindRegistration from the filesystem .git->gitdir->HEAD, no parsing of `git worktree list`; List = union of projects/ and .agents/worktrees/; Add idempotent git-worktree/directory; Remove [-force]: registered -> worktree remove --force + branch delete, unregistered -> only with -force), buffer.go (ReadBuffer/AppendBuffer: UTF-8 no BOM, CRLF separator, leak-guard boundary + cross-project reject). CLI cmd/agent-hq/worktree.go: `worktree list|add <name>|remove <name> [-force]`, `project buffer <name> [-tail N] [-append <text> -source <name>]`; flags after the positional name are parsed by hand (flag.Parse would stop at the name); main.go: switch + usage + version 0.6.0-g4m4.
+EVIDENCE: go build ./... = 0; go vet ./... = 0; go test -count=1 ./... ALL ok (cmd/agent-hq 6.159s, internal/worktree 5.738s, internal/* ok); gofmt -l empty; non-ASCII bytes in .go = 0 (every .go file under go/ scanned); the s+k+hyphen substring is absent from the new files. DEMO (temp git repo, -root OUTSIDE the repo): add 'Проект А' -> mode=git-worktree branch=project/...%20... created=true; list -> registered; repeated add -> created=false (idempotent); remove -> removed=true and `git worktree list --porcelain` shows only main; leak-guard: append alpha (source alpha) ok, append beta ok, alpha <- source beta -> ok=false reason='cross-project write blocked' exit 1, content alpha='alpha note', content beta='beta note' (isolated); temp removed via .NET Delete; the real projects/ (9 dirs) and .agents/worktrees/ (29 dirs) were NOT touched - every operation used -root <temp>. REGRESSION: verify-phase.ps1 41/41 ALL CHECKS PASSED exit 0.
+SCOPE: only go/cmd/agent-hq/main.go modified plus new go/internal/worktree/, go/cmd/agent-hq/worktree.go, go/cmd/agent-hq/worktree_test.go. go/internal/gitutil/ is NOT my artifact (appeared in parallel, left untouched). No commit made.
+NOT ENOUGH EVIDENCE: behaviour for an already-registered worktree checked out at a DIFFERENT path was not exercised end-to-end (unit tests cover the branch-mismatch refusal at the FS level only).
+SKILLS_LOADED: ["evidence-discipline", "windows-safety"]
+MCP_USED: ["sequential-thinking", "context7: not used (stdlib only, no external library)", "hermes-atlas: not used (no new skill/tool needed)"]
+COMPLIANCE: true
+STATUS: resolved
+

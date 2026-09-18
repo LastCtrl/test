@@ -21,6 +21,7 @@
   - `D:\Тест\agent-hq\**` (спавн наших .ps1/.exe, включая `powershell.exe`, `git.exe`, `python.exe`, `node.exe`, `wscript.exe`);
   - процессов opencode (`AppData\Roaming\npm\node_modules\opencode-ai`, `~/.opencode`).
 - **Обход (применён):** избегать длинных inline-команд (логику — в файл, вызов короткий); переиспользовать уже запущенные процессы; ретраи.
+- **Обход №2 (применён, ключевой):** **отключить snapshot в opencode** — `"snapshot": false` в `opencode.json` (и глобальном `~/.config/opencode/opencode.jsonc`). Snapshot-механизм opencode спавнит `git` на каждое действие; при блокировке спавна AV это даёт `EPERM uv_spawn 'git'` и «failed to get diff». С выключенным snapshot `git` для снапшотов не запускается → ошибка уходит. Требует **рестарта opencode** (конфиг читается при старте). Компенсация: у нас есть git + собственные бэкапы.
 
 ## IB-3. Хранилище секретов DPAPI (декларация)
 - Секреты хранятся в `C:\Users\Ermak_DS\.agent-secrets\` (DPAPI, CurrentUser). Просим задекларировать/уведомить ИБ. (Организационное, не блокер.)

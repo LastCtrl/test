@@ -17,22 +17,25 @@ import (
 	"time"
 
 	"agent-hq/internal/state"
+	"agent-hq/internal/store"
 )
 
 const (
 	cliName = "agent-hq"
-	version = "0.1.0-g1"
+	version = "0.2.0-g2"
 )
 
 const usageText = `agent-hq <command> [flags]
 
-Read-only view of the agent-hq state (G1 foundation, no writes).
+State view of the agent-hq repository (G1 readers, G2 SQLite index).
 
 Commands:
   status              counters and recent activity
   tasks               project queue tasks (flags: -agent, -status)
   leases              task leases and their TTL state (flags: -ttl, -stale)
   evidence <id>       details of one evidence document
+  index               (re)build the SQLite index of .memory and project queues
+  db status           report what the SQLite index contains
   doctor              health of directories and configs
   version             print the CLI version
 
@@ -40,12 +43,18 @@ Shared flags (before or after the command):
   -root <path>        repository root (AGENT_HQ_ROOT overrides it)
   -json               machine-readable output
 
+Retries read from the SQLite index when it exists and matches the current
+files, and fall back to reading the files otherwise. The index is a derived
+artifact: deleting it only costs one 'agent-hq index'.
+
 Examples:
   agent-hq status
   agent-hq status -json
   agent-hq tasks -status queued
   agent-hq leases -ttl 600 -stale
   agent-hq evidence a1b2c3
+  agent-hq index
+  agent-hq db status -json
   agent-hq doctor -json
 `
 
@@ -78,6 +87,10 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return runLeases(globals, commandArgs, stdout, stderr)
 	case "evidence":
 		return runEvidence(globals, commandArgs, stdout, stderr)
+	case "index":
+		return runIndex(globals, commandArgs, stdout, stderr)
+	case "db":
+		return runDB(globals, commandArgs, stdout, stderr)
 	case "doctor":
 		return runDoctor(globals, commandArgs, stdout, stderr)
 	default:
@@ -146,6 +159,30 @@ func resolveRoot(globals globalOptions, stderr io.Writer) (string, bool) {
 		return "", false
 	}
 	return root, true
+}
+
+// loadSnapshot prefers the SQLite index when it exists and still matches the
+// files, and falls back to parsing the files otherwise. The fallback keeps the
+// G1 behaviour intact for roots that were never indexed, for a stale index and
+// for a database that cannot be opened at all.
+func loadSnapshot(root, version string, ttlOverride time.Duration, now time.Time, stderr io.Writer) *state.Snapshot {
+	handle, err := store.OpenReadOnly(root)
+	if err == nil {
+		defer func() { _ = handle.Close() }()
+		fresh, freshErr := handle.IsFresh()
+		if freshErr == nil && fresh {
+			snapshot, loadErr := handle.Snapshot(version, ttlOverride, now)
+			if loadErr == nil {
+				return snapshot
+			}
+			fmt.Fprintf(stderr, "%s: index read failed, using files: %v\n", cliName, loadErr)
+		} else if freshErr != nil {
+			fmt.Fprintf(stderr, "%s: index freshness check failed, using files: %v\n", cliName, freshErr)
+		}
+	} else if !errors.Is(err, store.ErrNotIndexed) {
+		fmt.Fprintf(stderr, "%s: index unavailable, using files: %v\n", cliName, err)
+	}
+	return state.Load(root, version, ttlOverride, now)
 }
 
 func writeJSON(writer io.Writer, value any) bool {
@@ -284,7 +321,7 @@ func runTasks(globals globalOptions, args []string, stdout, stderr io.Writer) in
 		return 1
 	}
 
-	snapshot := state.Load(root, version, 0, time.Now())
+	snapshot := loadSnapshot(root, version, 0, time.Now(), stderr)
 	rows := collectTaskRows(snapshot)
 	rows = filterTaskRows(rows, strings.TrimSpace(*agentFilter), strings.TrimSpace(*statusFilter))
 
@@ -415,7 +452,7 @@ func runLeases(globals globalOptions, args []string, stdout, stderr io.Writer) i
 	if *ttl > 0 {
 		ttlOverride = time.Duration(*ttl) * time.Second
 	}
-	snapshot := state.Load(root, version, ttlOverride, time.Now())
+	snapshot := loadSnapshot(root, version, ttlOverride, time.Now(), stderr)
 
 	claims := make([]state.ClaimStatus, 0, len(snapshot.Claims))
 	for _, claim := range snapshot.Claims {
@@ -505,7 +542,7 @@ func runEvidence(globals globalOptions, args []string, stdout, stderr io.Writer)
 		return 1
 	}
 
-	snapshot := state.Load(root, version, 0, time.Now())
+	snapshot := loadSnapshot(root, version, 0, time.Now(), stderr)
 	doc, found := snapshot.EvidenceByTaskID(taskID)
 
 	output := evidenceOutput{TaskID: taskID, Found: found, Attempts: []evidenceAttemptView{}, Warnings: []string{}}
@@ -642,6 +679,243 @@ func runDoctor(globals globalOptions, args []string, stdout, stderr io.Writer) i
 		return 1
 	}
 	if !healthy {
+		return 1
+	}
+	return 0
+}
+
+// ---------------------------------------------------------------------------
+// index
+// ---------------------------------------------------------------------------
+
+type indexOutput struct {
+	Root          string       `json:"root"`
+	Database      string       `json:"database"`
+	SchemaVersion int          `json:"schema_version"`
+	IndexedAt     string       `json:"indexed_at"`
+	Counts        store.Counts `json:"counts"`
+	Warnings      []string     `json:"warnings"`
+}
+
+func runIndex(globals globalOptions, args []string, stdout, stderr io.Writer) int {
+	flags := newFlagSet("index", stderr)
+	if ok, helpHandled := parseFlags(flags, args); !ok {
+		if helpHandled {
+			return 0
+		}
+		return 2
+	}
+
+	root, ok := resolveRoot(globals, stderr)
+	if !ok {
+		return 1
+	}
+
+	memoryDir := state.MemoryDir(root)
+	if info, err := os.Stat(memoryDir); err != nil || !info.IsDir() {
+		fmt.Fprintf(stderr, "%s: %s is missing; refusing to index a path that does not look like an agent-hq root\n", cliName, memoryDir)
+		return 1
+	}
+
+	now := time.Now()
+	snapshot := state.Load(root, version, 0, now)
+	fingerprint, err := store.Fingerprint(root)
+	if err != nil {
+		fmt.Fprintf(stderr, "%s: cannot fingerprint state: %v\n", cliName, err)
+		return 1
+	}
+
+	handle, err := store.Open(root)
+	if err != nil {
+		fmt.Fprintf(stderr, "%s: cannot open index: %v\n", cliName, err)
+		return 1
+	}
+	defer func() { _ = handle.Close() }()
+
+	counts, err := handle.Index(snapshot, fingerprint, now)
+	if err != nil {
+		fmt.Fprintf(stderr, "%s: cannot index state: %v\n", cliName, err)
+		return 1
+	}
+
+	output := indexOutput{
+		Root:          root,
+		Database:      handle.Path(),
+		SchemaVersion: store.SchemaVersion,
+		IndexedAt:     now.Format(time.RFC3339),
+		Counts:        counts,
+		Warnings:      snapshot.Warnings,
+	}
+	if output.Warnings == nil {
+		output.Warnings = []string{}
+	}
+
+	if globals.json {
+		if !writeJSON(stdout, output) {
+			return 1
+		}
+		return 0
+	}
+
+	writer := tabwriter.NewWriter(stdout, 0, 4, 2, ' ', 0)
+	fmt.Fprintf(writer, "%s index\n", cliName)
+	fmt.Fprintf(writer, "root:\t%s\n", output.Root)
+	fmt.Fprintf(writer, "database:\t%s\n", output.Database)
+	fmt.Fprintf(writer, "schema:\t%d\n", output.SchemaVersion)
+	fmt.Fprintf(writer, "indexed:\t%s\n", output.IndexedAt)
+	fmt.Fprintln(writer)
+	fmt.Fprintf(writer, "  projects\t%d\n", counts.Projects)
+	fmt.Fprintf(writer, "  tasks\t%d\n", counts.Tasks)
+	fmt.Fprintf(writer, "  evidence\t%d (%d attempts)\n", counts.Evidence, counts.EvidenceAttempts)
+	fmt.Fprintf(writer, "  claims\t%d\n", counts.Claims)
+	fmt.Fprintf(writer, "  messages\t%d\n", counts.Messages)
+	if len(output.Warnings) > 0 {
+		fmt.Fprintln(writer)
+		fmt.Fprintf(writer, "warnings (%d)\n", len(output.Warnings))
+		for _, warning := range output.Warnings {
+			fmt.Fprintf(writer, "  %s\n", warning)
+		}
+	}
+	if err := writer.Flush(); err != nil {
+		fmt.Fprintf(stderr, "%s: cannot write output: %v\n", cliName, err)
+		return 1
+	}
+	return 0
+}
+
+// ---------------------------------------------------------------------------
+// db status
+// ---------------------------------------------------------------------------
+
+func runDB(globals globalOptions, args []string, stdout, stderr io.Writer) int {
+	if len(args) == 0 {
+		fmt.Fprintf(stderr, "usage: %s db status [-json] [-root <path>]\n", cliName)
+		return 2
+	}
+	switch strings.ToLower(args[0]) {
+	case "status":
+		return runDBStatus(globals, args[1:], stdout, stderr)
+	default:
+		fmt.Fprintf(stderr, "%s: unknown db subcommand %q\n\nusage: %s db status\n", cliName, args[0], cliName)
+		return 2
+	}
+}
+
+type dbStatusOutput struct {
+	Path          string         `json:"path"`
+	Exists        bool           `json:"exists"`
+	SchemaVersion int            `json:"schema_version,omitempty"`
+	IndexedAt     string         `json:"indexed_at,omitempty"`
+	Fresh         bool           `json:"fresh"`
+	SizeBytes     int64          `json:"size_bytes,omitempty"`
+	Counts        store.Counts   `json:"counts"`
+	MessageScopes map[string]int `json:"message_scopes,omitempty"`
+	Warning       string         `json:"warning,omitempty"`
+}
+
+func runDBStatus(globals globalOptions, args []string, stdout, stderr io.Writer) int {
+	flags := newFlagSet("db status", stderr)
+	if ok, helpHandled := parseFlags(flags, args); !ok {
+		if helpHandled {
+			return 0
+		}
+		return 2
+	}
+
+	root, ok := resolveRoot(globals, stderr)
+	if !ok {
+		return 1
+	}
+
+	path := store.Path(root)
+	output := dbStatusOutput{Path: path, Counts: store.Counts{}}
+
+	info, statErr := os.Stat(path)
+	if statErr != nil || info.IsDir() {
+		output.Warning = "no index yet; run: agent-hq index"
+		if globals.json {
+			if !writeJSON(stdout, output) {
+				return 1
+			}
+			return 1
+		}
+		fmt.Fprintf(stdout, "no index database at %s\nrun: %s index\n", path, cliName)
+		return 1
+	}
+	output.Exists = true
+	output.SizeBytes = info.Size()
+
+	handle, err := store.OpenReadOnly(root)
+	if err != nil {
+		fmt.Fprintf(stderr, "%s: cannot open index: %v\n", cliName, err)
+		return 1
+	}
+	defer func() { _ = handle.Close() }()
+
+	schemaVersion, err := handle.SchemaVersion()
+	if err != nil {
+		fmt.Fprintf(stderr, "%s: cannot read schema version: %v\n", cliName, err)
+		return 1
+	}
+	output.SchemaVersion = schemaVersion
+
+	if indexedAt, found, err := handle.IndexedAt(); err == nil && found {
+		output.IndexedAt = indexedAt.Format(time.RFC3339)
+	}
+
+	if schemaVersion == store.SchemaVersion {
+		counts, err := handle.Counts()
+		if err != nil {
+			fmt.Fprintf(stderr, "%s: cannot count index rows: %v\n", cliName, err)
+			return 1
+		}
+		output.Counts = counts
+		if scopes, err := handle.MessageCountsByScope(); err == nil {
+			output.MessageScopes = scopes
+		}
+		if fresh, err := handle.IsFresh(); err == nil {
+			output.Fresh = fresh
+		}
+	} else {
+		output.Warning = fmt.Sprintf("schema version %d is not supported by this CLI (want %d); run: %s index", schemaVersion, store.SchemaVersion, cliName)
+	}
+
+	if globals.json {
+		if !writeJSON(stdout, output) {
+			return 1
+		}
+		return 0
+	}
+
+	writer := tabwriter.NewWriter(stdout, 0, 4, 2, ' ', 0)
+	fmt.Fprintf(writer, "%s db status\n", cliName)
+	fmt.Fprintf(writer, "database:\t%s\n", output.Path)
+	fmt.Fprintf(writer, "exists:\t%t\n", output.Exists)
+	fmt.Fprintf(writer, "schema:\t%d\n", output.SchemaVersion)
+	if output.IndexedAt != "" {
+		fmt.Fprintf(writer, "indexed:\t%s\n", output.IndexedAt)
+	}
+	fmt.Fprintf(writer, "fresh:\t%t\n", output.Fresh)
+	fmt.Fprintf(writer, "size:\t%d b\n", output.SizeBytes)
+	fmt.Fprintln(writer)
+	fmt.Fprintf(writer, "  projects\t%d\n", output.Counts.Projects)
+	fmt.Fprintf(writer, "  tasks\t%d\n", output.Counts.Tasks)
+	fmt.Fprintf(writer, "  evidence\t%d (%d attempts)\n", output.Counts.Evidence, output.Counts.EvidenceAttempts)
+	fmt.Fprintf(writer, "  claims\t%d\n", output.Counts.Claims)
+	fmt.Fprintf(writer, "  messages\t%d\n", output.Counts.Messages)
+	if len(output.MessageScopes) > 0 {
+		for _, scope := range []string{"inbox", "outbox", "dead-letter"} {
+			if count, ok := output.MessageScopes[scope]; ok {
+				fmt.Fprintf(writer, "    %s\t%d\n", scope, count)
+			}
+		}
+	}
+	if output.Warning != "" {
+		fmt.Fprintln(writer)
+		fmt.Fprintf(writer, "warning:\t%s\n", output.Warning)
+	}
+	if err := writer.Flush(); err != nil {
+		fmt.Fprintf(stderr, "%s: cannot write output: %v\n", cliName, err)
 		return 1
 	}
 	return 0

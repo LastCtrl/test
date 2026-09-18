@@ -32,6 +32,8 @@ Desktop.ini
 .memory/evidence/
 .memory/claims/
 .memory/archive/*/
+# G2: SQLite index is a derived artifact (rebuild with `agent-hq index`)
+.memory/agent-hq.db*
 
 # Secrets
 .env

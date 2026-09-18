@@ -3887,3 +3887,40 @@ MCP_USED: ["sequential-thinking", "context7: offline (fetch failed; aiogram API 
 COMPLIANCE: true
 STATUS: resolved
 
+
+[2026-09-18 10:54] dev-3 -> team-lead:
+TYPE: update | PRIORITY: medium
+Project: сим-карты+бд
+CONTENT: Восстановлены report_build_v2.js и filials_build.js, собраны result_симкарты_бд_final.xlsx (6 листов) и filials/ (16 файлов). Приёмка сверкой с эталоном (result_reference_backup.xlsx): main — 0 расхождений — размеры листов 8321x18 / 1109x4 / 39534x31 / 15197x18 / 111632x13 / 94x4, шапки совпадают, autoFilter/views (xSplit 2/1) совпадают, ВСЕ 1109 строк «Совпадения (сгруппированные)» поэлементно равны эталону, все 95 ячеек «Сводки» (включая формулы SUM('Совпадения'!X:X | AE:AE | AD:AD)) равны, распределения «Дубликат IP» (matches 6606/32928, only1C 1328/13869), первые 30 строк листов «Совпадения»/«Только в БД»/«Некорректные IP (1С)» идентичны. Контрольные счётчики: Совпадения 39534, Только в 1С 15197, Только в БД 111632, Некорректные 8321 (пусто=6353, некорректный формат=1968), групп 1109, 10.177.0.30 count=820. Filials: 16/16 файлов, имена/3 листа/шапки совпадают; 15 файлов совпали точно (группы, суммы count, некорректные, «Строк в 1С», трафик flows/packets/bytes); 10.177.0.30 в РУП _Минскэнерго_ = 3 (как в эталоне), трафик Минскэнерго 45275/984541/757807820 совпадает.
+CONTENT: АНОМАЛИЯ ЭТАЛОНА: РУП _Минскэнерго_.xlsx имеет mtime 2026-09-15 (остальные 15 — 2026-09-02) и расходится с main reference: лишняя строка «Некорректных (до фильтров)»=442 (её нет в остальных 15) и отсутствует src 172.19.255.254 (2 DB-строки, flows=0) → sum count 45 вместо 47 при main «Совпадения»=47. Вывод: файл перегенерирован поздней версией/данными. Я генерирую консистентно с main (match=47, groups=35, traffic совпадает), лишнюю строку «до фильтров» не добавляю (ТЗ требует упрощённую сводку).
+CONTENT: НОРМАЛИЗАЦИЯ: ip_normalize.js (dev-1) с recoverIPv4 (канонизация ведущих нулей + neighbor-check) даёт 6 расхождений matched-keys vs эталон. Чтобы выходы совпали, report_build_v2.js/filials_build.js ПЕРЕсчитывают IP из поля raw по каноническому правилу: remove ¶; remove whitespace; [Юю]→'.'; '+'→'.'; ','→'.'; если есть '/': заменить на '.' только когда в строке нет '.', иначе удалить '/'; collapse '..'; строгий IPv4 (октеты ≤255, без ведущих нулей) или первый 4-октетный substring. Правило получено grid-search'ом: 0 расхождений по всем 8321 некорректным строкам; сырые 37933/15841/1975/36365 и отфильтрованные 37923/8321 — точно. ip_normalized.json не менялся.
+CONTENT: Файлы: projects/сим-карты+бд/report_build_v2.js, filials_build.js, result_симкарты_бд_final.xlsx, compare_log_v2.txt, filials/*.xlsx. Backups: result_reference_backup.xlsx (по ТЗ), filials_reference_backup/ (для сверки). Временные analyze_*/inspect_*/eval_*/grid_*/verify* скрипты, ip_normalized.json и db_rows.json удалены после успешной проверки. Фоновых процессов/портов не осталось.
+NOT ENOUGH EVIDENCE: context7 недоступен (fetch failed) — API exceljs/xlsx проверены эмпирически прогоном (views/формулы/autoFilter совпали с эталоном).
+SKILLS_LOADED: ["evidence-discipline"]
+MCP_USED: ["sequential-thinking", "context7: offline (fetch failed)"]
+COMPLIANCE: true
+STATUS: resolved
+
+================================================================================
+[2026-09-18 11:20] qa-engineer -> team-lead:
+TYPE: update | PRIORITY: medium
+Project: agent-hq
+CONTENT: US-016 push+UX (AC 16.6/16.12/16.15/16.16) приёмка: ПРИНЯТО, дефектов нет. Артефакты прогонов: tests/test-bridge-push.ps1 -> checks=31 failed=0 exit 0; bridge.py --selftest -> passed=186 failed=0 exit 0; --demo-push exit 0 (5 событий -> 3 сообщения: critical silent=False, reject/done silent=True, tick1 sent=3 / tick2 sent=0 анти-дубль, cap 5/тик). Независимая проверка своими фикстурами (17/17, exit 0): фейковый PRIORITY:critical в CONTENT/середине строки -> нет событий (a1-a6); ярусы instant/тихие (b1-b3); анти-дубль по тикам + переживает рестарт state (c1-c5); hard cap: 8 запланировано -> 5 отправлено (d2); шторм 20/ч -> 0 (e1). Read-only: 58 хэшей .memory+CONTEXT-BUFFER идентичны до/после demo; git diff по ним пустой. Безопасность: токен только env:TG_TOKEN (bridge.py:2219), grep subprocess/schtasks/winreg/os.system/os.popen = 0 совпадений, SQLite ?mode=ro + PRAGMA query_only=1 + SELECT-guard (bridge.py:365-377,500-506), source-guard (_forbidden_tokens, bridge.py:2937). schtasks agent-hq-telegram-bridge НЕ зарегистрирован (Get-ScheduledTask -> not found), README:222 помечен «НЕ зарегистрирована». Регресс verify-phase 41/41 exit 0. Тест: UTF-8 BOM есть, окончания LF — на PS 5.1 работает. Minor notes (не блокирующие): 1) continuation-строка внутри CONTENT, начинающаяся ровно с «PRIORITY: critical», была бы распознана полем (setdefault защищает штатный формат; теоретический hardening, AC 16.12 не нарушен); 2) ALIASES=33 при спецификации ~20-30. Мусора/процессов после прогонов нет, temp qa_us016_* удалены. Багов для KNOWLEDGE-BASE не найдено.
+SKILLS_LOADED: ["evidence-discipline"]
+MCP_USED: ["sequential-thinking"]
+COMPLIANCE: true
+STATUS: resolved
+================================================================================
+
+================================================================================
+[2026-09-18] team-lead -> bus: US-016 push+UX ПРИНЯТО
+TYPE: update | PRIORITY: medium
+================================================================================
+Коммит e5d87d9. Push-тиры (critical/dead-letter instant; reject/done digest), cap 5/тик, storm 20/ч, дедуп в state, /alerts; UX setMyCommands(8)+inline refresh; tick-lock. selftest 186, tests 31. Приёмка qa-engineer ПРИНЯТО (2 minor). schtasks-команда подготовлена (НЕ зарегистрирована).
+Оценки: dev-1 9, qa-engineer 9.
+ОСТАЛОСЬ: US-016 v2 (reply/run/per-project), schtasks-регистрация (нужен ОК), Go-фаза (тулчейн отсутствует).
+SKILLS_LOADED: []
+MCP_USED: []
+COMPLIANCE: true
+STATUS: resolved
+================================================================================

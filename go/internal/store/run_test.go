@@ -181,6 +181,38 @@ func TestDurableAttemptsArePreserved(t *testing.T) {
 	}
 }
 
+// TestAttemptIDDefaultsAndFinishDoesNotBlank guards BUG-029 at the store layer:
+// a blank AttemptID is filled from the assigned sequence, and finishing with an
+// empty id must not erase the stored one.
+func TestAttemptIDDefaultsAndFinishDoesNotBlank(t *testing.T) {
+	handle := openRunStore(t, newRoot(t))
+
+	sequence, err := handle.StartAttempt(RunAttempt{TaskID: "run-id", Agent: "dev-2",
+		Executor: "fake", Status: RunRunning})
+	if err != nil {
+		t.Fatalf("StartAttempt: %v", err)
+	}
+	attempts, err := handle.RunAttempts("run-id")
+	if err != nil || len(attempts) != 1 {
+		t.Fatalf("RunAttempts = %+v, %v; want one attempt", attempts, err)
+	}
+	if attempts[0].AttemptID != "attempt-1" {
+		t.Fatalf("default attempt_id = %q, want attempt-1", attempts[0].AttemptID)
+	}
+
+	if finished, err := handle.FinishAttempt(RunAttempt{TaskID: "run-id", Seq: sequence,
+		Status: RunSuccess}); err != nil || !finished {
+		t.Fatalf("FinishAttempt = %v, %v; want true, nil", finished, err)
+	}
+	attempts, _ = handle.RunAttempts("run-id")
+	if attempts[0].AttemptID != "attempt-1" {
+		t.Errorf("attempt_id after empty finish = %q, want the stored attempt-1", attempts[0].AttemptID)
+	}
+	if attempts[0].Status != RunSuccess {
+		t.Errorf("attempt status = %q, want %q", attempts[0].Status, RunSuccess)
+	}
+}
+
 func TestRunEventsAreAppendOnly(t *testing.T) {
 	handle := openRunStore(t, newRoot(t))
 	for _, kind := range []string{EventClaimAcquired, EventAttemptStarted, EventRunFinished} {

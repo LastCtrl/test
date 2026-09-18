@@ -2,7 +2,8 @@
 
 Go-фаза control plane из `AUDIT-CONSOLIDATED-2026-09-14.md`: G1 — read-only
 инспекция состояния, G2 — SQLite-индекс, G3-M1 — версионируемый Executor и
-durable write-path (claim/attempt/event в SQLite). Движок на PowerShell
+durable write-path (claim/attempt/event в SQLite), G3-M2 — устойчивость к
+падениям (heartbeat, watchdog/recovery, checkpoint). Движок на PowerShell
 остаётся основным: Go-путь сосуществует с ним и не изменяет PS-скрипты.
 
 ## Границы этапов
@@ -12,13 +13,16 @@ durable write-path (claim/attempt/event в SQLite). Движок на PowerShell
 - G1: чтение состояния (evidence, claims, очереди проектов, шина);
 - G2: SQLite-индекс `.memory/agent-hq.db` (схема v1) с freshness-фолбэком;
 - G3-M1: версионируемый `Executor`, команда `run`, durable write-path
-  (`run_claims`, `runs`, `run_attempts`, `run_events`, схема v2).
+  (`run_claims`, `runs`, `run_attempts`, `run_events`, схема v2);
+- G3-M2: heartbeat-петля во время `run`, `agent-hq recover` (watchdog: stale
+  running-attempts → `stale`/`queued`, освобождение аренды, идемпотентно),
+  `agent-hq checkpoint` (durable handoff), схема v3.
 
 Сознательно НЕ сделано (следующие этапы):
 
-- watchdog, heartbeat-петля, checkpoint/handoff и restart (M2);
+- автоматический restart/резюм самого воркера из checkpoint (M2 хранит
+  состояние для продолжения, но не перезапускает OpenCode-сессию);
 - daemon, worker pool, scheduler, RBAC;
-- stale-sweep durable-аренд (в M1 аренда освобождается в `defer`);
 - запись файлового состояния — по-прежнему на PowerShell-скриптах; PS-движок
   остаётся основным, Go-путь его не заменяет и не изменяет.
 
@@ -72,14 +76,17 @@ go\bin\agent-hq.exe doctor
 | `leases` | аренды (claim) и их состояние по TTL | `-ttl <секунды>`, `-stale` |
 | `evidence <id>` | детали одного evidence-документа (попытки, exit code, длительности, длины и SHA256 stdout/stderr) | — |
 | `doctor` | здоровье каталогов и конфигов, версия CLI | — |
-| `run <agent> <text>` | claim в SQLite, запуск через Executor, durable-запись результата | `-executor opencode\|fake`, `-id <id>`, `-model <имя>`, `-lease <секунд>` |
+| `run <agent> <text>` | claim в SQLite, запуск через Executor, heartbeat аренды, durable-запись результата | `-executor opencode\|fake`, `-id <id>`, `-model <имя>`, `-lease <секунд>` |
+| `recover` | watchdog: stale running-attempts → `stale` (или `queued`), освобождение аренды, события; идемпотентно | `-requeue`/`-Requeue`, `-ttl <секунды>` |
+| `checkpoint save\|list\|latest <run-id>` | durable handoff-точки задачи | `-state <текст>`, `-path <артефакт>` |
 | `version` | версия CLI | — |
 
 Все команды поддерживают `-json`.
 
 Коды выхода: `0` — успех; `1` — проблемы (не найден evidence-документ,
-нездоровый `doctor`, неуспешный/пропущенный `run`); `2` — ошибка
-использования CLI.
+нездоровый `doctor`, неуспешный/пропущенный `run`, нет чекпоинтов у
+`checkpoint latest`); `2` — ошибка использования CLI. `recover` без stale-записей
+завершается `0`.
 
 ## G3-M1: Executor и write-path
 
@@ -133,15 +140,77 @@ agent-hq run <agent> "текст" [-executor opencode|fake] [-id <id>] [-json]
 задел для M2 (watchdog/recovery). Повторный `run` с тем же
 `-id` не теряет прошлые попытки: `run_attempts` только дополняется.
 
-Watchdog/heartbeat-петля и checkpoint — вне M1.
+Watchdog/heartbeat-петля и checkpoint — этап M2 (ниже).
+
+## G3-M2: устойчивость к падениям (heartbeat, watchdog, checkpoint)
+
+Цель M2 — задача не теряется и не «залипает», если воркер упал, завис или был
+убит. Все механизмы работают только с собственной БД root (`agent-hq.db`) и не
+пишут в файлы, которыми владеет PowerShell.
+
+### Heartbeat
+
+Пока `Executor.Execute` выполняется, горутина-тикер обновляет `run_claims.heartbeat_at`
+(owner-guarded `UPDATE`). Интервал = треть аренды (`lease_seconds/3`), минимум
+1 с; при `-lease 300` это каждые 100 с. Аренда по умолчанию — 900 с. Ошибки
+heartbeat пишутся событием `heartbeat.error` (не глотаются). Тикер
+останавливается через `defer` до освобождения аренды, поэтому после завершения
+run ничего не «дозванивается».
+
+### Watchdog / recovery
+
+```
+agent-hq recover [-requeue] [-ttl <секунды>] [-json] [-root <path>]
+```
+
+`recover` находит `run_attempts` со статусом `running`, у которых heartbeat
+старше аренды (LEFT JOIN к `run_claims` по `task_id`; нет claim — берётся
+`started_at` и аренда по умолчанию). Возраст считается в Go по тем же правилам,
+что и файловый sweep (`state.EvaluateClaims`): неразбираемый heartbeat = stale.
+Для каждого такого attempt в одной транзакции:
+
+1. `run_attempts.status = 'stale'`, `finished_at`, `error = <reason>`;
+2. аренда удаляется, только если её всё ещё держит тот же owner (`DELETE ... WHERE owner = ?`);
+3. `runs.status = 'stale'` (или `'queued'` при `-requeue`, payload сохраняется);
+4. события `attempt.stale` и `run.stale` (или `recover.requeued`).
+
+Операция идемпотентна: апдейт защищён `WHERE status = 'running'`, повторный
+прогон возвращает `recovered: 0` и не добавляет событий. `-ttl N` заменяет
+аренду для всех записей (окно watchdog без правки claim). `-requeue` —
+**только БД**: run помечается `queued`, payload остаётся; файлы inbox/queue не
+трогаются (их ведёт PowerShell), повторный запуск — за будущим scheduler.
+
+### Checkpoint
+
+```
+agent-hq checkpoint save <run-id> [-state <текст>] [-path <артефакт>] [-json]
+agent-hq checkpoint list <run-id> [-json]
+agent-hq checkpoint latest <run-id> [-json]
+```
+
+Формат `run_checkpoints` зафиксирован (append-only):
+
+| Поле | Тип | Смысл |
+|------|-----|-------|
+| `run_id` | TEXT | id задачи/run (natural key) |
+| `seq` | INTEGER | 1-based, монотонно на `run_id`, назначает store |
+| `path` | TEXT | артефакт последнего шага (может быть пустым) |
+| `state` | TEXT | свободный текст handoff-состояния (store его не разбирает) |
+| `created_at` | TEXT | UTC RFC3339Nano (назначается, если пусто) |
+
+Повторный `save` с тем же `path`+`state`, что у последнего чекпоинта, не
+добавляет дубликат (возвращает `seq` существующего). Другой state всегда
+добавляется.
 
 ### Хранилище
 
-Схема SQLite поднята до версии 2 (append-only миграция v1→v2): добавлены
-`run_claims`, `runs`, `run_attempts`, `run_events`. Они авторитетны и не
-входят в full-resync `agent-hq index`, поэтому переиндексация файлов историю
-запусков не затирает. Индекс G2 (`projects/tasks/evidence/claims/messages`)
-не изменён.
+Схема SQLite поднята до версии 3 (append-only миграции v1→v2→v3): v2 добавила
+`run_claims`, `runs`, `run_attempts`, `run_events`; v3 — `run_checkpoints`.
+Все v3-операторы — `CREATE ... IF NOT EXISTS`, поэтому прерванную миграцию
+можно безопасно повторить (ALTER TABLE сознательно не используется: heartbeat
+attempt выводится из аренды задачи). Таблицы авторитетны и не входят в
+full-resync `agent-hq index`, поэтому переиндексация файлов историю запусков
+не затирает. Индекс G2 (`projects/tasks/evidence/claims/messages`) не изменён.
 
 ## Форматы состояния (что читает CLI)
 
@@ -180,7 +249,9 @@ Watchdog/heartbeat-петля и checkpoint — вне M1.
 go/
   go.mod                    module agent-hq (SQLite через modernc.org/sqlite)
   cmd/agent-hq/main.go      CLI: подкоманды, флаги, вывод (text/JSON)
-  cmd/agent-hq/run.go       команда run: claim, durable-запись, Executor
+  cmd/agent-hq/run.go       команда run: claim, heartbeat, durable-запись, Executor
+  cmd/agent-hq/recover.go   команда recover: watchdog stale-attempts
+  cmd/agent-hq/checkpoint.go команда checkpoint: durable handoff
   internal/state/
     root.go                 корень, пути, листинг JSON-файлов, снятие BOM
     time.go                 разбор/форматирование времени, возраст
@@ -192,13 +263,15 @@ go/
     doctor.go               проверки окружения
     state_test.go           юнит-тесты парсеров
   internal/store/
-    store.go                открытие/миграции SQLite (schema v2)
-    schema.go               схема индекса (v1) и write-path (v2)
+    store.go                открытие/миграции SQLite (schema v3)
+    schema.go               схема индекса (v1), write-path (v2), recovery (v3)
     index.go                full-resync индекса из файлов
     query.go                чтение индекса
     fingerprint.go          fingerprint состояния для freshness
     run.go                  durable claim/run/attempt/event
-    *_test.go               тесты индекса и write-path
+    recover.go              stale-attempts и атомарный recover
+    checkpoint.go           run_checkpoints: save/list/latest
+    *_test.go               тесты индекса, write-path, recovery, checkpoint
   internal/executor/
     executor.go             интерфейс Executor, TaskSpec, Result, Classify
     opencode.go             OpenCodeExecutor через vault-враппер

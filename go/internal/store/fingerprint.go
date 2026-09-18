@@ -14,7 +14,7 @@ import (
 // Fingerprint returns a stable digest of the state files the index covers.
 //
 // It hashes the relative path, size and modification time of every evidence
-// document, task lease, project queue and bus message — the same file sets the
+// document, task lease, project queue and bus message - the same file sets the
 // loaders in package state read. File content is deliberately not hashed: the
 // index only needs re-reading when an artifact appeared, disappeared or was
 // rewritten, so a stat-only scan keeps the freshness check cheap enough to run

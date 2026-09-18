@@ -22,12 +22,12 @@ import (
 
 const (
 	cliName = "agent-hq"
-	version = "0.3.0-g3m1"
+	version = "0.4.0-g3m2"
 )
 
 const usageText = `agent-hq <command> [flags]
 
-State view of the agent-hq repository (G1 readers, G2 SQLite index).
+State view of the agent-hq repository (G1 readers, G2 SQLite index, G3 durable runs/recovery).
 
 Commands:
   status              counters and recent activity
@@ -38,6 +38,8 @@ Commands:
   db status           report what the SQLite index contains
   doctor              health of directories and configs
   run <agent> <text>  claim an id, execute it through an Executor and record the result
+  recover             mark stale running attempts stale, release their lease (flags: -requeue, -ttl)
+  checkpoint <op>     save|list|latest durable handoff points of a run
   version             print the CLI version
 
 Shared flags (before or after the command):
@@ -59,6 +61,9 @@ Examples:
   agent-hq doctor -json
   agent-hq run dev-2 "summarise the open tasks" -executor fake
   agent-hq run dev-2 "summarise the open tasks" -executor opencode -json
+  agent-hq recover -json
+  agent-hq recover -requeue
+  agent-hq checkpoint save run-1 -state "step 2 done" -path src/app.go
 `
 
 func main() {
@@ -98,6 +103,10 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return runDoctor(globals, commandArgs, stdout, stderr)
 	case "run":
 		return runRun(globals, commandArgs, stdout, stderr)
+	case "recover":
+		return runRecover(globals, commandArgs, stdout, stderr)
+	case "checkpoint":
+		return runCheckpoint(globals, commandArgs, stdout, stderr)
 	default:
 		fmt.Fprintf(stderr, "%s: unknown command %q\n\n%s", cliName, rest[0], usageText)
 		return 2

@@ -28,8 +28,9 @@ const (
 	// DBFileName is the index database file name inside <root>/.memory.
 	DBFileName = "agent-hq.db"
 	// SchemaVersion is the schema revision this build creates and understands.
-	// v2 adds the durable write path (run claims, runs, attempts, events).
-	SchemaVersion = 2
+	// v2 adds the durable write path (run claims, runs, attempts, events);
+	// v3 adds run checkpoints for recovery/handoff.
+	SchemaVersion = 3
 )
 
 // ErrNotIndexed reports that no index database exists for a root. Callers use
@@ -161,6 +162,12 @@ func migrate(db *sql.DB, path string) error {
 			return fmt.Errorf("upgrade schema in %s: %w", path, err)
 		}
 		current = 2
+	}
+	if current == 2 && SchemaVersion >= 3 {
+		if err := apply(db, schemaV3); err != nil {
+			return fmt.Errorf("upgrade schema in %s: %w", path, err)
+		}
+		current = 3
 	}
 	if current != SchemaVersion {
 		return fmt.Errorf("index %s has schema version %d, cannot upgrade to %d", path, current, SchemaVersion)

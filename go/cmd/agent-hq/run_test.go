@@ -65,6 +65,9 @@ func TestExecuteRunFakeSuccess(t *testing.T) {
 		attempts[0].StdoutSHA256 == "" || attempts[0].StdoutLength == nil || *attempts[0].StdoutLength == 0 {
 		t.Errorf("attempts = %+v, want one finished success record with a hash and length", attempts)
 	}
+	if attempts[0].AttemptID != "attempt-1" {
+		t.Errorf("attempt_id = %q, want %q persisted in the database", attempts[0].AttemptID, "attempt-1")
+	}
 
 	claims, err := handle.RunClaims()
 	if err != nil {
@@ -158,6 +161,32 @@ func TestExecuteRunDurableAcrossRuns(t *testing.T) {
 	}
 }
 
+// TestExecuteRunPersistsAttemptID guards BUG-029: the attempt_id column must be
+// populated for every attempt, including the first, and survive the finish
+// write.
+func TestExecuteRunPersistsAttemptID(t *testing.T) {
+	handle := openCmdStore(t, newCmdRoot(t))
+	spec := executor.TaskSpec{ID: "run-attempt-id", Agent: "dev-2", Payload: "do work"}
+
+	executeRun(context.Background(), handle,
+		executor.NewFakeExecutor(executor.FakeSuccess), spec, "owner-1", 60)
+	executeRun(context.Background(), handle,
+		executor.NewFakeExecutor(executor.FakeFail), spec, "owner-2", 60)
+
+	attempts, err := handle.RunAttempts("run-attempt-id")
+	if err != nil {
+		t.Fatalf("RunAttempts: %v", err)
+	}
+	if len(attempts) != 2 {
+		t.Fatalf("attempts = %d, want 2", len(attempts))
+	}
+	for index, want := range []string{"attempt-1", "attempt-2"} {
+		if attempts[index].AttemptID != want {
+			t.Errorf("attempt %d attempt_id = %q, want %q", index+1, attempts[index].AttemptID, want)
+		}
+	}
+}
+
 func TestExecuteRunExecutorError(t *testing.T) {
 	handle := openCmdStore(t, newCmdRoot(t))
 	outcome := executeRun(context.Background(), handle, executor.NewFakeExecutor(executor.FakeMode("bogus")),
@@ -223,4 +252,64 @@ func hasEvent(events []store.RunEvent, kind string) bool {
 		}
 	}
 	return false
+}
+
+// TestStartHeartbeatRefreshesLease exercises the M2 ticker: while it runs, the
+// lease heartbeat advances, and stop is idempotent.
+func TestStartHeartbeatRefreshesLease(t *testing.T) {
+	handle := openCmdStore(t, newCmdRoot(t))
+	if acquired, err := handle.AcquireClaim(store.ClaimRequest{TaskID: "run-hb", Owner: "beat",
+		LeaseSeconds: 60, Now: time.Now()}); err != nil || !acquired {
+		t.Fatalf("seed claim = %v, %v", acquired, err)
+	}
+	claims, err := handle.RunClaims()
+	if err != nil || len(claims) != 1 {
+		t.Fatalf("RunClaims = %+v, %v; want one claim", claims, err)
+	}
+	before := claims[0].HeartbeatAt
+
+	heartbeatIntervalOverride = 20 * time.Millisecond
+	t.Cleanup(func() { heartbeatIntervalOverride = 0 })
+
+	stop := startHeartbeat(handle, "run-hb", "beat", 60, nil)
+	time.Sleep(120 * time.Millisecond)
+	stop()
+	stop() // must be idempotent and must not panic
+
+	claims, err = handle.RunClaims()
+	if err != nil || len(claims) != 1 {
+		t.Fatalf("RunClaims after heartbeat = %+v, %v", claims, err)
+	}
+	if claims[0].HeartbeatAt == before {
+		t.Errorf("heartbeat was not refreshed: still %q", before)
+	}
+}
+
+// TestExecuteRunHeartbeatsAndReleases checks that a slow fake worker finishes
+// cleanly with the ticker running: the lease is released and no heartbeat error
+// is recorded.
+func TestExecuteRunHeartbeatsAndReleases(t *testing.T) {
+	handle := openCmdStore(t, newCmdRoot(t))
+	heartbeatIntervalOverride = 20 * time.Millisecond
+	t.Cleanup(func() { heartbeatIntervalOverride = 0 })
+
+	worker := executor.NewFakeExecutor(executor.FakeSuccess)
+	worker.Delay = 150 * time.Millisecond
+	outcome := executeRun(context.Background(), handle, worker,
+		executor.TaskSpec{ID: "run-hblong", Agent: "dev-2", Payload: "do work"}, "owner-1", 60)
+
+	if outcome.Status != string(executor.StatusSuccess) {
+		t.Fatalf("outcome = %+v, want success", outcome)
+	}
+	claims, err := handle.RunClaims()
+	if err != nil || len(claims) != 0 {
+		t.Errorf("claims = %+v, %v; want the lease released", claims, err)
+	}
+	events, err := handle.RunEvents("run-hblong")
+	if err != nil {
+		t.Fatalf("RunEvents: %v", err)
+	}
+	if hasEvent(events, store.EventHeartbeatError) {
+		t.Errorf("heartbeat errors recorded: %+v", events)
+	}
 }

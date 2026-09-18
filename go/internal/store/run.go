@@ -17,6 +17,12 @@ const (
 	RunFailed  = "failed"
 	RunTimeout = "timeout"
 	RunError   = "error"
+	// RunStale is written by the M2 watchdog when a running attempt stopped
+	// refreshing its lease (crash, kill or hang) while the worker may still
+	// hold the process. RunQueued is written instead when recovery is asked to
+	// requeue the task for another attempt.
+	RunStale  = "stale"
+	RunQueued = "queued"
 )
 
 // Run lifecycle event kinds. Events are append-only and are the substrate the
@@ -28,6 +34,11 @@ const (
 	EventAttemptStarted  = "attempt.started"
 	EventAttemptFinished = "attempt.finished"
 	EventRunFinished     = "run.finished"
+	// M2 durability events.
+	EventHeartbeatError  = "heartbeat.error"
+	EventAttemptStale    = "attempt.stale"
+	EventRunStale        = "run.stale"
+	EventRecoverRequeued = "recover.requeued"
 )
 
 // DefaultRunLeaseSeconds is used when a caller requests no explicit lease.
@@ -261,6 +272,11 @@ const insertAttemptSQL = `INSERT INTO run_attempts
 // StartAttempt appends a running attempt and returns its sequence number. The
 // row is written BEFORE the worker starts, so a crash leaves a visible attempt
 // instead of a silent gap (crash-safe ordering).
+//
+// When the caller leaves AttemptID blank it is derived from the sequence number
+// assigned here (the authoritative value), so the column is never empty even if
+// the process dies before FinishAttempt. Deriving it inside the transaction
+// avoids a read-then-write race between the caller and a concurrent attempt.
 func (s *Store) StartAttempt(attempt RunAttempt) (int, error) {
 	if strings.TrimSpace(attempt.TaskID) == "" {
 		return 0, errors.New("start attempt: empty id")
@@ -275,6 +291,9 @@ func (s *Store) StartAttempt(attempt RunAttempt) (int, error) {
 	if err := tx.QueryRow("SELECT COALESCE(MAX(seq), 0) + 1 FROM run_attempts WHERE task_id = ?",
 		attempt.TaskID).Scan(&seq); err != nil {
 		return 0, fmt.Errorf("next attempt %s: %w", attempt.TaskID, err)
+	}
+	if strings.TrimSpace(attempt.AttemptID) == "" {
+		attempt.AttemptID = fmt.Sprintf("attempt-%d", seq)
 	}
 	if _, err := tx.Exec(insertAttemptSQL, attempt.TaskID, seq, attempt.AttemptID, attempt.Agent,
 		attempt.Executor, attempt.Command, nullableInt(attempt.ExitCode), attempt.StdoutSHA256,
@@ -291,6 +310,7 @@ func (s *Store) StartAttempt(attempt RunAttempt) (int, error) {
 }
 
 const finishAttemptSQL = `UPDATE run_attempts SET
+		attempt_id = COALESCE(NULLIF(?, ''), attempt_id),
 		exit_code = ?, stdout_sha256 = ?, stdout_length = ?, stderr_sha256 = ?,
 		stderr_length = ?, finished_at = ?, duration_ms = ?, status = ?, error = ?
 	WHERE task_id = ? AND seq = ?`
@@ -302,10 +322,10 @@ func (s *Store) FinishAttempt(attempt RunAttempt) (bool, error) {
 	if strings.TrimSpace(attempt.TaskID) == "" {
 		return false, errors.New("finish attempt: empty id")
 	}
-	result, err := s.db.Exec(finishAttemptSQL, nullableInt(attempt.ExitCode), attempt.StdoutSHA256,
-		nullableInt(attempt.StdoutLength), attempt.StderrSHA256, nullableInt(attempt.StderrLength),
-		attempt.FinishedAt, nullableInt64(attempt.DurationMS), attempt.Status, attempt.Error,
-		attempt.TaskID, attempt.Seq)
+	result, err := s.db.Exec(finishAttemptSQL, attempt.AttemptID, nullableInt(attempt.ExitCode),
+		attempt.StdoutSHA256, nullableInt(attempt.StdoutLength), attempt.StderrSHA256,
+		nullableInt(attempt.StderrLength), attempt.FinishedAt, nullableInt64(attempt.DurationMS),
+		attempt.Status, attempt.Error, attempt.TaskID, attempt.Seq)
 	if err != nil {
 		return false, fmt.Errorf("finish attempt %s/%d: %w", attempt.TaskID, attempt.Seq, err)
 	}

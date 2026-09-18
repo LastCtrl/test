@@ -3,7 +3,7 @@ package store
 // schemaV1 is the initial index schema.
 //
 // Shape notes:
-//   - String columns are NOT NULL DEFAULT ” so scans never need NullString;
+//   - String columns use an empty default (NOT NULL), so scans never need NullString;
 //     only the optional numeric fields written by the evidence/queue tooling
 //     (exit_code, lengths, duration, pid, retries) are nullable, which lets the
 //     read path rebuild the original *int / *int64 pointers exactly.
@@ -192,4 +192,28 @@ var schemaV2 = []string{
 	`CREATE INDEX IF NOT EXISTS idx_run_attempts_status ON run_attempts (status)`,
 	`CREATE INDEX IF NOT EXISTS idx_run_events_task ON run_events (task_id, id)`,
 	`CREATE INDEX IF NOT EXISTS idx_runs_status ON runs (status)`,
+}
+
+// schemaV3 adds the M2 durability layer: run checkpoints, the handoff state a
+// long task can resume from, plus the index the watchdog uses to look up
+// checkpoints by creation time.
+//
+// The attempt heartbeat is deliberately NOT a new column. A running attempt
+// belongs to the task lease in run_claims, and `agent-hq run` refreshes that
+// lease with a ticker, so recovery joins run_attempts to run_claims by task_id
+// and evaluates the heartbeat age against the lease in Go -- the same rule the
+// file-based sweep applies to .claim.json. Keeping v3 to CREATE ... IF NOT
+// EXISTS statements makes the migration safe to re-run after an interrupted
+// upgrade, which an ALTER TABLE would not be.
+var schemaV3 = []string{
+	`CREATE TABLE IF NOT EXISTS run_checkpoints (
+		run_id     TEXT NOT NULL,
+		seq        INTEGER NOT NULL,
+		path       TEXT NOT NULL DEFAULT '',
+		state      TEXT NOT NULL DEFAULT '',
+		created_at TEXT NOT NULL DEFAULT '',
+		PRIMARY KEY (run_id, seq)
+	)`,
+
+	`CREATE INDEX IF NOT EXISTS idx_run_checkpoints_created ON run_checkpoints (created_at)`,
 }

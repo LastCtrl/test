@@ -1,4 +1,4 @@
-# Knowledge Base — agent-hq
+﻿# Knowledge Base — agent-hq
 
 ## Bugs & Solutions
 
@@ -448,3 +448,36 @@
 - **Метка «Совпадения (строки)» в Сводке филиала = число групп, а не строк.** `filials_build.js:137-138` пишет `f.groups.size` под заголовком «Совпадения (строки)»; для РУП «Минскэнерго» это 35 групп при 47 match-строках. Идентично эталону `filials_reference_backup/` 1-в-1 → не регрессия восстановления; при следующем витке отчётов переименовать метку в «Совпадения (уникальных src_host)» или менять семантику только вместе с эталоном. Severity: minor (косметика/читаемость).
 - **Пример описания в ТЗ нормализован.** Ожидаемое «ads9|Windows 2022 Standard| …» в источнике `filial_descriptions.json:15` и в XLSX имеет двойной пробел «2022  Standard» — при автосверке использовать точное значение из JSON, не текст ТЗ. Severity: informational (методика приёмки).
 - **PowerShell-ловушка сравнения certutil-хэшей.** `Select-String -NotMatch` возвращает MatchInfo; `-eq` двух MatchInfo даёт False при идентичных строках хэша. Для сверки файлов — `Get-FileHash … .Hash` (строка) или `$a.Line -eq $b.Line`. Иначе ложный «hash mismatch». Severity: informational (методика QA).
+
+
+### BUG-029: Go G3-M1 — колонка run_attempts.attempt_id всегда пустая (minor, QA-приёмка 2026-09-18, не блокирует)
+- **Суть:** `go/cmd/agent-hq/run.go:148-158` — `StartAttempt` вызывается ДО присвоения `spec.AttemptID = fmt.Sprintf("attempt-%d", seq)` (run.go:158), а `FinishAttempt` (run.go:175-181) не передаёт AttemptID. В БД колонка `run_attempts.attempt_id` остаётся `''` (проверено прямым чтением sqlite temp-корня: обе записи QAID1 с attempt_id='' при seq=1,2). Идентификатор attempt существует только в `run_events.detail` («attempt-1») и в env-хуке `AGENT_HQ_ATTEMPT_ID` (после run.go:158). Функциональность (durability, claim, classify) не нарушена — колонка «мёртвая». Фикс: передавать AttemptID в StartAttempt/FinishAttempt либо убрать колонку из схемы.
+- **Discovered by**: qa-engineer независимая приёмка US-016 v2 / Go G3-M1 / бэклог 2026-09-18.
+- **Status**: FIXED (2026-09-18, dev-3) — см. Resolution.
+- **Resolution (dev-3)**:
+  - `StartAttempt` (`go/internal/store/run.go:264`) при пустом `AttemptID` выводит его из присвоенного в ТОЙ ЖЕ транзакции `seq` (`fmt.Sprintf("attempt-%d", seq)`) до INSERT — колонка заполнена уже в записи write-before (crash-safe: id есть даже если процесс умрёт до `FinishAttempt`). Вывод из `seq` внутри транзакции выбран вместо «вычислить id в run.go до StartAttempt», потому что `seq` назначается самим store, а read-then-write в вызывающем коде дал бы гонку и потенциальный рассинхрон `attempt_id` ↔ `seq`.
+  - `finishAttemptSQL` (`go/internal/store/run.go`) обновляет `attempt_id = COALESCE(NULLIF(?, ''), attempt_id)`: `executeRun` (`go/cmd/agent-hq/run.go:175`) передаёт `AttemptID: spec.AttemptID`, но пустое значение не затирает уже сохранённый id.
+  - Регресс-тесты: `go/cmd/agent-hq/run_test.go` — новый `TestExecuteRunPersistsAttemptID` (success+fail → `attempt-1`/`attempt-2` непусты) и усиленный assert в `TestExecuteRunFakeSuccess`; `go/internal/store/run_test.go` — новый `TestAttemptIDDefaultsAndFinishDoesNotBlank` (дефолт из seq + пустой `FinishAttempt` не стирает id).
+  - Проверка (артефакты): sqlite-дамп temp-root после CLI `run fake -id QAID1` (2 попытки) → `seq=1 attempt_id="attempt-1" status=success`, `seq=2 attempt_id="attempt-2" status=failed`; `go build/vet/test ./...` exit 0 (все пакеты ok); `gofmt -l` пусто.
+
+### BUG-030: non-ASCII байты в комментариях Go-исходников (minor, QA-приёмка 2026-09-18)
+- **Суть:** grep по `go/**/*.go` находил 4 non-ASCII байта в 3 файлах: `go/internal/store/schema.go:6` (U+201D right double quotation mark в `DEFAULT ”`), `go/internal/store/fingerprint.go:17` (U+2014 em-dash), `go/internal/store/index.go:139` (две U+2014). ТЗ называло только schema.go:6 и ошибочно как U+2014 — фактически там U+201D (проверено байтами `E2 80 9D`). Нарушение конвенции «Go-источники ASCII».
+- **Root cause schema.go:6:** gofmt-форматтер doc-комментариев (Go 1.19+) преобразует пару апострофов `''` в `”` (U+201D) — probe: `// ... DEFAULT '' so` → `DEFAULT ” so`. Т.е. U+201D был результатом gofmt, а не рукописью.
+- **Status**: FIXED (2026-09-18, dev-3) — em-dash заменён на ASCII `-` в fingerprint.go/index.go; в schema.go формулировка переписана на ASCII без пары кавычек (`String columns use an empty default (NOT NULL), so scans never need NullString;`), чтобы gofmt не вернул U+201D.
+- **Проверка:** побайтовый скан `go/**/*.go` → NON_ASCII_HITS=0; `gofmt -l` пусто.
+- **Discovered by**: qa-engineer независимая приёмка 2026-09-18 (дополнено dev-3 при фиксе).
+
+### BUG-031: Go G3-M2 — truncateState режет state по байтам, ломает UTF-8 в `checkpoint list` (minor, QA-приёмка 2026-09-18, не блокирует)
+- **Суть:** `go/cmd/agent-hq/checkpoint.go:239` — `collapsed[:limit] + "..."` — среза по байтам (limit=60), не по рунам. Если 60-й байт попадает внутрь многобайтового символа (кириллица/эмодзи), в stdout CLI уходит несомплитный UTF-8. Воспроизведено на temp-root: `checkpoint save RUNE1 -state ('a'*59 + 'б' + 'tail')` → `checkpoint list` raw-bytes дамп: `61 61 D0 2E 2E 2E` — одиночный `D0` без continuation-байтов; декод → U+FFFD. JSON-путь не затронут (печатает полный state), данные в БД корректны — косметика текстового листинга.
+- **Фикс (для dev):** срезать по рунам: `r := []rune(collapsed); if len(r) > limit { return string(r[:limit]) + "..." }`.
+- **Discovered by**: qa-engineer независимая приёмка Go G3-M2 2026-09-18.
+- **Status**: OPEN (minor).
+
+### Minor-находки приёмки Go G3-M2 + BUG-029 fix (QA 2026-09-18, не блокируют)
+- **`recover -ttl <не-число>` молча игнорируется** (`go/cmd/agent-hq/recover.go:159-161`: невалидное значение не поднимает ошибку, ttl остаётся 0 = «без override»). Оператор может думать, что окно сужено/расширено, а применяется per-attempt lease. Предложение: писать warning в stderr. Severity: minor (UX).
+- **Zombie-writer после recover (design note):** `finishAttemptSQL`/`SaveRun` не имеют guard'а по статусу — если воркер жив, но heartbeat-пауза превысила lease (watchdog пометил stale и освободил claim, `-requeue` перевёл run в queued), завершившийся zombie-процесс перезапишет attempt `stale→success` и run `queued→success`. Классическая проблема без fencing-токена; heartbeat (lease/3) снижает вероятность; для M2 принято как известное ограничение, учитывать при M3-resumer. Severity: informational.
+
+### Minor-находки приёмки US-016 v2 + Go G3-M1 + бэклог (QA 2026-09-18, не блокируют)
+- **non-ASCII в комментариях Go.** FIXED (2026-09-18) — см. BUG-030: фактически было 4 байта в 3 файлах (schema.go:6 = U+201D, не U+2014; fingerprint.go:17, index.go:139 = U+2014). Severity: minor (косметика).
+- **Фикстура redaction в bridge.py матчит сканер секретов.** `projects/telegram-bridge/bridge.py:2747,3139` — фейковый ключ `<key-like-fixture>` (21 символ после `sk-`) совпадает с regex сканера `pre-commit-secrets.ps1:46` (`sk-[A-Za-z0-9][A-Za-z0-9_-]{19,}`). Сейчас безопасно: `/projects/` в `.gitignore:69`, файл не в VCS. При разгитигноре `/projects/` коммит будет заблокирован — тогда переименовывать фикстуру (конкатенация `"sk-"+"a"*20` уже применяется в :2827). «sk-» вхождения в doctor.ps1/test-doctor.ps1 — подстроки имён `task-state.ps1`/`task-enqueued`, сканер не триггерят (проверено regex'ом). Severity: informational (процессный риск на будущее).
+- **Ядро US-016 v2 вне VCS** — то же, что BUG-замечание 2026-09-17 (строка выше про `.gitignore /projects/`): bridge.py v2 (164 КБ, 4365 строк) существует только на диске; dev-1 раскрыл это в self-report. Решение за тимлидом. Severity: minor (process/risk).

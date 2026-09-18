@@ -136,7 +136,7 @@ const (
 // The whole resync runs in a single transaction, so a failure leaves the
 // previous index untouched and readers never observe a half-empty database. The
 // strategy is a full resync (clear then upsert): it is idempotent by
-// construction — indexing the same state twice yields the same rows — and it
+// construction - indexing the same state twice yields the same rows - and it
 // also drops rows whose source artifact disappeared, which a pure upsert would
 // leave behind.
 func (s *Store) Index(snapshot *state.Snapshot, fingerprint string, now time.Time) (Counts, error) {

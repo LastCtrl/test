@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"text/tabwriter"
 	"time"
 
@@ -159,6 +160,16 @@ func executeRun(ctx context.Context, handle *store.Store, worker executor.Execut
 	_, _ = handle.AppendEvent(store.RunEvent{TaskID: spec.ID, Attempt: seq,
 		Kind: store.EventAttemptStarted, Detail: spec.AttemptID, CreatedAt: stamp(time.Now())})
 
+	// A worker may outlive its lease, so the lease is refreshed from a ticker
+	// for as long as Execute runs. stopHeartbeat is deferred: it runs before
+	// the claim release registered above, so the lease is never refreshed
+	// after it was released.
+	stopHeartbeat := startHeartbeat(handle, spec.ID, owner, leaseSeconds, func(err error) {
+		_, _ = handle.AppendEvent(store.RunEvent{TaskID: spec.ID, Attempt: seq,
+			Kind: store.EventHeartbeatError, Detail: err.Error(), CreatedAt: stamp(time.Now())})
+	})
+	defer stopHeartbeat()
+
 	started := time.Now()
 	result, execErr := worker.Execute(ctx, spec)
 	finished := time.Now()
@@ -173,7 +184,7 @@ func executeRun(ctx context.Context, handle *store.Store, worker executor.Execut
 	stdoutLength := len(result.Stdout)
 	stderrLength := len(result.Stderr)
 	_, _ = handle.FinishAttempt(store.RunAttempt{
-		TaskID: spec.ID, Seq: seq, ExitCode: &result.ExitCode,
+		TaskID: spec.ID, Seq: seq, AttemptID: spec.AttemptID, ExitCode: &result.ExitCode,
 		StdoutSHA256: sumHex(result.Stdout), StdoutLength: &stdoutLength,
 		StderrSHA256: sumHex(result.Stderr), StderrLength: &stderrLength,
 		FinishedAt: finishedAt, DurationMS: durationPtr(result.Duration),
@@ -349,4 +360,68 @@ func durationPtr(duration time.Duration) *int64 {
 // stamp renders a UTC timestamp in the same shape the store uses.
 func stamp(value time.Time) string {
 	return value.UTC().Format(time.RFC3339Nano)
+}
+
+// heartbeat tuning: a lease is refreshed at a third of its lifetime, so a
+// worker survives two missed ticks before the watchdog would consider it
+// expired. Very short leases (and tests) clamp to the minimum interval.
+const (
+	heartbeatDivisor     = 3
+	minHeartbeatInterval = time.Second
+)
+
+// heartbeatIntervalOverride lets tests replace the lease-derived ticker with a
+// short interval. Zero means "derive from the lease".
+var heartbeatIntervalOverride time.Duration
+
+// heartbeatIntervalFor returns how often a lease of leaseSeconds must be
+// refreshed. A non-positive lease uses the store default.
+func heartbeatIntervalFor(leaseSeconds int) time.Duration {
+	if heartbeatIntervalOverride > 0 {
+		return heartbeatIntervalOverride
+	}
+	if leaseSeconds <= 0 {
+		leaseSeconds = store.DefaultRunLeaseSeconds
+	}
+	interval := time.Duration(leaseSeconds) * time.Second / heartbeatDivisor
+	if interval < minHeartbeatInterval {
+		interval = minHeartbeatInterval
+	}
+	return interval
+}
+
+// startHeartbeat refreshes the owner's lease on a ticker until the returned
+// stop function is called. The stop function is idempotent and waits for the
+// goroutine to finish, so no ticker outlives a run. A heartbeat error (for
+// example a database that went away) is reported to observe instead of being
+// swallowed; a lost lease is not an error here, because the owner-guarded
+// UPDATE simply affects no rows.
+func startHeartbeat(handle *store.Store, taskID, owner string, leaseSeconds int, observe func(error)) func() {
+	interval := heartbeatIntervalFor(leaseSeconds)
+	done := make(chan struct{})
+	stopped := make(chan struct{})
+	var once sync.Once
+
+	go func() {
+		defer close(stopped)
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-done:
+				return
+			case <-ticker.C:
+				if _, err := handle.HeartbeatClaim(taskID, owner, time.Now()); err != nil && observe != nil {
+					observe(err)
+				}
+			}
+		}
+	}()
+
+	return func() {
+		once.Do(func() {
+			close(done)
+			<-stopped
+		})
+	}
 }

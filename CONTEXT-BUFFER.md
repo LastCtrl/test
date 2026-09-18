@@ -4131,3 +4131,31 @@ MCP_USED: ["sequential-thinking"]
 COMPLIANCE: true
 STATUS: resolved
 ================================================================================
+
+[2026-09-18 13:50] qa-engineer -> team-lead:
+TYPE: update | PRIORITY: medium
+Project: agent-hq
+CONTENT: Независимая приёмка Go G3-M3 (self-healing) + BUG-031 fix (коммит af9cf83). ВЕРДИКТ: ВОЗВРАТЬ — 1 minor-дефект блокирует явный критерий ТЗ, остальное принято. ПРИНЯТО (артефакты прогонов): (1) go build/vet ./... exit 0; go test -count=1 ./... — ok все 5 пакетов (cmd/agent-hq 3.852s, internal/executor, internal/net, internal/state, internal/store); gofmt -l пусто. (2) net-check на реальном прокси: `proxy 127.0.0.1:3128 OK 2ms`, exit 0; `-json` распарсен строгим ConvertFrom-Json (proxy.status=OK, ok=True, models=2, open=0). (3) PROVIDER_DEAD эмулирован НЕЗАВИСИМО от тестов: temp root + fake opencode .ps1 ('No available channel', exit 1) + health с OPEN breaker на самом дешёвом кандидате → run -json: fault=PROVIDER_DEAD, attempt=3, healing=[provider.retry via 127.0.0.1:3128, retry -> PROVIDER_DEAD, model.fallback -> test/bbb-good, fallback -> PROVIDER_DEAD]; fallback НЕ равен текущей модели и НЕ открыт (OPEN test/aaa-open корректно пропущен). Durable-события из .db (dump-tool): provider.retry/model.fallback в run_events. UNKNOWN (fake fail): attempt=1, healing пустое, retry нет. (4) SESSION_INVALID: 1 attempt без retry, durable MARK status=invalid + событие session.invalid; recover -json -net → invalid_sessions=1 + рекомендации. (5) Схема v4: TestMigrationV3ToV4PreservesRuns PASS; НОВАЯ независимая проверка цепочки 2→3→4 на КОПИИ боевого репо-DB: after_migration schema_version=4, данные сохранены (Projects:3, Messages:2, indexed_at не изменился); db status temp-корня=4; db status — OpenReadOnly (прод-DB репо не тронут: mtime 12:10 до сессии). (6) BUG-031: truncateState срез по рунам (checkpoint.go:238-242); CLI raw-bytes: checkpoint list (кириллица+эмодзи через 59-й байт) → 261 байт, строгий UTF8Encoding(throwOnInvalid) принял, хвост `61 61 61 61 F0 9F 99 82 2E 2E 2E 0A` (полный 4-байтовый эмодзи, не рассечён); регресс-тест TestTruncateStateKeepsValidUTF8 присутствует и PASS. (7) Read-only к источникам соблюдён (git status: только .db/temp; сеть в internal/net — только TCP-dial прокси; os/exec только в OpenCodeExecutor как задумано; секреты не печатаются — vaultSecretNames только имена). (8) verify-phase.ps1 41/41 ALL CHECKS PASSED exit 0; G1-G3M2 регресс на репо-рут: status/tasks/leases/doctor exit 0. ДЕФЕКТ (ВОЗВРАТЬ): BUG-032 — non-ASCII регрессия: checkpoint_test.go:108-110 содержит сырые 'б'/'🙂'/'привет' (3 строки); f4438bb был ASCII-чист (git grep -P подтвердил 0), конвенция задокументирована в BUG-030; критерий ТЗ «non-ASCII .go = 0» НЕ выполнен; фикс — \uXXXX/\UXXXXXXXX эскейпы, 5 мин. Ложный элемент самоотчёта dev-2: «NON_ASCII_TOTAL=0 in .go» не соответствует финальному коммиту (входные данные для рейтинга). Не-блокирующие minor (в KNOWLEDGE-BASE.md): SESSION_INVALID на retry-попытке не даёт durable-метку (run.go:314-326); сбой session-метки пишется видом heartbeat.error (run.go:318-319). Cleanup: qa_dump_tmp удалён, temp-рут %TEMP%\opencode\qa-g3m3 удалён (Test-Path False), фоновых процессов agent-hq нет (0), боевой .memory/agent-hq.db не изменён. NOT ENOUGH EVIDENCE: go test -race (нет cgo — pre-existing ограничение, как у исполнителя).
+SKILLS_LOADED: ["evidence-discipline"]
+MCP_USED: ["context7: not used (новых внешних библиотек нет; проверка по локальным тестам/коду)", "sequential-thinking: not used (чек-лист приёмки из ТЗ исполнен напрямую)"]
+COMPLIANCE: true
+STATUS: resolved
+================================================================================
+================================================================================
+================================================================================
+
+[2026-09-18 13:51] dev-3 -> team-lead:
+TYPE: update | PRIORITY: low
+Project: agent-hq
+CONTENT: BUG-032 + 2 minor G3-M3 fixed.
+(1) BUG-032: checkpoint_test.go:108-110 raw non-ASCII literals replaced with ASCII escapes \u0431 / \U0001F642 / \u043f\u0440\u0438\u0432\u0435\u0442; test semantics (BUG-031 scenario: byte 60 inside a rune) unchanged; no restricted substring introduced. Byte-wise scan of go/**/*.go -> 0 files with non-ASCII.
+(2) Minor: SESSION_INVALID on retry/fallback now durable. Extracted markSessionInvalid (run.go:369-383); called for the initial fault (run.go:316), after proxy retry (run.go:339) and after fallback (run.go:359); a session fault surfaced by the retry returns early (no fallback). Test TestHealMarksSessionInvalidOnRetryAttempt (exactly 2 attempts, durable mark status=invalid, session.invalid event present, no model.fallback).
+(3) Minor: added store.EventSessionMarkError = "session.mark.error" (internal/store/run.go:49), used instead of heartbeat.error when MarkSessionInvalid fails (run.go:377). Guard test TestSessionMarkErrorEventKindIsDistinct.
+VERIFIED: gofmt -l go/ empty; go build ./... = 0; go vet ./... = 0; go test -count=1 ./... all ok (cmd/agent-hq 4.307s, internal/executor, internal/net, internal/state, internal/store); targeted -run (TestTruncateStateKeepsValidUTF8, TestHealMarksSessionInvalidOnRetryAttempt, TestSessionMarkErrorEventKindIsDistinct) all PASS; verify-phase.ps1 Passed 41/41 ALL CHECKS PASSED exit 0.
+KNOWLEDGE-BASE.md: BUG-032 + both G3-M3 minors marked FIXED.
+CONSTRAINTS: Go only; no commit; gofmt clean; non-ASCII .go = 0; no temp files created; no processes started.
+NOT ENOUGH EVIDENCE: runtime failure-injection of MarkSessionInvalid (could not force a DB write failure while keeping the event append working) - the new event kind is covered by a contract test only.
+SKILLS_LOADED: ["evidence-discipline"]
+MCP_USED: ["context7: not used (no new external library/API)", "sequential-thinking: not used (linear 3-file fix)"]
+COMPLIANCE: true
+STATUS: resolved

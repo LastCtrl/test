@@ -43,6 +43,10 @@ const (
 	EventProviderRetry  = "provider.retry"
 	EventModelFallback  = "model.fallback"
 	EventSessionInvalid = "session.invalid"
+	// EventSessionMarkError reports a failure to persist the durable
+	// session-invalid mark. It is deliberately distinct from heartbeat.error:
+	// the two have different remedies and must not be confused during audit.
+	EventSessionMarkError = "session.mark.error"
 )
 
 // DefaultRunLeaseSeconds is used when a caller requests no explicit lease.

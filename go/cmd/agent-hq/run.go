@@ -313,16 +313,7 @@ func executeRunWithHealing(ctx context.Context, handle *store.Store, worker exec
 // auditable and replayable.
 func healRun(ctx context.Context, handle *store.Store, worker executor.Executor, spec executor.TaskSpec, attempt attemptResult, heal healOptions, healing []string) (executor.Result, attemptResult, []string) {
 	if attempt.fault.SessionFault() {
-		if err := handle.MarkSessionInvalid(store.SessionMark{TaskID: spec.ID, Agent: spec.Agent,
-			Status: store.SessionInvalid, Reason: attempt.reason, MarkedAt: stamp(time.Now())}); err != nil {
-			_, _ = handle.AppendEvent(store.RunEvent{TaskID: spec.ID, Attempt: attempt.seq,
-				Kind: store.EventHeartbeatError, Detail: "session mark failed: " + err.Error(), CreatedAt: stamp(time.Now())})
-			healing = append(healing, "session mark failed")
-			return attempt.result, attempt, healing
-		}
-		_, _ = handle.AppendEvent(store.RunEvent{TaskID: spec.ID, Attempt: attempt.seq,
-			Kind: store.EventSessionInvalid, Detail: attempt.reason, CreatedAt: stamp(time.Now())})
-		return attempt.result, attempt, append(healing, "session-invalid marked")
+		return markSessionInvalid(handle, spec, attempt, healing)
 	}
 
 	// (a) one retry through the proxy, and only when the proxy actually answers.
@@ -341,6 +332,12 @@ func healRun(ctx context.Context, handle *store.Store, worker executor.Executor,
 		if err == nil {
 			attempt = next
 			healing = append(healing, "retry -> "+string(attempt.fault))
+			// A retry can surface a session fault the first attempt did not
+			// (e.g. the provider invalidated the session mid-run). It is never
+			// retried again, but it must still leave a durable mark.
+			if attempt.fault.SessionFault() {
+				return markSessionInvalid(handle, spec, attempt, healing)
+			}
 		}
 	}
 
@@ -358,12 +355,31 @@ func healRun(ctx context.Context, handle *store.Store, worker executor.Executor,
 			if err == nil {
 				attempt = next
 				healing = append(healing, "fallback -> "+string(attempt.fault))
+				if attempt.fault.SessionFault() {
+					return markSessionInvalid(handle, spec, attempt, healing)
+				}
 			}
 		} else {
 			healing = append(healing, "no fallback: "+why)
 		}
 	}
 	return attempt.result, attempt, healing
+}
+
+// markSessionInvalid records a durable invalid-session mark and its audit event
+// for the attempt that carried the session fault. It is shared by the first
+// attempt, the proxy retry and the fallback so every session fault is visible
+// to `recover`, not just the initial one.
+func markSessionInvalid(handle *store.Store, spec executor.TaskSpec, attempt attemptResult, healing []string) (executor.Result, attemptResult, []string) {
+	if err := handle.MarkSessionInvalid(store.SessionMark{TaskID: spec.ID, Agent: spec.Agent,
+		Status: store.SessionInvalid, Reason: attempt.reason, MarkedAt: stamp(time.Now())}); err != nil {
+		_, _ = handle.AppendEvent(store.RunEvent{TaskID: spec.ID, Attempt: attempt.seq,
+			Kind: store.EventSessionMarkError, Detail: "session mark failed: " + err.Error(), CreatedAt: stamp(time.Now())})
+		return attempt.result, attempt, append(healing, "session mark failed")
+	}
+	_, _ = handle.AppendEvent(store.RunEvent{TaskID: spec.ID, Attempt: attempt.seq,
+		Kind: store.EventSessionInvalid, Detail: attempt.reason, CreatedAt: stamp(time.Now())})
+	return attempt.result, attempt, append(healing, "session-invalid marked")
 }
 
 // selectFallback prefers the passport's models (cheap tiers first) and fills up

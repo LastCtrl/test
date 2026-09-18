@@ -105,9 +105,9 @@ func TestTruncateStateKeepsValidUTF8(t *testing.T) {
 		name  string
 		value string
 	}{
-		{"cyrillic", strings.Repeat("a", 59) + "б" + "tail"},
-		{"emoji", strings.Repeat("a", 59) + "🙂" + "z"},
-		{"long cyrillic", "a" + strings.Repeat("привет", 11)},
+		{"cyrillic", strings.Repeat("a", 59) + "\u0431" + "tail"},
+		{"emoji", strings.Repeat("a", 59) + "\U0001F642" + "z"},
+		{"long cyrillic", "a" + strings.Repeat("\u043f\u0440\u0438\u0432\u0435\u0442", 11)},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

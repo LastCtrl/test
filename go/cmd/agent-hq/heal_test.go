@@ -190,6 +190,54 @@ func TestHealMarksInvalidSessionWithoutRetrying(t *testing.T) {
 	}
 }
 
+// TestHealMarksSessionInvalidOnRetryAttempt covers the case the first attempt
+// looks like a provider fault and the proxy retry then returns a session fault:
+// the durable mark and session.invalid event must still be written (and no
+// further fallback attempted).
+func TestHealMarksSessionInvalidOnRetryAttempt(t *testing.T) {
+	root := newCmdRoot(t)
+	handle := openCmdStore(t, root)
+	worker := &scriptedExecutor{results: []executor.Result{
+		failedResult("", "Free usage exceeded, subscribe to Go"),
+		failedResult("", "your session has expired, please log in again"),
+	}}
+	heal := healFor(root, alwaysReachable(t))
+	heal.proxyURL = "http://127.0.0.1:3128"
+
+	outcome := executeRunWithHealing(context.Background(), handle, worker,
+		executor.TaskSpec{ID: "heal-7", Agent: "dev-2", Payload: "work"}, "owner-1", 60, heal)
+
+	if outcome.Fault != string(net.StatusSessionInvalid) {
+		t.Fatalf("fault = %q, want SESSION_INVALID after the retry", outcome.Fault)
+	}
+	if len(worker.specs) != 2 {
+		t.Fatalf("attempts = %d, want two: the retry must run but not a fallback", len(worker.specs))
+	}
+	mark, found, err := handle.SessionMarkByTask("heal-7")
+	if err != nil || !found || mark.Status != store.SessionInvalid {
+		t.Fatalf("session mark = %+v (found=%v, err=%v), want a durable invalid mark", mark, found, err)
+	}
+	events, _ := handle.RunEvents("heal-7")
+	if !hasEvent(events, store.EventSessionInvalid) {
+		t.Errorf("events = %+v, want session.invalid for the retry attempt", events)
+	}
+	if hasEvent(events, store.EventModelFallback) {
+		t.Errorf("events = %+v, want no fallback once the retry surfaced a session fault", events)
+	}
+}
+
+// TestSessionMarkErrorEventKindIsDistinct guards the audit contract: a failure
+// to persist a session mark must not be logged as a heartbeat error, whose
+// remedy is entirely different.
+func TestSessionMarkErrorEventKindIsDistinct(t *testing.T) {
+	if store.EventSessionMarkError != "session.mark.error" {
+		t.Fatalf("EventSessionMarkError = %q, want session.mark.error", store.EventSessionMarkError)
+	}
+	if store.EventSessionMarkError == store.EventHeartbeatError {
+		t.Fatal("a session mark failure must not reuse the heartbeat.error kind")
+	}
+}
+
 func TestHealLeavesUnknownFailureAlone(t *testing.T) {
 	root := newCmdRoot(t)
 	handle := openCmdStore(t, root)

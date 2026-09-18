@@ -452,6 +452,16 @@ function Get-ScenarioDef {
     return ($script:ScenarioTable | Where-Object { $_.name -eq $Name } | Select-Object -First 1)
 }
 
+function Test-IsRepoRoot {
+    param([string]$Path)
+    if ([string]::IsNullOrWhiteSpace($Path)) { return $false }
+    $p = ""
+    try { $p = [System.IO.Path]::GetFullPath($Path).TrimEnd('\') } catch { return $false }
+    $r = ""
+    try { $r = [System.IO.Path]::GetFullPath($script:RepoRoot).TrimEnd('\') } catch { return $false }
+    return ($p -ieq $r)
+}
+
 function Resolve-Root {
     if (-not [string]::IsNullOrWhiteSpace($Root)) { return $Root }
     if (-not [string]::IsNullOrWhiteSpace($env:AGENT_HQ_ROOT)) { return $env:AGENT_HQ_ROOT }
@@ -465,6 +475,7 @@ function New-RunId {
 
 function Write-ReportFile {
     param($Report)
+    if (Test-IsRepoRoot -Path $script:Root) { throw "refusing to write a chaos report into the real repository" }
     $dir = Join-Path $script:Root ".memory\chaos"
     if (-not (Test-Path -LiteralPath $dir -PathType Container)) { New-Item -ItemType Directory -Path $dir -Force | Out-Null }
     $path = Join-Path $dir ($script:RunId + ".json")
@@ -521,7 +532,14 @@ if ($null -eq $def) {
     exit 2
 }
 
+$rootExplicit = -not [string]::IsNullOrWhiteSpace($Root)
 $script:Root = Resolve-Root
+if (-not $rootExplicit -and (Test-IsRepoRoot -Path $script:Root)) {
+    if ($Json) { Write-Output (@{ error = "refusing to run chaos in the real repository without -Root"; exit = 2 } | ConvertTo-Json) } else {
+        Write-Host "error: refusing to run chaos in the real repository without -Root"
+    }
+    exit 2
+}
 $script:RunId = New-RunId -Name $Scenario
 
 if ($DryRun) {

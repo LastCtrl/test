@@ -12,7 +12,8 @@
 #   f) dead-letter-flood                 -> recovered; every message reaches dead-letter
 #   g) -DryRun                           -> injected=false, nothing created on disk
 #   h) foreign process                   -> a decoy powershell survives the worker-kill run
-#   i) hygiene                           -> chaos.ps1 and this file are CRLF + ASCII
+#   i) hygiene                           -> chaos.ps1 and this file are CRLF + ASCII, no forbidden token
+#   j) repo-root guard                   -> no -Root on the real repo -> exit 2, nothing created
 #
 # Exit code: 0 when every case passes, 1 when at least one case fails.
 
@@ -116,6 +117,12 @@ function Invoke-ChaosProcess {
 function ConvertFrom-JsonSafe {
     param([string]$Text)
     try { return ($Text | ConvertFrom-Json -ErrorAction Stop) } catch { return $null }
+}
+
+function Get-RepoChaosArtifacts {
+    $base = Join-Path $RepoRoot ".memory"
+    if (-not (Test-Path -LiteralPath $base -PathType Container)) { return @() }
+    return @(Get-ChildItem -LiteralPath $base -Recurse -File -ErrorAction SilentlyContinue | Where-Object { $_.Name -like "chaos-*" })
 }
 
 function Invoke-ChaosScenario {
@@ -255,6 +262,23 @@ function Test-CaseUsage {
     return $ok
 }
 
+function Test-CaseRepoRootGuard {
+    $before = @(Get-RepoChaosArtifacts)
+    $saved = $env:AGENT_HQ_ROOT
+    try {
+        $env:AGENT_HQ_ROOT = $RepoRoot
+        $run = Invoke-ChaosProcess -ChaosArgs @("-Scenario", "model-down", "-Run", "-Json")
+    } finally {
+        $env:AGENT_HQ_ROOT = $saved
+    }
+    $ok = (Write-Check "guard exits 2 without -Root" ($run.ExitCode -eq 2))
+    $ok = (Write-Check "guard refuses the real repository" ($run.Stdout -match "refusing")) -and $ok
+    $ok = (Write-Check "guard emitted no chaos report" ($run.Stdout -notmatch '"recovered"')) -and $ok
+    $after = @(Get-RepoChaosArtifacts)
+    $ok = (Write-Check "guard created nothing in the repo" ($after.Count -eq $before.Count)) -and $ok
+    return $ok
+}
+
 function Test-CaseFileHygiene {
     $ok = $true
     foreach ($file in @($Chaos, $TestFile)) {
@@ -265,8 +289,12 @@ function Test-CaseFileHygiene {
         }
         $nonAscii = @($bytes | Where-Object { $_ -gt 127 }).Count
         $leaf = Split-Path $file -Leaf
+        $raw = [System.IO.File]::ReadAllText($file, [System.Text.Encoding]::UTF8)
+        $masked = $raw.Replace(('ta' + 'sk' + '-state.ps1'), 'helper.ps1')
+        $tokenHits = ([regex]::Matches($masked, [regex]::Escape('s' + 'k-'))).Count
         $ok = (Write-Check ($leaf + " uses CRLF (lone LF = " + $loneLf + ")") ($loneLf -eq 0)) -and $ok
         $ok = (Write-Check ($leaf + " is ASCII-only") ($nonAscii -eq 0)) -and $ok
+        $ok = (Write-Check ($leaf + " has no forbidden token") ($tokenHits -eq 0)) -and $ok
     }
     return $ok
 }
@@ -317,6 +345,7 @@ Invoke-Case "f) dead-letter-flood: no message lost" { Test-CaseDeadLetterFlood }
 Invoke-Case "g) -DryRun injects nothing" { Test-CaseDryRun }
 Invoke-Case "h) usage errors exit 2" { Test-CaseUsage }
 Invoke-Case "i) chaos.ps1 and test-chaos.ps1 are CRLF + ASCII" { Test-CaseFileHygiene }
+Invoke-Case "j) guard refuses the real repository without -Root" { Test-CaseRepoRootGuard }
 
 $total = $script:CasePass + $script:CaseFail
 Write-Host ""

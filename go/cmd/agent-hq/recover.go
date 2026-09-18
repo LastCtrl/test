@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"strconv"
@@ -8,6 +9,7 @@ import (
 	"text/tabwriter"
 	"time"
 
+	"agent-hq/internal/net"
 	"agent-hq/internal/state"
 	"agent-hq/internal/store"
 )
@@ -18,6 +20,13 @@ import (
 type recoverOptions struct {
 	requeue bool
 	ttl     int
+	// net adds the M3 network section (proxy probe) to the report. It is opt-in
+	// because the default watchdog is a pure database sweep.
+	net bool
+	// warnings collects rejected -ttl values (non-numeric, non-positive or a
+	// missing argument) so the caller can report them instead of silently
+	// falling back to the per-attempt lease.
+	warnings []string
 }
 
 // recoveredAttempt is one stale attempt plus whether this sweep reconciled it.
@@ -28,14 +37,24 @@ type recoveredAttempt struct {
 	Recovered bool `json:"recovered"`
 }
 
+// recoverNetView is the optional network section (`-net`): it explains whether
+// the watchdog ran while the transport layer was healthy.
+type recoverNetView struct {
+	Proxy           net.ProxyResult `json:"proxy"`
+	Recommendations []string        `json:"recommendations"`
+}
+
 type recoverOutput struct {
-	Root       string             `json:"root"`
-	Now        string             `json:"now"`
-	Requeue    bool               `json:"requeue"`
-	TTLSeconds int                `json:"ttl_seconds,omitempty"`
-	Stale      int                `json:"stale"`
-	Recovered  int                `json:"recovered"`
-	Attempts   []recoveredAttempt `json:"attempts"`
+	Root            string              `json:"root"`
+	Now             string              `json:"now"`
+	Requeue         bool                `json:"requeue"`
+	TTLSeconds      int                 `json:"ttl_seconds,omitempty"`
+	Stale           int                 `json:"stale"`
+	Recovered       int                 `json:"recovered"`
+	InvalidSessions int                 `json:"invalid_sessions"`
+	Sessions        []store.SessionMark `json:"sessions"`
+	Attempts        []recoveredAttempt  `json:"attempts"`
+	Net             *recoverNetView     `json:"net,omitempty"`
 }
 
 // runRecover is the M2 watchdog: it finds running attempts whose lease
@@ -44,8 +63,11 @@ type recoverOutput struct {
 // PowerShell-managed files.
 func runRecover(globals globalOptions, args []string, stdout, stderr io.Writer) int {
 	options, rest := extractRecoverOptions(args)
+	for _, warning := range options.warnings {
+		fmt.Fprintf(stderr, "%s: recover: %s\n", cliName, warning)
+	}
 	if len(rest) != 0 {
-		fmt.Fprintf(stderr, "usage: %s recover [-requeue] [-ttl <seconds>] [-json] [-root <path>]\n", cliName)
+		fmt.Fprintf(stderr, "usage: %s recover [-requeue] [-ttl <seconds>] [-net] [-json] [-root <path>]\n", cliName)
 		return 2
 	}
 
@@ -94,14 +116,32 @@ func runRecover(globals globalOptions, args []string, stdout, stderr io.Writer) 
 		attempts = append(attempts, recoveredAttempt{StaleAttempt: attempt, Recovered: done})
 	}
 
+	invalidSessions, err := handle.InvalidSessionCount()
+	if err != nil {
+		fmt.Fprintf(stderr, "%s: cannot count session marks: %v\n", cliName, err)
+		return 1
+	}
+	sessions, err := handle.SessionMarks()
+	if err != nil {
+		fmt.Fprintf(stderr, "%s: cannot read session marks: %v\n", cliName, err)
+		return 1
+	}
+
 	output := recoverOutput{
-		Root:       root,
-		Now:        now.Format(time.RFC3339),
-		Requeue:    options.requeue,
-		TTLSeconds: options.ttl,
-		Stale:      len(stale),
-		Recovered:  recovered,
-		Attempts:   attempts,
+		Root:            root,
+		Now:             now.Format(time.RFC3339),
+		Requeue:         options.requeue,
+		TTLSeconds:      options.ttl,
+		Stale:           len(stale),
+		Recovered:       recovered,
+		InvalidSessions: invalidSessions,
+		Sessions:        sessions,
+		Attempts:        attempts,
+	}
+	if options.net {
+		health, healthErr := net.ReadModelHealthFile(net.ModelHealthPath(root), now)
+		proxy := netProber.ProbeProxy(context.Background(), net.DefaultProxyAddress)
+		output.Net = &recoverNetView{Proxy: proxy, Recommendations: net.Recommend(proxy, health, healthErr)}
 	}
 
 	if globals.json {
@@ -118,6 +158,23 @@ func runRecover(globals globalOptions, args []string, stdout, stderr io.Writer) 
 	fmt.Fprintf(writer, "requeue:\t%t\n", output.Requeue)
 	fmt.Fprintf(writer, "stale found:\t%d\n", output.Stale)
 	fmt.Fprintf(writer, "recovered:\t%d\n", output.Recovered)
+	fmt.Fprintf(writer, "invalid sessions:\t%d\n", output.InvalidSessions)
+	if len(output.Sessions) > 0 {
+		fmt.Fprintln(writer)
+		fmt.Fprintln(writer, "  TASK\tSTATUS\tAGENT\tMARKED_AT\tREASON")
+		for _, mark := range output.Sessions {
+			fmt.Fprintf(writer, "  %s\t%s\t%s\t%s\t%s\n",
+				mark.TaskID, mark.Status, mark.Agent, mark.MarkedAt, mark.Reason)
+		}
+	}
+	if output.Net != nil {
+		fmt.Fprintln(writer)
+		fmt.Fprintf(writer, "net proxy:\t%s\t%s\t%dms\n",
+			output.Net.Proxy.Address, output.Net.Proxy.Status, output.Net.Proxy.LatencyMS)
+		for _, step := range output.Net.Recommendations {
+			fmt.Fprintf(writer, "  - %s\n", step)
+		}
+	}
 	if len(output.Attempts) > 0 {
 		fmt.Fprintln(writer)
 		fmt.Fprintln(writer, "  TASK\tSEQ\tAGENT\tOWNER\tHEARTBEAT-AGE\tTTL\tREASON\tRESULT")
@@ -142,8 +199,8 @@ func runRecover(globals globalOptions, args []string, stdout, stderr io.Writer) 
 	return 0
 }
 
-// extractRecoverOptions accepts -requeue (any case, so -Requeue works too) and
-// -ttl, both bare and with an = value.
+// extractRecoverOptions accepts -requeue (any case, so -Requeue works too),
+// -ttl and -net, both bare and with an = value.
 func extractRecoverOptions(args []string) (recoverOptions, []string) {
 	options := recoverOptions{}
 	rest := make([]string, 0, len(args))
@@ -154,20 +211,37 @@ func extractRecoverOptions(args []string) (recoverOptions, []string) {
 		switch {
 		case lower == "-requeue" || lower == "--requeue":
 			options.requeue = true
+		case lower == "-net" || lower == "--net":
+			options.net = true
 		case lower == "-ttl" || lower == "--ttl":
 			if index+1 < len(args) {
-				if seconds, err := strconv.Atoi(args[index+1]); err == nil && seconds > 0 {
+				raw := args[index+1]
+				if seconds, err := strconv.Atoi(raw); err == nil && seconds > 0 {
 					options.ttl = seconds
+				} else {
+					options.warnings = append(options.warnings, ttlWarning(raw))
 				}
 				index++
+			} else {
+				options.warnings = append(options.warnings,
+					"ignoring -ttl: missing value; expected a positive integer number of seconds; using the per-attempt lease")
 			}
 		case strings.HasPrefix(lower, "-ttl=") || strings.HasPrefix(lower, "--ttl="):
-			if seconds, err := strconv.Atoi(arg[strings.Index(arg, "=")+1:]); err == nil && seconds > 0 {
+			raw := arg[strings.Index(arg, "=")+1:]
+			if seconds, err := strconv.Atoi(raw); err == nil && seconds > 0 {
 				options.ttl = seconds
+			} else {
+				options.warnings = append(options.warnings, ttlWarning(raw))
 			}
 		default:
 			rest = append(rest, arg)
 		}
 	}
 	return options, rest
+}
+
+// ttlWarning explains a rejected -ttl value so an operator cannot mistake the
+// fallback (the per-attempt lease) for an applied override.
+func ttlWarning(raw string) string {
+	return fmt.Sprintf("ignoring -ttl %q: expected a positive integer number of seconds; using the per-attempt lease", raw)
 }

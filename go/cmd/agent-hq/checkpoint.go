@@ -233,8 +233,11 @@ func extractCheckpointOptions(args []string) (checkpointOptions, []string) {
 func truncateState(value string) string {
 	const limit = 60
 	collapsed := strings.ReplaceAll(strings.ReplaceAll(value, "\r", " "), "\n", " ")
-	if len(collapsed) <= limit {
+	// Slice on rune boundaries: a byte-wise cut of limit would split a
+	// multi-byte character (Cyrillic, emoji) and emit invalid UTF-8.
+	runes := []rune(collapsed)
+	if len(runes) <= limit {
 		return collapsed
 	}
-	return collapsed[:limit] + "..."
+	return string(runes[:limit]) + "..."
 }

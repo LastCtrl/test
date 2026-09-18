@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"agent-hq/internal/executor"
+	"agent-hq/internal/net"
 	"agent-hq/internal/store"
 )
 
@@ -29,18 +30,20 @@ type runOptions struct {
 }
 
 type runOutcome struct {
-	TaskID     string `json:"task_id"`
-	Agent      string `json:"agent"`
-	Executor   string `json:"executor"`
-	Attempt    int    `json:"attempt"`
-	Status     string `json:"status"`
-	ExitCode   int    `json:"exit_code"`
-	DurationMS int64  `json:"duration_ms"`
-	Error      string `json:"error,omitempty"`
-	Reason     string `json:"reason,omitempty"`
-	Claimed    bool   `json:"claimed"`
-	Stdout     string `json:"stdout,omitempty"`
-	Stderr     string `json:"stderr,omitempty"`
+	TaskID     string   `json:"task_id"`
+	Agent      string   `json:"agent"`
+	Executor   string   `json:"executor"`
+	Attempt    int      `json:"attempt"`
+	Status     string   `json:"status"`
+	ExitCode   int      `json:"exit_code"`
+	DurationMS int64    `json:"duration_ms"`
+	Error      string   `json:"error,omitempty"`
+	Reason     string   `json:"reason,omitempty"`
+	Claimed    bool     `json:"claimed"`
+	Fault      string   `json:"fault,omitempty"`
+	Healing    []string `json:"healing,omitempty"`
+	Stdout     string   `json:"stdout,omitempty"`
+	Stderr     string   `json:"stderr,omitempty"`
 }
 
 func runRun(globals globalOptions, args []string, stdout, stderr io.Writer) int {
@@ -102,9 +105,117 @@ func buildExecutor(name, root string) (executor.Executor, error) {
 }
 
 // executeRun owns the durable lifecycle: claim, write-before, execute,
-// write-after, release. It never panics on store errors; a failed bookkeeping
-// step is reported in the outcome.
+// write-after, release, and (from M3) the network self-healing loop. It never
+// panics on store errors; a failed bookkeeping step is reported in the outcome.
 func executeRun(ctx context.Context, handle *store.Store, worker executor.Executor, spec executor.TaskSpec, owner string, leaseSeconds int) runOutcome {
+	return executeRunWithHealing(ctx, handle, worker, spec, owner, leaseSeconds, defaultHealOptions(handle.Root()))
+}
+
+// healOptions configures the M3 self-healing loop. Tests build it by hand; the
+// zero value disables healing entirely.
+type healOptions struct {
+	enabled      bool
+	proxyURL     string
+	prober       net.Prober
+	healthPath   string
+	passportPath string
+	ladder       []string
+	now          func() time.Time
+}
+
+// defaultHealOptions is the production configuration for root: proxy from the
+// environment (CNTLM default), model-health and passport from the root, ladder
+// from the packaged fallback list. No secret ever passes through here: only the
+// proxy URL is read, and the model ids are public names.
+func defaultHealOptions(root string) healOptions {
+	return healOptions{
+		enabled:      true,
+		proxyURL:     resolveProxyURL(),
+		prober:       net.DefaultProber(),
+		healthPath:   net.ModelHealthPath(root),
+		passportPath: net.PassportPath(root),
+		ladder:       net.DefaultLadder,
+		now:          time.Now,
+	}
+}
+
+// resolveProxyURL returns the proxy the retry runs through, following the same
+// precedence the rest of the fleet uses (AGENTS.md section 10).
+func resolveProxyURL() string {
+	for _, name := range []string{"AGENT_HQ_PROXY", "HTTPS_PROXY", "https_proxy", "HTTP_PROXY", "http_proxy"} {
+		if value := strings.TrimSpace(os.Getenv(name)); value != "" {
+			return value
+		}
+	}
+	return "http://" + net.DefaultProxyAddress
+}
+
+// attemptResult is what the healing loop needs to know about one attempt.
+type attemptResult struct {
+	seq    int
+	result executor.Result
+	fault  net.Status
+	reason string
+}
+
+// runAttempt performs one crash-safe attempt: write-before (running row), run
+// the worker, write-after (outcome row) and both lifecycle events. The fault
+// classification is persisted in the attempt's error column, so even a provider
+// outage leaves an auditable reason on disk.
+func runAttempt(ctx context.Context, handle *store.Store, worker executor.Executor, spec executor.TaskSpec) (attemptResult, error) {
+	seq, err := handle.StartAttempt(store.RunAttempt{
+		TaskID: spec.ID, Agent: spec.Agent, Executor: worker.Name(),
+		Command: commandDescription(worker, spec), StartedAt: stamp(time.Now()), Status: store.RunRunning,
+	})
+	if err != nil {
+		return attemptResult{}, err
+	}
+	spec.AttemptID = fmt.Sprintf("attempt-%d", seq)
+	_, _ = handle.AppendEvent(store.RunEvent{TaskID: spec.ID, Attempt: seq,
+		Kind: store.EventAttemptStarted, Detail: spec.AttemptID, CreatedAt: stamp(time.Now())})
+
+	started := time.Now()
+	result, execErr := worker.Execute(ctx, spec)
+	finished := time.Now()
+	if execErr != nil {
+		result = executor.Result{Status: executor.StatusError, ExitCode: -1, Error: execErr.Error()}
+	}
+	if result.Duration <= 0 {
+		result.Duration = finished.Sub(started)
+	}
+
+	fault, reason := classifyFault(result)
+	if fault.Unhealthy() {
+		result.Error = string(fault) + ": " + reason
+	}
+
+	finishedAt := finished.UTC().Format(time.RFC3339Nano)
+	stdoutLength := len(result.Stdout)
+	stderrLength := len(result.Stderr)
+	_, _ = handle.FinishAttempt(store.RunAttempt{
+		TaskID: spec.ID, Seq: seq, AttemptID: spec.AttemptID, ExitCode: &result.ExitCode,
+		StdoutSHA256: sumHex(result.Stdout), StdoutLength: &stdoutLength,
+		StderrSHA256: sumHex(result.Stderr), StderrLength: &stderrLength,
+		FinishedAt: finishedAt, DurationMS: durationPtr(result.Duration),
+		Status: string(result.Status), Error: result.Error,
+	})
+	_, _ = handle.AppendEvent(store.RunEvent{TaskID: spec.ID, Attempt: seq,
+		Kind: store.EventAttemptFinished, Detail: string(result.Status), CreatedAt: stamp(time.Now())})
+
+	return attemptResult{seq: seq, result: result, fault: fault, reason: reason}, nil
+}
+
+// classifyFault maps an executor result onto the network vocabulary. A
+// successful run is always OK; an unrecognised failure stays UNKNOWN so a plain
+// task failure never triggers a provider retry.
+func classifyFault(result executor.Result) (net.Status, string) {
+	if result.Status == executor.StatusSuccess {
+		return net.StatusOK, ""
+	}
+	return net.Classify(result.ExitCode, result.Stdout, result.Stderr, result.Status == executor.StatusTimeout)
+}
+
+func executeRunWithHealing(ctx context.Context, handle *store.Store, worker executor.Executor, spec executor.TaskSpec, owner string, leaseSeconds int, heal healOptions) runOutcome {
 	outcome := runOutcome{TaskID: spec.ID, Agent: spec.Agent, Executor: worker.Name(), ExitCode: -1}
 	now := time.Now().UTC()
 
@@ -146,53 +257,37 @@ func executeRun(ctx context.Context, handle *store.Store, worker executor.Execut
 		return outcome
 	}
 
-	seq, err := handle.StartAttempt(store.RunAttempt{
-		TaskID: spec.ID, Agent: spec.Agent, Executor: worker.Name(),
-		Command: commandDescription(worker, spec), StartedAt: startedAt, Status: store.RunRunning,
+	// The lease is refreshed for as long as the whole healing sequence runs, not
+	// just the first attempt, so a retry cannot silently orphan the claim.
+	var heartbeatAttempt int
+	stopHeartbeat := startHeartbeat(handle, spec.ID, owner, leaseSeconds, func(err error) {
+		_, _ = handle.AppendEvent(store.RunEvent{TaskID: spec.ID, Attempt: heartbeatAttempt,
+			Kind: store.EventHeartbeatError, Detail: err.Error(), CreatedAt: stamp(time.Now())})
 	})
+	defer stopHeartbeat()
+
+	attempt, err := runAttempt(ctx, handle, worker, spec)
 	if err != nil {
 		outcome.Status = store.RunError
 		outcome.Error = err.Error()
 		return outcome
 	}
-	outcome.Attempt = seq
-	spec.AttemptID = fmt.Sprintf("attempt-%d", seq)
-	_, _ = handle.AppendEvent(store.RunEvent{TaskID: spec.ID, Attempt: seq,
-		Kind: store.EventAttemptStarted, Detail: spec.AttemptID, CreatedAt: stamp(time.Now())})
+	heartbeatAttempt = attempt.seq
+	outcome.Attempt = attempt.seq
+	result := attempt.result
+	outcome.Fault = string(attempt.fault)
 
-	// A worker may outlive its lease, so the lease is refreshed from a ticker
-	// for as long as Execute runs. stopHeartbeat is deferred: it runs before
-	// the claim release registered above, so the lease is never refreshed
-	// after it was released.
-	stopHeartbeat := startHeartbeat(handle, spec.ID, owner, leaseSeconds, func(err error) {
-		_, _ = handle.AppendEvent(store.RunEvent{TaskID: spec.ID, Attempt: seq,
-			Kind: store.EventHeartbeatError, Detail: err.Error(), CreatedAt: stamp(time.Now())})
-	})
-	defer stopHeartbeat()
-
-	started := time.Now()
-	result, execErr := worker.Execute(ctx, spec)
-	finished := time.Now()
-	if execErr != nil {
-		result = executor.Result{Status: executor.StatusError, ExitCode: -1, Error: execErr.Error()}
+	healing := make([]string, 0, 2)
+	if heal.enabled && attempt.fault.Unhealthy() {
+		result, attempt, healing = healRun(ctx, handle, worker, spec, attempt, heal, healing)
+		outcome.Attempt = attempt.seq
+		outcome.Fault = string(attempt.fault)
 	}
-	if result.Duration <= 0 {
-		result.Duration = finished.Sub(started)
-	}
+	outcome.Healing = healing
 
-	finishedAt := finished.UTC().Format(time.RFC3339Nano)
-	stdoutLength := len(result.Stdout)
-	stderrLength := len(result.Stderr)
-	_, _ = handle.FinishAttempt(store.RunAttempt{
-		TaskID: spec.ID, Seq: seq, AttemptID: spec.AttemptID, ExitCode: &result.ExitCode,
-		StdoutSHA256: sumHex(result.Stdout), StdoutLength: &stdoutLength,
-		StderrSHA256: sumHex(result.Stderr), StderrLength: &stderrLength,
-		FinishedAt: finishedAt, DurationMS: durationPtr(result.Duration),
-		Status: string(result.Status), Error: result.Error,
-	})
-
+	finishedAt := time.Now().UTC().Format(time.RFC3339Nano)
 	run.Status = string(result.Status)
-	run.Attempt = seq
+	run.Attempt = outcome.Attempt
 	run.FinishedAt = finishedAt
 	run.ExitCode = &result.ExitCode
 	run.DurationMS = durationPtr(result.Duration)
@@ -200,9 +295,7 @@ func executeRun(ctx context.Context, handle *store.Store, worker executor.Execut
 	run.UpdatedAt = finishedAt
 	_ = handle.SaveRun(run)
 
-	_, _ = handle.AppendEvent(store.RunEvent{TaskID: spec.ID, Attempt: seq,
-		Kind: store.EventAttemptFinished, Detail: string(result.Status), CreatedAt: stamp(time.Now())})
-	_, _ = handle.AppendEvent(store.RunEvent{TaskID: spec.ID, Attempt: seq,
+	_, _ = handle.AppendEvent(store.RunEvent{TaskID: spec.ID, Attempt: outcome.Attempt,
 		Kind: store.EventRunFinished, Detail: string(result.Status), CreatedAt: stamp(time.Now())})
 
 	outcome.Status = string(result.Status)
@@ -212,6 +305,94 @@ func executeRun(ctx context.Context, handle *store.Store, worker executor.Execut
 	outcome.Stdout = result.Stdout
 	outcome.Stderr = result.Stderr
 	return outcome
+}
+
+// healRun applies the M3 recovery ladder to an unhealthy attempt: mark an
+// invalid session, otherwise retry once through the proxy and then fall back to
+// another model. Each action is an append-only event, so the recovery is
+// auditable and replayable.
+func healRun(ctx context.Context, handle *store.Store, worker executor.Executor, spec executor.TaskSpec, attempt attemptResult, heal healOptions, healing []string) (executor.Result, attemptResult, []string) {
+	if attempt.fault.SessionFault() {
+		if err := handle.MarkSessionInvalid(store.SessionMark{TaskID: spec.ID, Agent: spec.Agent,
+			Status: store.SessionInvalid, Reason: attempt.reason, MarkedAt: stamp(time.Now())}); err != nil {
+			_, _ = handle.AppendEvent(store.RunEvent{TaskID: spec.ID, Attempt: attempt.seq,
+				Kind: store.EventHeartbeatError, Detail: "session mark failed: " + err.Error(), CreatedAt: stamp(time.Now())})
+			healing = append(healing, "session mark failed")
+			return attempt.result, attempt, healing
+		}
+		_, _ = handle.AppendEvent(store.RunEvent{TaskID: spec.ID, Attempt: attempt.seq,
+			Kind: store.EventSessionInvalid, Detail: attempt.reason, CreatedAt: stamp(time.Now())})
+		return attempt.result, attempt, append(healing, "session-invalid marked")
+	}
+
+	// (a) one retry through the proxy, and only when the proxy actually answers.
+	proxy := net.ProxyResult{Address: heal.proxyURL}
+	if heal.proxyURL != "" {
+		proxy = heal.prober.ProbeProxy(ctx, proxyAddress(heal.proxyURL))
+	}
+	if proxy.Status == net.StatusOK {
+		_, _ = handle.AppendEvent(store.RunEvent{TaskID: spec.ID, Attempt: attempt.seq,
+			Kind: store.EventProviderRetry, Detail: fmt.Sprintf("%s; retrying through %s", attempt.reason, proxy.Address),
+			CreatedAt: stamp(time.Now())})
+		healing = append(healing, "provider.retry via "+proxy.Address)
+		retrySpec := spec
+		retrySpec.Proxy = heal.proxyURL
+		next, err := runAttempt(ctx, handle, worker, retrySpec)
+		if err == nil {
+			attempt = next
+			healing = append(healing, "retry -> "+string(attempt.fault))
+		}
+	}
+
+	// (b) fall back to another healthy model when the provider is still down.
+	if attempt.fault.ProviderFault() {
+		fallback, why := selectFallback(heal, spec.Model)
+		if fallback != "" {
+			_, _ = handle.AppendEvent(store.RunEvent{TaskID: spec.ID, Attempt: attempt.seq,
+				Kind: store.EventModelFallback, Detail: spec.Model + " -> " + fallback + " (" + why + ")",
+				CreatedAt: stamp(time.Now())})
+			healing = append(healing, "model.fallback -> "+fallback)
+			fallbackSpec := spec
+			fallbackSpec.Model = fallback
+			next, err := runAttempt(ctx, handle, worker, fallbackSpec)
+			if err == nil {
+				attempt = next
+				healing = append(healing, "fallback -> "+string(attempt.fault))
+			}
+		} else {
+			healing = append(healing, "no fallback: "+why)
+		}
+	}
+	return attempt.result, attempt, healing
+}
+
+// selectFallback prefers the passport's models (cheap tiers first) and fills up
+// with the packaged ladder, so a broken or missing passport degrades to the
+// same list model-router.ps1 uses.
+func selectFallback(heal healOptions, current string) (string, string) {
+	health := make([]net.ModelHealth, 0)
+	if records, err := net.ReadModelHealthFile(heal.healthPath, heal.now()); err == nil {
+		health = records
+	}
+	return net.SelectFallback(current, net.MergeCandidates(heal.passportPath, heal.ladder), health, heal.now())
+}
+
+// proxyAddress extracts host:port from a proxy URL for the TCP probe. A bare
+// address is returned unchanged.
+func proxyAddress(proxyURL string) string {
+	trimmed := strings.TrimSpace(proxyURL)
+	if withoutScheme, found := strings.CutPrefix(trimmed, "http://"); found {
+		trimmed = withoutScheme
+	} else if withoutScheme, found := strings.CutPrefix(trimmed, "https://"); found {
+		trimmed = withoutScheme
+	}
+	if slash := strings.IndexAny(trimmed, "/?#"); slash >= 0 {
+		trimmed = trimmed[:slash]
+	}
+	if strings.TrimSpace(trimmed) == "" {
+		return net.DefaultProxyAddress
+	}
+	return trimmed
 }
 
 // reportRun prints the outcome and returns the process exit code: 0 only when
@@ -238,12 +419,18 @@ func reportRun(outcome runOutcome, asJSON bool, stdout, stderr io.Writer) int {
 		fmt.Fprintf(writer, "claim:\t%s\n", outcome.Reason)
 	}
 	fmt.Fprintf(writer, "status:\t%s\n", outcome.Status)
+	if outcome.Fault != "" && outcome.Fault != string(net.StatusOK) {
+		fmt.Fprintf(writer, "fault:\t%s\n", outcome.Fault)
+	}
 	if outcome.Claimed {
 		fmt.Fprintf(writer, "exit:\t%d\n", outcome.ExitCode)
 		fmt.Fprintf(writer, "duration:\t%dms\n", outcome.DurationMS)
 	}
 	if outcome.Error != "" {
 		fmt.Fprintf(writer, "error:\t%s\n", outcome.Error)
+	}
+	for _, action := range outcome.Healing {
+		fmt.Fprintf(writer, "healing:\t%s\n", action)
 	}
 	if err := writer.Flush(); err != nil {
 		fmt.Fprintf(stderr, "%s: cannot write output: %v\n", cliName, err)

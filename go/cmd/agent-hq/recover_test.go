@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"strings"
 	"testing"
 	"time"
 
@@ -83,6 +84,47 @@ func TestRecoverCommandUsage(t *testing.T) {
 	}
 }
 
+// A rejected -ttl must not be a silent no-op: the command warns on stderr and
+// falls back to the per-attempt lease (ttl 0) instead of pretending an override
+// was applied.
+func TestRecoverCommandWarnsOnInvalidTTL(t *testing.T) {
+	root := newCmdRoot(t)
+	_ = openCmdStore(t, root)
+
+	var stdout, stderr bytes.Buffer
+	code := runRecover(globalOptions{root: root, json: true}, []string{"-ttl", "abc"}, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("recover exit = %d, want 0 (fallback to default), stderr = %s", code, stderr.String())
+	}
+	if warning := stderr.String(); !strings.Contains(warning, "abc") || !strings.Contains(strings.ToLower(warning), "ttl") {
+		t.Errorf("stderr = %q, want a warning naming the rejected -ttl value", warning)
+	}
+
+	var output recoverOutput
+	if err := json.Unmarshal(stdout.Bytes(), &output); err != nil {
+		t.Fatalf("decode recover output: %v (%s)", err, stdout.String())
+	}
+	if output.TTLSeconds != 0 {
+		t.Errorf("ttl_seconds = %d, want 0 so the per-attempt lease is used", output.TTLSeconds)
+	}
+}
+
+func TestRecoverCommandWarnsOnNonPositiveAndMissingTTL(t *testing.T) {
+	root := newCmdRoot(t)
+	_ = openCmdStore(t, root)
+
+	for _, args := range [][]string{{"-ttl", "0"}, {"-ttl=-5"}, {"-ttl"}} {
+		var stdout, stderr bytes.Buffer
+		code := runRecover(globalOptions{root: root, json: true}, args, &stdout, &stderr)
+		if code != 0 {
+			t.Fatalf("runRecover(%v) exit = %d, want 0, stderr = %s", args, code, stderr.String())
+		}
+		if !strings.Contains(strings.ToLower(stderr.String()), "ttl") {
+			t.Errorf("runRecover(%v) stderr = %q, want a -ttl warning", args, stderr.String())
+		}
+	}
+}
+
 func TestExtractRecoverOptions(t *testing.T) {
 	options, rest := extractRecoverOptions([]string{"-Requeue", "-ttl=120"})
 	if !options.requeue || options.ttl != 120 || len(rest) != 0 {
@@ -91,5 +133,9 @@ func TestExtractRecoverOptions(t *testing.T) {
 	options, rest = extractRecoverOptions([]string{"-requeue", "-ttl", "30"})
 	if !options.requeue || options.ttl != 30 || len(rest) != 0 {
 		t.Errorf("options = %+v, rest = %v; want requeue with ttl 30", options, rest)
+	}
+	options, rest = extractRecoverOptions([]string{"-ttl", "abc"})
+	if options.ttl != 0 || len(options.warnings) != 1 || !strings.Contains(options.warnings[0], "abc") {
+		t.Errorf("options = %+v, rest = %v; want a warning and no ttl override", options, rest)
 	}
 }

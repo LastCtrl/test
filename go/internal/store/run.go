@@ -39,6 +39,10 @@ const (
 	EventAttemptStale    = "attempt.stale"
 	EventRunStale        = "run.stale"
 	EventRecoverRequeued = "recover.requeued"
+	// M3 self-healing events.
+	EventProviderRetry  = "provider.retry"
+	EventModelFallback  = "model.fallback"
+	EventSessionInvalid = "session.invalid"
 )
 
 // DefaultRunLeaseSeconds is used when a caller requests no explicit lease.

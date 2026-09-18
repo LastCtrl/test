@@ -3,8 +3,10 @@
 Go-фаза control plane из `AUDIT-CONSOLIDATED-2026-09-14.md`: G1 — read-only
 инспекция состояния, G2 — SQLite-индекс, G3-M1 — версионируемый Executor и
 durable write-path (claim/attempt/event в SQLite), G3-M2 — устойчивость к
-падениям (heartbeat, watchdog/recovery, checkpoint). Движок на PowerShell
-остаётся основным: Go-путь сосуществует с ним и не изменяет PS-скрипты.
+падениям (heartbeat, watchdog/recovery, checkpoint), G3-M3 — сетевое
+самовосстановление (проба CNTLM/провайдера, `net-check`, retry через прокси,
+fallback-модель, метка session-invalid). Движок на PowerShell остаётся
+основным: Go-путь сосуществует с ним и не изменяет PS-скрипты.
 
 ## Границы этапов
 
@@ -16,7 +18,13 @@ durable write-path (claim/attempt/event в SQLite), G3-M2 — устойчиво
   (`run_claims`, `runs`, `run_attempts`, `run_events`, схема v2);
 - G3-M2: heartbeat-петля во время `run`, `agent-hq recover` (watchdog: stale
   running-attempts → `stale`/`queued`, освобождение аренды, идемпотентно),
-  `agent-hq checkpoint` (durable handoff), схема v3.
+  `agent-hq checkpoint` (durable handoff), схема v3;
+- G3-M3: пакет `internal/net` (проба прокси по TCP, чтение
+  `.memory/model-health.json`, классификация `OK/PROXY_DOWN/PROVIDER_RATE_LIMIT/
+  PROVIDER_DEAD/SESSION_INVALID/TIMEOUT/UNKNOWN`), команда `agent-hq net-check`,
+  self-heal в `run` (retry через прокси → fallback-модель из паспорта, события
+  `provider.retry`/`model.fallback`/`session.invalid`), метки session-invalid в
+  SQLite (схема v4), net-секция в `doctor`/`recover`.
 
 Сознательно НЕ сделано (следующие этапы):
 
@@ -30,7 +38,8 @@ durable write-path (claim/attempt/event в SQLite), G3-M2 — устойчиво
 
 - Go 1.27+ (проверено на `go1.27.1 windows/amd64`).
 - Единственная внешняя зависимость: `modernc.org/sqlite` (чистый Go-драйвер,
-  G2/G3). Сеть в рантайме не нужна.
+  G2/G3). Сеть в рантайме нужна только probe-командам (`net-check`, `doctor`,
+  `recover -net`) и self-heal-циклу `run`.
 
 ## Сборка и проверки
 
@@ -75,9 +84,10 @@ go\bin\agent-hq.exe doctor
 | `tasks` | задачи из `projects/*/queue.json` плюс evidence-документы | `-agent <имя>`, `-status <статус>` |
 | `leases` | аренды (claim) и их состояние по TTL | `-ttl <секунды>`, `-stale` |
 | `evidence <id>` | детали одного evidence-документа (попытки, exit code, длительности, длины и SHA256 stdout/stderr) | — |
-| `doctor` | здоровье каталогов и конфигов, версия CLI | — |
-| `run <agent> <text>` | claim в SQLite, запуск через Executor, heartbeat аренды, durable-запись результата | `-executor opencode\|fake`, `-id <id>`, `-model <имя>`, `-lease <секунд>` |
-| `recover` | watchdog: stale running-attempts → `stale` (или `queued`), освобождение аренды, события; идемпотентно | `-requeue`/`-Requeue`, `-ttl <секунды>` |
+| `doctor` | здоровье каталогов и конфигов + net-секция (`net-proxy`, `model-health`, warn-only), версия CLI | — |
+| `net-check` | проба CNTLM/прокси, отчёт о `.memory/model-health.json` и рекомендации; `-model` показывает fallback | `-proxy <host:port>`, `-timeout <сек>`, `-model <имя>` |
+| `run <agent> <text>` | claim в SQLite, запуск через Executor, heartbeat аренды, durable-запись результата, self-heal провайдера | `-executor opencode\|fake`, `-id <id>`, `-model <имя>`, `-lease <секунд>` |
+| `recover` | watchdog: stale running-attempts → `stale` (или `queued`), освобождение аренды, события; учёт session-invalid; `-net` добавляет пробу прокси; идемпотентно | `-requeue`/`-Requeue`, `-ttl <секунды>`, `-net` |
 | `checkpoint save\|list\|latest <run-id>` | durable handoff-точки задачи | `-state <текст>`, `-path <артефакт>` |
 | `version` | версия CLI | — |
 
@@ -212,6 +222,74 @@ attempt выводится из аренды задачи). Таблицы ав�
 full-resync `agent-hq index`, поэтому переиндексация файлов историю запусков
 не затирает. Индекс G2 (`projects/tasks/evidence/claims/messages`) не изменён.
 
+## G3-M3: сетевое/провайдерское/сессионное самовосстановление
+
+Цель M3 — Go control plane сам определяет сетевой или провайдерский сбой и
+пытается его починить, не теряя задачу и не выдумывая успех. Все действия
+durable: каждое — отдельная attempt-запись плюс append-only событие.
+
+### `internal/net`
+
+- `Classify(exitCode, stdout, stderr, timedOut)` → `OK | PROXY_DOWN |
+  PROVIDER_RATE_LIMIT | PROVIDER_DEAD | SESSION_INVALID | TIMEOUT | UNKNOWN`.
+  Сигнатуры повторяют `Get-ProbeStatus` из `model-router.ps1` (rate limit,
+  `no available channel`, credit) и добавляют proxy/session-случаи. Ничего не
+  распознавшее считается `UNKNOWN` и **не** запускает self-heal (обычный провал
+  задачи не превращается в retry-шторм).
+- `Prober.ProbeProxy(ctx, addr)` — bounded TCP-connect (по умолчанию
+  `127.0.0.1:3128`, бюджет 2 с); dialer инъектируется, поэтому тесты работают
+  без сокетов. `TIMEOUT` при исчерпании бюджета, `PROXY_DOWN` при отказе.
+- `ReadModelHealthFile` читает `.memory/model-health.json` (BOM-устойчиво,
+  breaker `open_until` оценивается в Go) — те же данные, что у PS-роутера.
+- `ReadPassportModels` читает `.agents/config/capability-passport.json`
+  (read-only) и сортирует модели по cost tier; `SelectFallback` пропускает
+  текущую модель и модели с открытым breaker'ом.
+- `Recommend` печатает рекомендации как `model-router.ps1 -Status`.
+
+### `agent-hq net-check`
+
+```
+agent-hq net-check [-proxy <host:port>] [-timeout <секунды>] [-model <имя>] [-json]
+```
+
+Read-only: TCP-проба прокси + чтение health/паспорта. Exit 0 — прокси поднят,
+exit 1 — прокси недоступен (данные health на это не влияют). `-model` добавляет
+решение о fallback.
+
+### Self-heal в `run`
+
+После попытки результат классифицируется. При provider-классе (rate limit /
+dead / timeout / proxy):
+
+1. проба прокси; если он отвечает — одна повторная попытка **через прокси**
+   (`HTTPS_PROXY`/`HTTP_PROXY` задаются только на эту attempt, событие
+   `provider.retry`);
+2. если провайдер всё ещё мёртв — **fallback-модель** из паспорта (или
+   встроенной лестницы), пропуская открытые breaker'ы (событие
+   `model.fallback`);
+3. `SESSION_INVALID` не ретраится: задача получает durable-метку
+   `session_marks.status='invalid'` и событие `session.invalid`.
+
+Heartbeat аренды охватывает весь цикл (не только первую попытку), поэтому retry
+не оставляет висящий claim. В `runs`/`run_attempts` попадают все попытки, а
+fault пишется в `error` attempt'а (`PROVIDER_DEAD: ...`). Флаг `-model` (или
+модель из конфига) — это «текущая» модель для выбора fallback.
+
+### Хранилище M3
+
+Схема поднята до версии 4 (append-only v1→v2→v3→v4): добавлена
+`session_marks(task_id PK, agent, status, reason, marked_at, cleared_at)`.
+Все операторы — `CREATE ... IF NOT EXISTS`, прерванную миграцию можно
+повторять. Таблица авторитетна и не входит в G2 full-resync.
+
+### Net-секция в doctor/recover
+
+`doctor` добавляет `net-proxy` и `model-health` — оба **warn-only**, поэтому
+offline-машина остаётся здоровой. `recover` всегда печатает счётчик
+session-invalid и метки, а с `-net` — ещё и пробу прокси с рекомендациями.
+Сеть нужна только `net-check`/`doctor`/`recover -net` и self-heal; остальные
+команды работают офлайн.
+
 ## Форматы состояния (что читает CLI)
 
 Источник форматов — действующие PowerShell-скрипты в `.agents/scripts/`.
@@ -249,9 +327,10 @@ full-resync `agent-hq index`, поэтому переиндексация фай
 go/
   go.mod                    module agent-hq (SQLite через modernc.org/sqlite)
   cmd/agent-hq/main.go      CLI: подкоманды, флаги, вывод (text/JSON)
-  cmd/agent-hq/run.go       команда run: claim, heartbeat, durable-запись, Executor
-  cmd/agent-hq/recover.go   команда recover: watchdog stale-attempts
+  cmd/agent-hq/run.go       команда run: claim, heartbeat, durable-запись, self-heal, Executor
+  cmd/agent-hq/recover.go   команда recover: watchdog stale-attempts + session-учёт
   cmd/agent-hq/checkpoint.go команда checkpoint: durable handoff
+  cmd/agent-hq/netcheck.go  net-check + net-секция doctor: проба прокси, health, рекомендации
   internal/state/
     root.go                 корень, пути, листинг JSON-файлов, снятие BOM
     time.go                 разбор/форматирование времени, возраст
@@ -271,7 +350,14 @@ go/
     run.go                  durable claim/run/attempt/event
     recover.go              stale-attempts и атомарный recover
     checkpoint.go           run_checkpoints: save/list/latest
-    *_test.go               тесты индекса, write-path, recovery, checkpoint
+    session.go              session_marks: invalid/cleared метки M3
+    *_test.go               тесты индекса, write-path, recovery, checkpoint, сессий
+  internal/net/
+    net.go                  статусы и классификатор провайдерских/сессионных сбоев
+    probe.go                bounded TCP-проба прокси с инъектируемым dialer
+    health.go               чтение .memory/model-health.json, рекомендации
+    fallback.go             кандидаты из паспорта/лестницы и выбор fallback
+    *_test.go               тесты классификации, проб, health и fallback
   internal/executor/
     executor.go             интерфейс Executor, TaskSpec, Result, Classify
     opencode.go             OpenCodeExecutor через vault-враппер

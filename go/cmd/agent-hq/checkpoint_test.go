@@ -3,7 +3,9 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"strings"
 	"testing"
+	"unicode/utf8"
 
 	"agent-hq/internal/store"
 )
@@ -93,5 +95,41 @@ func TestExtractCheckpointOptions(t *testing.T) {
 	options, rest := extractCheckpointOptions([]string{"run-1", "-state=handoff", "-path", "a/b.go"})
 	if options.state != "handoff" || options.path != "a/b.go" || len(rest) != 1 || rest[0] != "run-1" {
 		t.Errorf("options = %+v, rest = %v; want state/path and one positional", options, rest)
+	}
+}
+
+// BUG-031: a byte-wise cut at 60 splits multi-byte runes and emits invalid
+// UTF-8. The values below all put byte 60 inside a Cyrillic/emoji character.
+func TestTruncateStateKeepsValidUTF8(t *testing.T) {
+	cases := []struct {
+		name  string
+		value string
+	}{
+		{"cyrillic", strings.Repeat("a", 59) + "б" + "tail"},
+		{"emoji", strings.Repeat("a", 59) + "🙂" + "z"},
+		{"long cyrillic", "a" + strings.Repeat("привет", 11)},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := truncateState(tc.value)
+			if !utf8.ValidString(got) {
+				t.Fatalf("truncateState(%q) = %q, not valid UTF-8", tc.value, got)
+			}
+			if !strings.HasSuffix(got, "...") {
+				t.Fatalf("truncateState(%q) = %q, want an ellipsis suffix", tc.value, got)
+			}
+			if kept := utf8.RuneCountInString(strings.TrimSuffix(got, "...")); kept != 60 {
+				t.Errorf("kept %d runes, want exactly 60", kept)
+			}
+		})
+	}
+}
+
+func TestTruncateStateLeavesShortValuesIntact(t *testing.T) {
+	if got := truncateState("short"); got != "short" {
+		t.Errorf("truncateState(short) = %q, want the value unchanged", got)
+	}
+	if got := truncateState("a\nb\r\nc"); got != "a b  c" {
+		t.Errorf("truncateState = %q, want newlines collapsed to spaces", got)
 	}
 }

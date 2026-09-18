@@ -160,13 +160,18 @@ func (e *OpenCodeExecutor) buildCommand(spec TaskSpec) (string, []string, error)
 	return e.plan.Cli, cliArgs, nil
 }
 
-// withEnvHooks exports the correlation ids the tracer/scoring plugins read.
+// withEnvHooks exports the correlation ids the tracer/scoring plugins read and
+// the per-attempt proxy, if the control plane asked for one.
 func withEnvHooks(base []string, spec TaskSpec) []string {
 	env := base
 	env = setEnv(env, "AGENT_HQ_TASK_ID", spec.ID)
 	env = setEnv(env, "AGENT_HQ_ATTEMPT_ID", spec.AttemptID)
 	env = setEnv(env, "AGENT_HQ_AGENT", spec.Agent)
 	env = setEnv(env, "AGENT_HQ_MODEL", spec.Model)
+	if proxy := strings.TrimSpace(spec.Proxy); proxy != "" {
+		env = setEnv(env, "HTTPS_PROXY", proxy)
+		env = setEnv(env, "HTTP_PROXY", proxy)
+	}
 	return env
 }
 

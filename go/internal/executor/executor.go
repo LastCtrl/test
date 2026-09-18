@@ -33,12 +33,16 @@ const (
 
 // TaskSpec is the immutable input of one execution attempt. Model is optional
 // and is recorded only; it is not forwarded to the CLI (no verified flag).
+// Proxy is the optional http(s) proxy URL the M3 self-healing retry runs
+// through; it carries no credentials and is applied as HTTPS_PROXY/HTTP_PROXY
+// for this attempt only.
 type TaskSpec struct {
 	ID        string
 	Agent     string
 	Payload   string
 	Model     string
 	AttemptID string
+	Proxy     string
 }
 
 // Result is the outcome of one execution attempt. Stdout and Stderr are kept

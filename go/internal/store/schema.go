@@ -217,3 +217,23 @@ var schemaV3 = []string{
 
 	`CREATE INDEX IF NOT EXISTS idx_run_checkpoints_created ON run_checkpoints (created_at)`,
 }
+
+// schemaV4 adds the M3 session-invalid marker: when the provider rejects a
+// session (expired/invalid credentials), the control plane records the task as
+// needing a fresh session instead of silently retrying it forever.
+//
+// Like v3, every statement is CREATE ... IF NOT EXISTS, so an interrupted
+// migration is re-runnable. The table is authoritative (not a derived index)
+// and is deliberately excluded from the G2 full-resync.
+var schemaV4 = []string{
+	`CREATE TABLE IF NOT EXISTS session_marks (
+		task_id    TEXT PRIMARY KEY,
+		agent      TEXT NOT NULL DEFAULT '',
+		status     TEXT NOT NULL DEFAULT '',
+		reason     TEXT NOT NULL DEFAULT '',
+		marked_at  TEXT NOT NULL DEFAULT '',
+		cleared_at TEXT NOT NULL DEFAULT ''
+	)`,
+
+	`CREATE INDEX IF NOT EXISTS idx_session_marks_status ON session_marks (status)`,
+}

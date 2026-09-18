@@ -22,12 +22,12 @@ import (
 
 const (
 	cliName = "agent-hq"
-	version = "0.4.0-g3m2"
+	version = "0.5.0-g3m3"
 )
 
 const usageText = `agent-hq <command> [flags]
 
-State view of the agent-hq repository (G1 readers, G2 SQLite index, G3 durable runs/recovery).
+State view of the agent-hq repository (G1 readers, G2 SQLite index, G3 durable runs/recovery/self-healing).
 
 Commands:
   status              counters and recent activity
@@ -36,9 +36,10 @@ Commands:
   evidence <id>       details of one evidence document
   index               (re)build the SQLite index of .memory and project queues
   db status           report what the SQLite index contains
-  doctor              health of directories and configs
+  doctor              health of directories, configs and the network
+  net-check           probe the CNTLM proxy and report network/model health
   run <agent> <text>  claim an id, execute it through an Executor and record the result
-  recover             mark stale running attempts stale, release their lease (flags: -requeue, -ttl)
+  recover             mark stale running attempts stale, release their lease (flags: -requeue, -ttl, -json, -net)
   checkpoint <op>     save|list|latest durable handoff points of a run
   version             print the CLI version
 
@@ -59,6 +60,8 @@ Examples:
   agent-hq index
   agent-hq db status -json
   agent-hq doctor -json
+  agent-hq net-check
+  agent-hq net-check -model opencode-go/deepseek-v4.1-flash -json
   agent-hq run dev-2 "summarise the open tasks" -executor fake
   agent-hq run dev-2 "summarise the open tasks" -executor opencode -json
   agent-hq recover -json
@@ -101,6 +104,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return runDB(globals, commandArgs, stdout, stderr)
 	case "doctor":
 		return runDoctor(globals, commandArgs, stdout, stderr)
+	case "net-check", "netcheck":
+		return runNetCheck(globals, commandArgs, stdout, stderr)
 	case "run":
 		return runRun(globals, commandArgs, stdout, stderr)
 	case "recover":
@@ -646,6 +651,7 @@ func runDoctor(globals globalOptions, args []string, stdout, stderr io.Writer) i
 
 	snapshot := state.Load(root, version, 0, time.Now())
 	checks := state.Doctor(root, snapshot)
+	checks = append(checks, netChecks(root)...)
 	healthy := state.DoctorOK(checks)
 
 	output := doctorOutput{

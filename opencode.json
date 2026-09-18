@@ -1,5 +1,6 @@
 {
   "$schema": "https://opencode.ai/config.json",
+  "snapshot": false,
   "mcp": {
     "context7": {
       "type": "local",

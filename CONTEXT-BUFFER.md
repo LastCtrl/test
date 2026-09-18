@@ -3968,3 +3968,27 @@ MCP_USED: ["sequential-thinking", "context7: offline (fetch failed)"]
 COMPLIANCE: true
 STATUS: resolved
 ================================================================================
+
+================================================================================
+[2026-09-18 11:52] qa-engineer -> team-lead:
+TYPE: update | PRIORITY: medium
+Project: agent-hq
+CONTENT: Go-фаза G2 (SQLite индекс) — независимая приёмка: ПРИНЯТО с 1 minor (BUG-028, заведён в KNOWLEDGE-BASE.md). Критических/major нет. Артефакты проверок (go1.27.1 C:\Users\Ermak_DS\tools\go\go\bin): (1) go build/vet exit 0; go test ./... -count=1: internal/state 17/17 PASS, internal/store 10/10 PASS (exit 0). (2) Реальный репо: index дважды — идентичные counts (projects 3, tasks 0, evidence 0, claims 0, messages 2), db status fresh=true schema 1 size 122880 b; tasks/leases/evidence в DB-режиме и после переименования .db (файловый fallback) — побайтово равны; db status без БД — exit 1 + подсказка, файл НЕ пересоздан. (3) Независимая фикстура (temp, кириллица в title): index counts projects1/tasks2/evidence1(2 attempts)/claims1/messages2 (вложенный inbox учтён); DB-mode vs file-mode — equal True/True/True; новый evidence run-9 → db status fresh=false (counts 1/2 — устаревшие), evidence run-9 найден через fallback (exit 0), reindex → fresh=true evidence 2 (3 attempts). (4) READ-ONLY: манифест SHA256 .memory/** (кроме agent-hq.db*) + projects/*/queue.json + path|size|mtime всех 42289 файлов projects до/после: отличий в наборе, который CLI читает/может писать, — 0; в диффе только poller.log (демон-poller) и рабочие файлы projects/1С-тепло+ (правки соседней сессии 11:35, размеры js+xlsx менялись во время прогона) — не CLI: grep os.WriteFile/Create/OpenFile/MkdirAll в нетестовом коде go/ = 0 (только *_test.go); в .memory после прогонов только agent-hq.db, без journal/wal-остатков. (5) Границы: go list -m all exit 0 (agent-hq + modernc.org/sqlite v1.59.0 + indirects; граф-only модули cc/gc/pprof вне сборки — go list -deps подтверждает рантайм-набор только sqlite/libc/x-sys); os/exec|net/http|syscall grep = 0; go mod verify: all modules verified; DSN с кириллицей (D:\Тест\...) работает — реальный репо проиндексирован. (6) Регресс G1: status (evidence 0, claims 0, inbox 0, outbox 2, dead-letter 0, queue tasks 0, projects 3), doctor verdict ok exit 0, unknown-cmd поведение не менялось; verify-phase.ps1 41/41 ALL CHECKS PASSED exit 0. (7) Чистота: gofmt -l пусто; «sk-» в go/ (кроме бинарей) и .gitignore — 0; .gitignore:36 .memory/agent-hq.db* (check-ignore подтверждает db/-wal/-journal); compliance-gate.ps1: отчёт dev-2 G2 PASS. ДЕФЕКТ BUG-028 (minor, latent): fingerprint.go:45-53 stateDirs nested:true только для inbox, а LoadMessages (snapshot.go:49,53) читает подкаталоги и в outbox/dead-letter (message.go:97-113) → вложенный outbox/m-3.json: status видит outbox=2, но db status fresh=true messages=2 (устаревшее). Текущих продюсеров с вложенным outbox нет (inbox-engine.ps1:374, message-queue.ps1:67, replay.ps1:308 nested=false), команды из БД messages не отдают — поэтому minor. ТЗ на фикс: nested:true для OutboxDir/DeadLetterDir + регресс-тест. Наблюдение (не дефект): fingerprint на size+mtime без контента — документированный trade-off fingerprint.go:18-21. Холостые процессы не запускались; временные фикстуры/манифесты удалены за собой; коммитов не делал. NOT ENOUGH EVIDENCE: контракт modernc.org/sqlite сверен go mod verify + фактическими прогонами, не через context7 (не требовался для вердикта).
+SKILLS_LOADED: ["evidence-discipline"]
+MCP_USED: ["none: приёмка штатными инструментами (bash/read/grep/edit/write); context7 не вызывался (зависимость подтверждена go mod verify/go list -deps/прогонами); sequential-thinking не вызывался (декомпозиция задана чек-листом ТЗ приёмки)"]
+COMPLIANCE: true
+STATUS: resolved
+================================================================================
+
+================================================================================
+[2026-09-18] team-lead -> bus: Go G1+G2 ПРИНЯТЫ
+TYPE: update | PRIORITY: medium
+================================================================================
+Go 1.27.1 установлен (cntlm, SHA256). G1 (коммит e6cce3e): CLI status/tasks/leases/evidence/doctor, stdlib only, 17 тестов. G2 (2411fc5): SQLite (modernc.org/sqlite v1.59.0), index/db status, freshness-fallback, 10 тестов. Приёмки ПРИНЯТО. minor BUG-028 (nested outbox fingerprint) чиним.
+Оценки: dev-2 8, qa-engineer 8.
+Осталось: US-016 v2, schtasks(OK), Go G3+ (write path/executor), 29 worktrees reminder.
+SKILLS_LOADED: []
+MCP_USED: []
+COMPLIANCE: true
+STATUS: resolved
+================================================================================

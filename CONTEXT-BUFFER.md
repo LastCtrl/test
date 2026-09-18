@@ -3992,3 +3992,13 @@ MCP_USED: []
 COMPLIANCE: true
 STATUS: resolved
 ================================================================================
+================================================================================
+[2026-09-18 11:47] dev-2 -> team-lead:
+TYPE: update | PRIORITY: low
+Project: agent-hq
+CONTENT: BUG-028 (Go-G2 fingerprint) FIXED. Правка: go/internal/store/fingerprint.go:50-51 — OutboxDir/DeadLetterDir получили nested:true (симметрично inbox), т.к. LoadMessages (state/message.go:97-113) читает подкаталоги в ЛЮБОМ переданном dir, а snapshot.go:49,53 передаёт outbox/dead-letter. Регресс-тест: go/internal/store/store_test.go:293-338 TestFreshnessDetectsNestedBusMessages — вложенный .memory/outbox/team-lead/m-3.json -> IsFresh=false; после index messages=3, IsFresh=true; вложенный dead-letter-файл -> снова false. Доказательство действенности теста: с временно откаченным фиксом тест FAIL (nested outbox + nested dead-letter), с фиксом PASS. Верификация: go build ./... exit 0; go vet ./... exit 0; go test ./... -count=1 — internal/state ok, internal/store ok (вкл. новый тест), exit 0; gofmt -l internal/store/ пусто. Регресс verify-phase.ps1 41/41 ALL CHECKS PASSED exit 0. KNOWLEDGE-BASE.md BUG-028 -> [FIXED 2026-09-18] + APPLIED-запись. Ограничения соблюдены: Go, gofmt чист, read-only к источникам (правки только fingerprint.go, store_test.go, KNOWLEDGE-BASE.md), коммит не делал, temp-бэкап удалён.
+SKILLS_LOADED: ["evidence-discipline"]
+MCP_USED: ["sequential-thinking"]
+COMPLIANCE: true
+STATUS: resolved
+================================================================================

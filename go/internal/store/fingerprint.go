@@ -47,8 +47,8 @@ func stateDirs(root string) []stateDir {
 		{dir: state.EvidenceDir(root), match: isJSONFile},
 		{dir: state.ClaimsDir(root), match: isClaimFile},
 		{dir: state.InboxDir(root), match: isJSONFile, nested: true},
-		{dir: state.OutboxDir(root), match: isJSONFile},
-		{dir: state.DeadLetterDir(root), match: isJSONFile},
+		{dir: state.OutboxDir(root), match: isJSONFile, nested: true},
+		{dir: state.DeadLetterDir(root), match: isJSONFile, nested: true},
 	}
 }
 

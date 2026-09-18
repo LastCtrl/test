@@ -287,6 +287,56 @@ func TestFreshnessDetectsChanges(t *testing.T) {
 	}
 }
 
+// TestFreshnessDetectsNestedBusMessages guards BUG-028: LoadMessages reads one
+// level below outbox/dead-letter, so the fingerprint must cover the same
+// nesting; otherwise a nested message leaves a stale index that reports fresh.
+func TestFreshnessDetectsNestedBusMessages(t *testing.T) {
+	root := newRoot(t)
+	seedState(t, root)
+
+	handle, err := Open(root)
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer handle.Close()
+	indexOnce(t, handle, root, fixtureNow)
+
+	writeFixture(t, filepath.Join(state.OutboxDir(root), "team-lead", "m-3.json"),
+		`{"id":"m-3","from":"dev-2","to":"team-lead","type":"result","status":"pending"}`)
+
+	fresh, err := handle.IsFresh()
+	if err != nil {
+		t.Fatalf("IsFresh after nested outbox message: %v", err)
+	}
+	if fresh {
+		t.Error("IsFresh reported fresh after a nested outbox message appeared")
+	}
+
+	counts := indexOnce(t, handle, root, fixtureNow)
+	if counts.Messages != 3 {
+		t.Fatalf("messages after reindex = %d, want 3", counts.Messages)
+	}
+	fresh, err = handle.IsFresh()
+	if err != nil {
+		t.Fatalf("IsFresh after reindex: %v", err)
+	}
+	if !fresh {
+		t.Error("IsFresh reported stale right after reindexing the nested message")
+	}
+
+	// The same one-level nesting applies to the dead-letter directory.
+	writeFixture(t, filepath.Join(state.DeadLetterDir(root), "team-lead", "m-4.json"),
+		`{"id":"m-4","from":"dev-2","to":"team-lead","type":"result","status":"failed"}`)
+
+	fresh, err = handle.IsFresh()
+	if err != nil {
+		t.Fatalf("IsFresh after nested dead-letter message: %v", err)
+	}
+	if fresh {
+		t.Error("IsFresh reported fresh after a nested dead-letter message appeared")
+	}
+}
+
 func TestFingerprintIsOrderIndependentAndDetectsRemoval(t *testing.T) {
 	root := newRoot(t)
 	seedState(t, root)

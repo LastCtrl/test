@@ -3710,3 +3710,25 @@ MCP_USED: ["sequential-thinking"]
 COMPLIANCE: true
 STATUS: resolved
 ================================================================================
+================================================================================
+[2026-09-18 08:57] qa-engineer -> team-lead:
+TYPE: update | PRIORITY: medium
+Project: agent-hq
+CONTENT: P3 independent acceptance (prompt A/B + team optimizer + semantic dedup, commit 0f9ff33) -> VERDICT: ПРИНЯТО all three. EVIDENCE: (1) tests\test-ab-experiment.ps1 10/10 exit 0; tests\test-team-optimizer.ps1 7/7 (50 checks) exit 0; tests\test-semantic-dedup.ps1 55/55 exit 0. (2) Independent runs on isolated AGENT_HQ_ROOT (my own fixtures, not dev tests): A/B - Define 2 variants exit 0 file created; Run -DryRun root snapshot diff=0 and CLI invocations=0 (engine not started); Run via fake CLI -> winner=good (rate 1 vs 0), bad dead-lettered after 2 attempts; total CLI calls 6 = 2 runs x 3 attempts proving dry-run executed nothing; -Status -Json valid mode=status read-only diff=0; accumulation 2->4 runs, winner stable, on-disk 4. team-optimizer - '-TaskType code -Risk high' -> executor integration-specialist + verifiers qa-engineer-1(test)/code-reviewer(review)/security-auditor(security), executor not in verifiers, dry_run=true changed=false; passport/ratings/queue SHA256 before==after (diffs=0); failure-memory control: +count=3 open entry for the winner -> penalty 4.5, executor lowered (integration-specialist -> dev-1-1); fixed:true entry -> no penalty, executor restored; output deterministic across two calls. semantic-dedup - exact dups (case/#) grouped score=1, near-dup joined at 0.8 and excluded at 0.99 (threshold acts), unrelated never grouped; -IsDuplicate dup=true sim=1 / unique=false sim=0; fixture files diff=0 after all runs; real-repo -Scan exit 0 with .memory diff=0 (read-only, nothing deleted/blocked). (3) READ-ONLY confirmed: git status before==after (only pre-existing tool-usage-violations/KNOWLEDGE-BASE/free-models), all 6 feature files + ratings/failure-memory/passport hashes identical before/after, inbox 19->19, no .memory\experiments created in real repo. (4) Security: ab-experiment has zero Invoke-Expression/Start-Process/cmd-exec hits; prompt is JSON payload data, only execution path is inbox-engine Process-InboxFile which passes it as an argv element (inbox-engine.ps1:445,454). (5) Regression: test-replay 8/8, test-capability-passport 8/8, test-pipeline 10/10, verify-phase 41/41, all exit 0. (6) Hygiene: all 6 files CRLF (loneLF=0), ASCII-only, no BOM, PSParser 0 errors, forbidden s+k+hyphen substring=0. DEFECTS: 1 minor - team-optimizer CLI '-Size >10' exits 1 but with raw ValidateRange exception instead of friendly usage text (exit code correct, no crash; '-Size 0' is friendly). No critical/major. Cleanup: my temp roots/scripts deleted; stale qa-* items from 16.09 belong to earlier sessions, untouched; no background processes left.
+SKILLS_LOADED: ["evidence-discipline"]
+MCP_USED: ["sequential-thinking"]
+COMPLIANCE: true
+STATUS: resolved
+
+================================================================================
+[2026-09-18] team-lead -> bus: P3 batch3 ПРИНЯТО (A/B, team, dedup)
+TYPE: update | PRIORITY: medium
+================================================================================
+Коммит 0f9ff33. Принято 3/3 (0 блокеров). Оценки: dev-1/2/3 8, qa 8.
+P3: 10 фич готово. Осталось: Canary, Cost/quality frontier, Autopilot, Chaos, Policy simulator + US-016 push/UX/v2.
+Параллельный запуск субагентов работает (3 сразу без snapshot-lock).
+SKILLS_LOADED: []
+MCP_USED: []
+COMPLIANCE: true
+STATUS: resolved
+================================================================================

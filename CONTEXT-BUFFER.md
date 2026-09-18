@@ -3924,3 +3924,15 @@ MCP_USED: []
 COMPLIANCE: true
 STATUS: resolved
 ================================================================================
+
+
+================================================================================
+[2026-09-18 11:06] dev-1 -> team-lead:
+TYPE: update | PRIORITY: medium
+Project: agent-hq
+CONTENT: Go G1 (read-only control plane foundation) DONE. Module go/ (module agent-hq, stdlib only). Files: go/go.mod; go/cmd/agent-hq/main.go (commands status/tasks/leases/evidence/doctor/version, flags -json/-root, root = AGENT_HQ_ROOT > -root > cwd); go/internal/state/{root,time,evidence,claim,queue,message,snapshot,doctor}.go + state_test.go (17 tests); go/README.md (boundaries G1); go/bin/agent-hq.exe built. .gitignore += go/bin/. VERIFIED: go1.27.1; go build ./... exit 0; go vet ./... exit 0; go test ./... ok 17/17 PASS, coverage internal/state 85.8%; real runs: status on repo root (evidence 0, claims 0, inbox 0, outbox 2, dead-letter 0, queue tasks 0, projects 3; legacy BOM outbox file parsed), status on empty root -> zeros exit 0 without crash, status on broken-JSON root -> warning + exit 0, doctor -> verdict ok exit 0, evidence run-a exit 0 / unknown id exit 1, leases -ttl 60 -> STALE heartbeat-expired. Fault tolerance: missing dirs -> empty result, malformed JSON -> warning (file skipped), UTF-8 BOM stripped, payload accepts string and object. NOT ENOUGH EVIDENCE: context7 offline (fetch failed 2x) - Go stdlib usage validated by local toolchain (build/vet/test) and Context7 not used for API confirmation. No commit made (git status: M .gitignore, ?? go/). Temp fixtures under %TEMP%\opencode removed.
+SKILLS_LOADED: ["evidence-discipline", "windows-safety"]
+MCP_USED: ["sequential-thinking", "context7: offline (fetch failed)"]
+COMPLIANCE: true
+STATUS: resolved
+================================================================================

@@ -4214,3 +4214,36 @@ MCP_USED: ["sequential-thinking", "context7: not used (stdlib only, no external 
 COMPLIANCE: true
 STATUS: resolved
 
+[2026-09-18 14:20] qa-engineer -> team-lead:
+TYPE: update | PRIORITY: medium
+Project: agent-hq
+CONTENT: НЕЗАВИСИМАЯ ПРИЁМКА Go M4 (internal/worktree + internal/gitutil + cmd/agent-hq/{worktree,main}.go + тесты). ВЕРДИКТ: ПРИНЯТО. Все 7 пунктов ТЗ подтверждены фактическим запуском.
+EVIDENCE (1) go1.27.1: `go build ./...`=0, `go vet ./...`=0, `go test -count=1 ./...` ALL ok (cmd/agent-hq 6.106s, internal/gitutil 6.763s, internal/worktree 5.877s, executor/net/state/store ok); `gofmt -l .`=пусто; non-ASCII байт в .go=0 (сканировано 57 файлов); подстрока s+k+дефис=0 hits во всех .go.
+EVIDENCE (2) temp git-репо (%TEMP%\opencode\qa_m4\repo, seed commit 7e1b063), операции ТОЛЬКО с -root <temp>: `worktree add "Тест Проект"` -> mode=git-worktree created=true branch=project/Тест%20Проект (кириллица цела, пробел=%20); повтор add -> created=false (идемпотентно); list -> registered=true; remove -> removed=true, `git worktree list --porcelain` показывает ТОЛЬКО main, `git branch --list`=main (без мусора). Незарегистрированная папка: remove без -force -> exit=1 (папка цела), remove -force -> exit=0 удалена; -force ДО имени тоже работает. Отбой небезопасных имён (все exit=2): ../evil, a/b, con (reserved), "bad  name" (двойной пробел), "trail " (хвост.пробел), nul.txt, 64-симв. (>63), "" -> usage.
+EVIDENCE (3) leak-guard: append alpha<-source alpha ok; beta<-source beta ok; append alpha<-source beta -> exit=1 reason='cross-project write blocked: source "beta" != target "alpha"'; на диске alpha='alpha note', beta='beta note' (изоляция подтверждена чтением файлов).
+EVIDENCE (4) gitutil реальный git: TestWorktreeLifecycle (BUG-025 регресс: git пишет "Preparing worktree" в stderr при успехе -> WorktreeAdd НЕ вернул ошибку), TestWorktreeAddFailureReturnsError (exit!=0 -> err с 'exit'), TestRunTimeout (ExitNotStarted/deadline), TestNonRepo, TestCyrillicWorktreePath — все PASS (-v вывод).
+EVIDENCE (5) реальные projects/=9 и .agents/worktrees/=29 НЕ тронуты (до и после = 9/29); `git status --porcelain` идентичен до/после (2 пред-сущ. строки: M .memory/tool-usage-violations.jsonl, ?? .memory/free-models-2026-09.md — не мои).
+EVIDENCE (6) verify-phase.ps1 = Passed 41/41 ALL CHECKS PASSED exit=0; G1-G3M3 команды на свежесобранном бинаре (version 0.6.0-g4m4): status/tasks/leases/net-check/'db status' — все exit=0.
+EVIDENCE (7) секреты не печатаются (нет URL-credentials в выводе; sanitize-тест PASS); s+k+дефис отсутствует.
+CODE-REVIEW: ValidateName=name.go:59 (Go-близнец Test-ProjectName project-worktree.ps1:71, паттерн ^[\p{L}\p{Nd}]... совпадает: '+' отвергают обе); Branch() name.go:123 per-rune %XX; success=exit-code-only git.go:55 и gitutil Run; boundary paths.go:71 IsWithin case-insens; cross-project reject buffer.go:56.
+MINOR (не блокеры): `worktree list` на РЕАЛЬНОМ root выдаёт 1 error-запись для существующего каталога projects/сим-карты+бд ('+' невалиден по общему whitelist PS+Go) — корректная диагностика, листинг не падает; это legacy-данные, не дефект M4.
+CLEANUP: temp %TEMP%\opencode\qa_m4 удалён (.NET Directory.Delete после сброса read-only на git objects); gitstatus_*.txt удалены; фоновых процессов не осталось; коммитов нет.
+NOT ENOUGH EVIDENCE: не проверял end-to-end worktree, зарегистрированный на ДРУГОМ пути (то же ограничение, что отметил dev-2; unit-тест покрывает branch-mismatch на уровне ФС).
+SKILLS_LOADED: ["evidence-discipline"]
+MCP_USED: ["sequential-thinking"]
+COMPLIANCE: true
+STATUS: resolved
+
+
+================================================================================
+[2026-09-18] team-lead -> bus: Go M4 ПРИНЯТ (worktrees + shared memory + gitutil)
+TYPE: update | PRIORITY: high
+================================================================================
+Коммит eb7ad3b. internal/worktree (add/list/remove, ValidateName Unicode, branch %20, leak-guard) + internal/gitutil (stderr-safe). CLI worktree/project buffer. Приёмка ПРИНЯТО (0 блокеров). Оценки: dev-2 8, dev-3 8, qa 9.
+Go-фаза: G1,G2,G3-M1/M2/M3,M4 done. ОСТАЛОСЬ: M5 (daily driver - cutover, ТРЕБУЕТ решения пользователя), M6 (scale/team).
+Reminder: 29 worktree; schtasks-мост (OK); ИБ-AMSI.
+SKILLS_LOADED: []
+MCP_USED: []
+COMPLIANCE: true
+STATUS: resolved
+================================================================================

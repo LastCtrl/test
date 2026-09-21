@@ -4306,3 +4306,19 @@ MCP_USED: []
 COMPLIANCE: true
 STATUS: resolved
 ================================================================================
+
+================================================================================
+[2026-09-21 09:38] dev-2 -> team-lead:
+TYPE: update | PRIORITY: high
+Project: agent-hq
+CONTENT: M5 shadow (read-only Go-«тень») реализован. Сканирует те же inbox/queue, что PS, строит план (task→agent→model→executor) и логирует в .memory/shadow/<ts>.json; не claim'ит, не запускает, не пишет в inbox/outbox.
+Артефакты (новые): go/internal/shadow/plan.go (Build: state.Load read-only + agent→model из opencode.json с фолбэком .opencode/agents/*.json; Step: source/task_id/agent/model/executor/route/action/processed_by_ps; ReportPath/Write только в .memory/shadow); go/internal/shadow/plan_test.go; go/cmd/agent-hq/shadow.go; go/cmd/agent-hq/shadow_test.go. Изменены: go/cmd/agent-hq/main.go (case shadow + usage + version 0.7.0-g5m5), go/README.md, .gitignore (.memory/shadow/).
+Проверка: go build ./... exit0; go vet ./... exit0; go test ./... — все пакеты ok; fresh go test -count=1 ./internal/shadow ./cmd/agent-hq ok; gofmt чист (0 файлов).
+План на фикстуре (temp shadowfix2, удалена): inbox m-001→dev-2 direct would-run opencode-go/deepseek-v4.1-flash; m-002→backend folder would-run opencode/big-pickle; m-003 processed_by_ps=true would-skip; queue alpha q-001 assigned would-run; q-002 (done) would-skip processed_by_ps; summary total=5 run=3 skip=2.
+Read-only доказательство: shadow на реальном root -json exit0; SHA256-дайджест .memory (без shadow) + projects/**/queue.json идентичен до/после (63 файла до = 63 после, state_identical=True); shadow не импортирует internal/store; пробные отчёты .memory/shadow удалены после проверки.
+Регресс: status/tasks/leases/db status exit0; verify-phase 41/41 exit0. Не коммитил. temp удалены. non-ASCII в .go=0; подстрока 's'+'k'+'-' в .go=0.
+SKILLS_LOADED: ["evidence-discipline", "windows-safety"]
+MCP_USED: ["sequential-thinking"]
+COMPLIANCE: true
+STATUS: resolved
+================================================================================

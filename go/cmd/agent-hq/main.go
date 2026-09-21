@@ -22,7 +22,7 @@ import (
 
 const (
 	cliName = "agent-hq"
-	version = "0.6.0-g4m4"
+	version = "0.7.0-g5m5"
 )
 
 const usageText = `agent-hq <command> [flags]
@@ -41,6 +41,7 @@ Commands:
   run <agent> <text>  claim an id, execute it through an Executor and record the result
   recover             mark stale running attempts stale, release their lease (flags: -requeue, -ttl, -json, -net)
   checkpoint <op>     save|list|latest durable handoff points of a run
+  shadow              read-only plan of what a Go control plane would do (no claim, no run)
   worktree <op>       list|add <name>|remove <name> per-project git worktrees (branch project/<name>)
   project buffer <name>  read the project CONTEXT-BUFFER (flags: -tail N, -append, -source)
   version             print the CLI version
@@ -73,6 +74,9 @@ Examples:
   agent-hq worktree add dev-2
   agent-hq worktree remove dev-2 -force
   agent-hq project buffer dev-2 -tail 20
+  agent-hq shadow
+  agent-hq shadow -summary
+  agent-hq shadow -once -json
 `
 
 func main() {
@@ -116,6 +120,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return runRun(globals, commandArgs, stdout, stderr)
 	case "recover":
 		return runRecover(globals, commandArgs, stdout, stderr)
+	case "shadow":
+		return runShadow(globals, commandArgs, stdout, stderr)
 	case "checkpoint":
 		return runCheckpoint(globals, commandArgs, stdout, stderr)
 	case "worktree":

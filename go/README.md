@@ -89,6 +89,7 @@ go\bin\agent-hq.exe doctor
 | `run <agent> <text>` | claim в SQLite, запуск через Executor, heartbeat аренды, durable-запись результата, self-heal провайдера | `-executor opencode\|fake`, `-id <id>`, `-model <имя>`, `-lease <секунд>` |
 | `recover` | watchdog: stale running-attempts → `stale` (или `queued`), освобождение аренды, события; учёт session-invalid; `-net` добавляет пробу прокси; идемпотентно | `-requeue`/`-Requeue`, `-ttl <секунды>`, `-net` |
 | `checkpoint save\|list\|latest <run-id>` | durable handoff-точки задачи | `-state <текст>`, `-path <артефакт>` |
+| `shadow` | read-only план: что Go-планировщик сделал бы с текущими inbox/queue (без claim и без запуска) | `-once` (одиночный проход, по умолчанию), `-summary` |
 | `version` | версия CLI | — |
 
 Все команды поддерживают `-json`.
@@ -290,6 +291,29 @@ session-invalid и метки, а с `-net` — ещё и пробу прокс�
 Сеть нужна только `net-check`/`doctor`/`recover -net` и self-heal; остальные
 команды работают офлайн.
 
+## M5 shadow (read-only)
+
+Цель M5-«тень» — доказать, что Go-путь умеет планировать ту же работу, что и
+PowerShell, ничего не ломая: Go читает те же `inbox`/`projects/*/queue.json` и
+только **логирует**, что он сделал бы.
+
+```
+agent-hq shadow [-once] [-summary] [-json] [-root <path>]
+```
+
+- Строго read-only: не claim'ит аренду, не запускает opencode, не пишет в
+  `inbox`/`outbox`/`dead-letter`. Единственный создаваемый путь —
+  `.memory/shadow/<UTC-таймстамп>.json`.
+- План по каждому элементу: `source` (inbox/queue), `task_id`, `agent`,
+  `model`, `executor` (`opencode`), `route` (`direct`/`folder`/
+  `assigned`/`unassigned`), `action` (`would-run`/`would-skip`).
+- Модель агента берётся из `opencode.json` (блок `agent`), с фолбэком на
+  `.opencode/agents/*.json`.
+- `processed_by_ps: true` — элемент уже обработан PowerShell (сообщение есть в
+  `outbox`/`dead-letter`; задача `done`/`dead` или с успешным evidence).
+- `-summary` печатает только сводку; `-json` — полный отчёт. Одиночный проход,
+  без фонового демона.
+
 ## Форматы состояния (что читает CLI)
 
 Источник форматов — действующие PowerShell-скрипты в `.agents/scripts/`.
@@ -330,6 +354,7 @@ go/
   cmd/agent-hq/run.go       команда run: claim, heartbeat, durable-запись, self-heal, Executor
   cmd/agent-hq/recover.go   команда recover: watchdog stale-attempts + session-учёт
   cmd/agent-hq/checkpoint.go команда checkpoint: durable handoff
+  cmd/agent-hq/shadow.go    команда shadow: read-only план inbox/queue (M5)
   cmd/agent-hq/netcheck.go  net-check + net-секция doctor: проба прокси, health, рекомендации
   internal/state/
     root.go                 корень, пути, листинг JSON-файлов, снятие BOM
@@ -363,6 +388,9 @@ go/
     opencode.go             OpenCodeExecutor через vault-враппер
     fake.go                 FakeExecutor для тестов
     executor_test.go        тесты классификации и планирования запуска
+  internal/shadow/
+    plan.go                 read-only планировщик inbox/queue + отчёт M5
+    plan_test.go            тесты плана, processed_by_ps, битых входов, read-only
   README.md
   bin/                      собранные бинарники (в .gitignore)
 ```

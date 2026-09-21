@@ -32,6 +32,8 @@ Desktop.ini
 .memory/evidence/
 .memory/claims/
 .memory/archive/*/
+# M5 shadow: read-only plan reports are a derived artifact
+.memory/shadow/
 # G2: SQLite index is a derived artifact (rebuild with `agent-hq index`)
 .memory/agent-hq.db*
 

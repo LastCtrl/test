@@ -76,6 +76,25 @@ func TestProbeProxyUsesDefaultTimeoutWhenUnset(t *testing.T) {
 	}
 }
 
+func TestProbeProxyOffModeSkipsDial(t *testing.T) {
+	t.Setenv(ProxyModeEnv, "off")
+	dialed := false
+	prober := Prober{Dial: func(context.Context, string, string) (stdnet.Conn, error) {
+		dialed = true
+		return nil, errRefused{}
+	}}
+	result := prober.ProbeProxy(context.Background(), DefaultProxyAddress)
+	if dialed {
+		t.Fatal("mode=off must not open a socket")
+	}
+	if result.Status != StatusOK {
+		t.Fatalf("status = %s, want OK in off mode", result.Status)
+	}
+	if result.Mode != "off" {
+		t.Fatalf("mode = %q, want off", result.Mode)
+	}
+}
+
 type errRefused struct{}
 
 func (errRefused) Error() string { return "connection refused" }

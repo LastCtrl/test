@@ -11,9 +11,21 @@ package net
 
 import (
 	"fmt"
+	"os"
 	"regexp"
 	"strings"
 )
+
+// ProxyModeEnv selects the proxy strategy for the process. "off" means the
+// fleet works directly (the default in .agents/config/proxy.json), so a missing
+// cntlm listener must not be treated as a fault.
+const ProxyModeEnv = "AGENT_HQ_PROXY_MODE"
+
+// ProxyModeFromEnv returns the lower-cased AGENT_HQ_PROXY_MODE value ("" when unset).
+func ProxyModeFromEnv() string { return strings.ToLower(strings.TrimSpace(os.Getenv(ProxyModeEnv))) }
+
+// DirectMode reports whether the proxy is switched off for this process.
+func DirectMode() bool { return ProxyModeFromEnv() == "off" }
 
 // Status classifies one observed network/provider outcome. It is the shared
 // vocabulary of `agent-hq net-check`, the doctor net section and the run

@@ -136,13 +136,17 @@ func OpenModels(records []ModelHealth) []ModelHealth {
 // the same guidance model-router.ps1 prints.
 func Recommend(proxy ProxyResult, health []ModelHealth, healthErr error) []string {
 	steps := make([]string, 0, 4)
-	switch proxy.Status {
-	case StatusOK:
-		steps = append(steps, fmt.Sprintf("proxy %s is up (%dms)", proxy.Address, proxy.LatencyMS))
-	case StatusTimeout:
-		steps = append(steps, fmt.Sprintf("proxy %s did not answer within the probe budget: check cntlm load, restart only the owned PID", proxy.Address))
-	default:
-		steps = append(steps, fmt.Sprintf("proxy %s is DOWN: start or restart cntlm and verify the listener (AGENTS.md section 10)", proxy.Address))
+	if strings.EqualFold(strings.TrimSpace(proxy.Mode), "off") {
+		steps = append(steps, fmt.Sprintf("proxy %s is disabled (mode=off): direct connection, cntlm not required", proxy.Address))
+	} else {
+		switch proxy.Status {
+		case StatusOK:
+			steps = append(steps, fmt.Sprintf("proxy %s is up (%dms)", proxy.Address, proxy.LatencyMS))
+		case StatusTimeout:
+			steps = append(steps, fmt.Sprintf("proxy %s did not answer within the probe budget: check cntlm load, restart only the owned PID", proxy.Address))
+		default:
+			steps = append(steps, fmt.Sprintf("proxy %s is DOWN: start or restart cntlm and verify the listener (AGENTS.md section 10)", proxy.Address))
+		}
 	}
 
 	open := OpenModels(health)

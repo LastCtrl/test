@@ -31,15 +31,22 @@ type ProxyResult struct {
 	Address   string `json:"address"`
 	Status    Status `json:"status"`
 	LatencyMS int64  `json:"latency_ms"`
-	Error     string `json:"error,omitempty"`
+	// Mode is "off" when the probe was skipped because the proxy is disabled.
+	Mode  string `json:"mode,omitempty"`
+	Error string `json:"error,omitempty"`
 }
 
 // ProbeProxy connects to address and immediately closes the connection. A TCP
 // accept is the cheapest honest signal that the proxy is listening; the probe
 // deliberately does not send a request, so it cannot leak a target or a token.
+// With AGENT_HQ_PROXY_MODE=off the probe is skipped and reported as OK, because
+// a disabled proxy is not a fault.
 func (p Prober) ProbeProxy(ctx context.Context, address string) ProxyResult {
 	if address == "" {
 		address = DefaultProxyAddress
+	}
+	if DirectMode() {
+		return ProxyResult{Address: address, Status: StatusOK, Mode: "off"}
 	}
 	timeout := p.Timeout
 	if timeout <= 0 {

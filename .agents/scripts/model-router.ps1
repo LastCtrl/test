@@ -1088,6 +1088,12 @@ function Invoke-ModelRouterCommandLine {
 
     $root = $options.Root
 
+    # Honour the proxy mode: mode=on exports HTTP(S)_PROXY for the probed CLI,
+    # mode=off removes them so probes go direct (default).
+    if (Get-Command Initialize-ProxyEnvironment -ErrorAction SilentlyContinue) {
+        [void](Initialize-ProxyEnvironment -Root $root)
+    }
+
     if ($options.Status) {
         Show-ModelStatus -Root $root
     }
@@ -1164,6 +1170,10 @@ if ([string]::IsNullOrWhiteSpace($script:PassportModulePath)) {
     }
 }
 [void](Import-PassportModule -Root "")
+$script:ProxyModePath = Join-Path $PSScriptRoot "proxy-mode.ps1"
+if (Test-Path -LiteralPath $script:ProxyModePath -PathType Leaf) {
+    try { . $script:ProxyModePath } catch { }
+}
 if ($MyInvocation.InvocationName -ne '.') {
     Invoke-ModelRouterCommandLine -Arguments $args
 }

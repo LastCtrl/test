@@ -28,3 +28,20 @@
 
 ## IB-4. Исключения путей (уже есть)
 - ЦКБ 2026-09-10: исключения для npm-каталога opencode + `D:\Тест\agent-hq` (детекты по этим путям прекращаются). AMSI по контенту эти исключения не покрывают (см. IB-1).
+
+## IB-5. CNTLM (операционка, НЕ проблема защиты) — как чинить
+- Дубль: служба (Automatic, стартует при загрузке ПК) + ярлык в Startup; второй простаивает. Службу **оставляем** (нужна автозагрузка); при глюках — ручной перезапуск.
+- Диагностика: `netstat -ano | findstr LISTENING | findstr ":3128"` — если строка есть, cntlm работает (проблема в другом).
+- Перезапуск:
+  ```
+  taskkill /IM cntlm.exe /F
+  Start-Process -FilePath "C:\tools\cntlm\cntlm.exe" -ArgumentList "-c C:\tools\cntlm\cntlm.ini" -WindowStyle Hidden
+  netstat -ano | findstr "LISTENING" | findstr ":3128"
+  ```
+- Если не слушает — отладка: `cd C:\tools\cntlm; .\cntlm.exe -c cntlm.ini -f -v` (при «Authentication failed» — обновить хэши в `cntlm.ini`, изменился пароль домена).
+- Env (должно быть): `$env:HTTP_PROXY`/`$env:HTTPS_PROXY` = `http://127.0.0.1:3128`; `NO_PROXY=localhost,127.0.0.1,10.*,192.168.*,*.minsk.energo.net`. Иначе:
+  ```
+  [Environment]::SetEnvironmentVariable('HTTP_PROXY','http://127.0.0.1:3128','User')
+  [Environment]::SetEnvironmentVariable('HTTPS_PROXY','http://127.0.0.1:3128','User')
+  [Environment]::SetEnvironmentVariable('NO_PROXY','localhost,127.0.0.1,10.*,192.168.*,*.minsk.energo.net','User')
+  ```

@@ -187,6 +187,24 @@ foreach ($p in $plan) {
     Write-Host ("[secrets] {0} -> env:{1} (инъекция на время вызова)" -f $p.Name, $p.Env)
 }
 
+# Proxy mode for the child: mode=on injects HTTP(S)_PROXY, mode=off removes them.
+# Values are restored in the finally block below, exactly like the secrets.
+$proxyModePath = Join-Path $PSScriptRoot 'proxy-mode.ps1'
+if ((-not $failure) -and (Test-Path -LiteralPath $proxyModePath -PathType Leaf)) {
+    try {
+        . $proxyModePath
+        $proxyDelta = Get-ProxyEnvDelta
+        foreach ($name in @($proxyDelta.Keys)) {
+            if ($saved.ContainsKey($name)) { continue }
+            $saved[$name] = [Environment]::GetEnvironmentVariable($name, 'Process')
+            $value = $proxyDelta[$name]
+            if ($null -ne $value) { [Environment]::SetEnvironmentVariable($name, [string]$value, 'Process') }
+            else { [Environment]::SetEnvironmentVariable($name, $null, 'Process') }
+        }
+        Write-Host ("[secrets] proxy mode: {0}" -f [string]$proxyDelta['AGENT_HQ_PROXY_MODE'])
+    } catch { }
+}
+
 try {
     if ($failure) { exit 2 }
 

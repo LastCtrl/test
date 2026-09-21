@@ -27,13 +27,13 @@ func TestRedactMirrorsRedactPs1(t *testing.T) {
 	awsVal := "AK" + "IAIOSFODNN7EXAMPLE"
 	cases := map[string]string{
 		"password=hunter" + "2 and token=" + tokVal: "password=[REDACTED] and token=[REDACTED]",
-		"apiKey = getApiKey()":                    "apiKey = getApiKey()",
-		"Bearer abcdefghijklmnopqrstuvwx":         "Bearer [REDACTED]",
-		"secret: verysecret value here":           "secret: [REDACTED] value here",
-		"api" + "_key=" + awsVal:                   "api_key=[REDACTED]",
-		"PWD:x":                                   "PWD:[REDACTED]",
-		"token = plainWord":                       "token = [REDACTED]",
-		"":                                        "",
+		"apiKey = getApiKey()":                      "apiKey = getApiKey()",
+		"Bearer abcdefghijklmnopqrstuvwx":           "Bearer [REDACTED]",
+		"secret: verysecret value here":             "secret: [REDACTED] value here",
+		"api" + "_key=" + awsVal:                    "api_key=[REDACTED]",
+		"PWD:x":                                     "PWD:[REDACTED]",
+		"token = plainWord":                         "token = [REDACTED]",
+		"":                                          "",
 	}
 	for input, want := range cases {
 		if got := Redact(input); got != want {

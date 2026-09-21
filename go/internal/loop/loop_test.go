@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"agent-hq/internal/bus"
+	"agent-hq/internal/driver"
 	"agent-hq/internal/executor"
 )
 
@@ -120,9 +121,14 @@ func TestPassPublishesSuccessLikePowerShell(t *testing.T) {
 	if len(claims) != 0 {
 		t.Errorf("sqlite leases = %+v, want none", claims)
 	}
-	// The liveness file is removed on a clean shutdown.
-	if _, err := os.Stat(filepath.Join(root, ".memory", "driver.lock")); !os.IsNotExist(err) {
-		t.Errorf("driver.lock survived the run")
+	// A scheduled `-once` pass must leave a fresh heartbeat behind: that is what
+	// keeps the PowerShell poller standing down between two scheduled passes.
+	lock, ok := driver.ReadLock(root)
+	if !ok {
+		t.Fatal("driver.lock is missing after an -once pass: the PS guard sees no heartbeat")
+	}
+	if lock.Mode != driver.ModeGo || !driver.Alive(root, driver.DefaultLockTTL) {
+		t.Errorf("driver.lock is not a fresh go heartbeat: %+v", lock)
 	}
 }
 
@@ -318,14 +324,16 @@ func TestRunRejectsNonAgentHQRoot(t *testing.T) {
 	}
 }
 
-func TestRunDaemonWritesAndRemovesLiveness(t *testing.T) {
+func TestRunDaemonRemovesLivenessOnShutdown(t *testing.T) {
 	root := newLoopRoot(t)
-	runner := newRunner(t, root, executor.NewFakeExecutor(executor.FakeSuccess), Options{Once: false})
-	runner.options.Once = true
-	_ = runner.Run(context.Background())
+	runner := newRunner(t, root, executor.NewFakeExecutor(executor.FakeSuccess), Options{})
+	runner.options.Once = false
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel() // a cancelled context is the daemon's clean shutdown
+	_ = runner.Run(ctx)
 
 	if _, err := os.Stat(filepath.Join(root, ".memory", "driver.lock")); !os.IsNotExist(err) {
-		t.Errorf("driver.lock was not cleaned up")
+		t.Errorf("driver.lock was not cleaned up at daemon shutdown")
 	}
 }
 

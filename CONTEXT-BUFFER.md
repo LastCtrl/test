@@ -4448,3 +4448,24 @@ MCP_USED: []
 COMPLIANCE: true
 STATUS: resolved
 ================================================================================
+
+================================================================================
+[2026-09-21 13:12] dev-3 -> team-lead:
+TYPE: update | PRIORITY: high
+Project: agent-hq
+CONTENT: proxy-mode (default OFF) + fast switch implemented. NEW .agents/config/proxy.json (mode=off,url=http://127.0.0.1:3128,no_proxy). NEW .agents/scripts/proxy-mode.ps1: -Status(default)|-On|-Off|-Auto|-Json|-Persist|-Root; exports Get-ProxyArgs (-x url | empty), Get-ProxyEnvDelta, Initialize-ProxyEnvironment; HKCU\Environment only with -Persist; broken/missing config -> default off without crash. INTEGRATION: model-router.ps1 (dot-source proxy-mode + Initialize-ProxyEnvironment before probe/route), run-with-secrets.ps1 (proxy env delta for child, restored in finally), run-bridge.ps1 (pip hint via Get-ProxyArgs), cntlm-guard.ps1 (mode=off -> STATUS ok, no restart/requirement), go/internal/net (AGENT_HQ_PROXY_MODE=off -> DirectMode; ProbeProxy skips dial -> OK Mode=off; Recommend notes disabled proxy; run.go skips retry-through-proxy). NEW tests/test-proxy-mode.ps1 (8 cases). EVIDENCE: test-proxy-mode 8/8 exit 0; go build ./... exit 0; gofmt -l internal/net cmd/agent-hq empty; go test ./internal/net/... ok; go test ./cmd/agent-hq/... ok (26.7s); tests/test-model-router.ps1 10/10 exit 0; verify-phase.ps1 41/41 exit 0; cntlm-guard -Check mode=on+port down -> exit 2, mode=off+port down -> exit 0; cntlm-guard -Check with repo config (mode=off) -> exit 0. FILES: .agents/config/proxy.json, .agents/scripts/proxy-mode.ps1, tests/test-proxy-mode.ps1, .agents/scripts/{model-router,run-with-secrets,run-bridge,cntlm-guard}.ps1, go/internal/net/{net,probe,health,net_test,probe_test}.go, go/cmd/agent-hq/run.go. New .ps1 CRLF+BOM; no literal sk- token; no HKCU write; no commit; temp cleaned.
+SKILLS_LOADED: ["evidence-discipline","windows-safety"]
+MCP_USED: ["sequential-thinking"]
+COMPLIANCE: true
+STATUS: resolved
+================================================================================
+
+--------------------------------------------------------------------------------
+[TIME] dev-2 -> team-lead:
+TYPE: update | PRIORITY: high
+Project: agent-hq
+CONTENT: Go-driver M5 cutover АКТИВИРОВАН + откат доказан. ВАЖНО: состояние уже было частично активно до меня (driver.mode=go от 11:31, задача agent-hq-go-loop зарегистрирована, штатный прогон 13:08 LastResult=0) — не переделывал вслепую, а верифицировал и доработал. (1) Бинарь пересобран ОФЛАЙН (GOPROXY=off): go\bin\agent-hq.exe, 13135872 б, SHA256 E528B122577C014A283DEC4BE9FE3DA4673062AE83DCABB13C953971468EF9F5, запуск ок (driver/run-loop exit 0). (2) driver -set go -> mode=go, source=driver.mode. (3) run-loop -once -> exit 0, passes=1 processed=0 errors=0 ('нет задач', inbox пуст), driver.lock перезаписан heartbeat_at 13:10:04 (age <1s). Штатный прогон расписания 13:12:00 (LastResult=0) тоже обновил lock (pid 24756, heartbeat свежий) — расписание реально ведёт Go. (4) Задача agent-hq-go-loop: wscript.exe //B run-go-loop-hidden.vbs, Пн-Пт 08:00, PT2M/PT9H, MultipleInstances=IgnoreNew; добавил -Hidden в register-go-loop-task.ps1 (Hidden=True, было False); NextRun 13:14:00. VBS (run-go-loop-hidden.vbs:6-8) sh.Run cmd,0,False -> окно скрыто, cwd=root, root из $PSScriptRoot. (5) Guard Test-GoDriverActive: при активном Go=True; inbox-poller.ps1 -Once exit 0, в poller.log 'Go driver active (driver.mode=go, fresh heartbeat) - PS poller stands down for this cycle'; дублей нет (inbox 0, outbox 2, dead-letter 1, claims 0, archive 13 — как до прогонов; queue 3 проекта по 0 задач). (6) ОТКАТ проверен ВЖИВУЮ: driver -clear -> mode=ps/source=default/go-heartbeat=false, Test-GoDriverActive=False; schtasks /Delete /TN agent-hq-go-loop /F -> TASK_EXISTS=False; затем восстановлено (driver -set go + run-loop -once + register-скрипт), guard=True. (7) Регресс: gofmt -l пусто; go vet ./... exit0; go build ./... exit0; go test ./... -count=1 11/11 ok exit0; verify-phase.ps1 41/41 PASS exit0. Не коммитил; PS-задачу agent-hq-inbox-poller НЕ трогал; фоновых процессов не осталось. ВНИМАНИЕ (evidence): в репо параллельно работает ДРУГОЙ агент (proxy-mode: go/internal/net/*, go/cmd/agent-hq/run.go, cntlm-guard.ps1, model-router.ps1, run-bridge.ps1, run-with-secrets.ps1, proxy.json, proxy-mode.ps1, tests/test-proxy-mode.ps1; mtime 13:08-13:09) — эти файлы НЕ мои. Мой единственный дифф: -Hidden в .agents/scripts/register-go-loop-task.ps1 (untracked). Откат в одну команду задокументирован в go/README.md:411-415 и .agents/docs/go-driver-cutover.md.
+SKILLS_LOADED: ["evidence-discipline","windows-safety"]
+MCP_USED: ["sequential-thinking"]
+COMPLIANCE: true
+STATUS: resolved

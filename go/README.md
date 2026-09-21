@@ -319,6 +319,9 @@ agent-hq shadow [-once] [-summary] [-json] [-root <path>]
 Go-драйвер умеет вести ту же шину, что `inbox-engine.ps1`, и включается
 переключателем. **По умолчанию выключен** (`ps`): пока нет файла режима, всё
 работает как раньше, а `run-loop` в демон-режиме просто ничего не делает.
+Режим — рантайм-состояние машины (`<root>/.memory/driver.mode`, в git не
+хранится): на этой машине он включён (`go`) и зарегистрирована задача
+`agent-hq-go-loop`.
 
 ```
 agent-hq run-loop [-root <path>] [-once] [-max N] [-interval <sec>]
@@ -365,14 +368,22 @@ agent-hq driver [-root <path>] [-set go|ps] [-clear] [-json]
 
 - файл `<root>/.memory/driver.mode` со строкой `go` или `ps`; переменная
   `AGENT_HQ_DRIVER` перекрывает файл; дефолт (файла нет) — `ps`;
-- `driver -set go` включает Go-драйвер, `driver -clear` возвращает дефолт;
+- `driver -set go` включает Go-драйвер, `driver -clear` возвращает дефолт и
+  заодно удаляет liveness-файл (откат одной командой, без остаточного
+  heartbeat);
 - пока Go-цикл работает, он держит liveness-файл `.memory/driver.lock`
   (`{mode,pid,started_at,heartbeat_at,cycles}`) и обновляет heartbeat;
+- в режиме `-once` (расписание — см. ниже) liveness-файл **не** удаляется после
+  прохода: каждый проход оставляет свежий heartbeat, поэтому PS-поллер стоит
+  между двумя запусками расписания. Heartbeat протухает сам (180 с), если
+  расписание перестало срабатывать. Демон, наоборот, удаляет файл при чистом
+  завершении, сразу возвращая шину PowerShell;
 - **fallback**: PowerShell-поллер (`Test-GoDriverActive` в `inbox-engine.ps1`)
   пропускает цикл только когда `driver.mode = go` И heartbeat свежий (< 180 с).
   Go-цикл упал/не стартовал → heartbeat протух → PS продолжает работать как
   раньше;
-- schtasks не меняется: режим переключается файлом, а не расписанием.
+- schtasks переключается только наличием задачи `agent-hq-go-loop` (см. ниже),
+  сам режим переключается файлом.
 
 Проверка переключения:
 
@@ -381,6 +392,32 @@ agent-hq driver                 # mode, источник, свежесть heart
 agent-hq run-loop -once         # один проход независимо от режима (тест/ручная)
 agent-hq run-loop               # демон: только при driver.mode=go
 ```
+
+### Активация прод (Go ведёт, PS страхует)
+
+Прод-режим — не демон, а задача планировщика каждые 2 минуты (процесс живёт
+секунды и не остаётся в фоне):
+
+```
+schtasks -> agent-hq-go-loop: wscript.exe //B run-go-loop-hidden.vbs
+Пн-Пт 08:00, повтор каждые 2 мин, длительность 9 ч, окно скрыто
+(внутри VBS: cwd = корень репо, `go\bin\agent-hq.exe run-loop -once`)
+```
+
+Порядок включения и полный откат — `.agents/docs/go-driver-cutover.md`.
+Коротко:
+
+```
+go\bin\agent-hq.exe driver -set go            # включить Go-драйвер
+.agents\scripts\register-go-loop-task.ps1     # зарегистрировать расписание
+
+go\bin\agent-hq.exe driver -clear             # ОТКАТ (PS снова ведёт)
+schtasks /Delete /TN agent-hq-go-loop /F      # убрать расписание
+```
+
+Задача `agent-hq-inbox-poller` (PS) не удаляется: пока `driver.mode = go` и
+heartbeat свежий, PS пропускает цикл, а при протухшем heartbeat автоматически
+берёт работу на себя.
 
 ## Форматы состояния (что читает CLI)
 
@@ -424,6 +461,13 @@ go/
   cmd/agent-hq/checkpoint.go команда checkpoint: durable handoff
   cmd/agent-hq/shadow.go    команда shadow: read-only план inbox/queue (M5)
   cmd/agent-hq/netcheck.go  net-check + net-секция doctor: проба прокси, health, рекомендации
+  cmd/agent-hq/runloop.go   run-loop (Go ведёт шину) + driver (переключатель режима)
+  internal/bus/
+    bus.go, claim.go, ...   PS-совместимая шина: envelope/archive/dead-letter/evidence/redact/lease
+  internal/driver/
+    driver.go               режим (driver.mode/AGENT_HQ_DRIVER) и liveness (driver.lock)
+  internal/loop/
+    loop.go                 ядро run-loop: claim, попытки, outbox/dead-letter, окно очереди
   internal/state/
     root.go                 корень, пути, листинг JSON-файлов, снятие BOM
     time.go                 разбор/форматирование времени, возраст

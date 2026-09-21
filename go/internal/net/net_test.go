@@ -68,3 +68,18 @@ func TestParseHealthStatus(t *testing.T) {
 		}
 	}
 }
+
+func TestDirectModeFromEnv(t *testing.T) {
+	t.Setenv(ProxyModeEnv, "off")
+	if !DirectMode() {
+		t.Fatal("AGENT_HQ_PROXY_MODE=off must enable direct mode")
+	}
+	t.Setenv(ProxyModeEnv, "ON")
+	if DirectMode() {
+		t.Fatal("ON must not enable direct mode")
+	}
+	t.Setenv(ProxyModeEnv, "")
+	if DirectMode() {
+		t.Fatal("an unset mode must not enable direct mode")
+	}
+}

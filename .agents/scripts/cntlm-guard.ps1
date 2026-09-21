@@ -173,6 +173,17 @@ if ($MyInvocation.InvocationName -ne '.') {
     if ([string]::IsNullOrWhiteSpace($LogFile)) { $LogFile = Join-Path $rootValue '.memory\cntlm-guard.log' }
     if ([string]::IsNullOrWhiteSpace($StateFile)) { $StateFile = Join-Path $rootValue '.memory\cntlm-guard.state.json' }
 
+    # Proxy mode (default off): when off, cntlm is not required and its absence
+    # is healthy, so the guard must not report a fault nor restart anything.
+    $proxyMode = 'on'
+    $proxyModePath = Join-Path $PSScriptRoot 'proxy-mode.ps1'
+    if (Test-Path -LiteralPath $proxyModePath -PathType Leaf) {
+        try {
+            . $proxyModePath
+            $proxyMode = (Read-ProxyConfig -Root $rootValue).mode
+        } catch { $proxyMode = 'on' }
+    }
+
     $mode = if ($Restart) { 'restart' } else { 'check' }
     Write-Host '=== cntlm-guard ==='
     Write-Host ("mode    : {0}{1}" -f $mode, $(if ($DryRun) { ' (dry-run)' } else { '' }))
@@ -188,9 +199,22 @@ if ($MyInvocation.InvocationName -ne '.') {
             Write-CntlmLog -Path $LogFile -Line ("CHECK ok host={0} port={1}" -f $ProxyHost, $ProxyPort)
             exit 0
         }
+        if ($proxyMode -eq 'off') {
+            Write-Host 'proxy mode is off - cntlm is not required.'
+            Write-Host 'STATUS: ok'
+            Write-CntlmLog -Path $LogFile -Line 'CHECK ok (mode=off, proxy not required)'
+            exit 0
+        }
         Write-Host 'STATUS: down'
         Write-CntlmLog -Path $LogFile -Line ("CHECK down host={0} port={1}" -f $ProxyHost, $ProxyPort)
         exit 2
+    }
+
+    if ($proxyMode -eq 'off') {
+        Write-Host 'proxy mode is off - nothing to restart.'
+        Write-Host 'STATUS: ok'
+        Write-CntlmLog -Path $LogFile -Line 'RESTART skipped (mode=off)'
+        exit 0
     }
 
     if ($up) {

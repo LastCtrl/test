@@ -77,3 +77,6 @@ opencode.local.json
 *.enc
 .memory/*.lock
 .memory/failure-memory.jsonl
+# M5 cut-over: driver switch and Go-loop liveness are runtime state
+.memory/driver.mode
+.memory/traces/run-loop.log

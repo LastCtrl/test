@@ -758,6 +758,12 @@ func (r *Runner) refreshLock() {
 	if !r.hasLock {
 		return
 	}
+	r.persistLock()
+}
+
+// persistLock writes the liveness document with a fresh heartbeat; the caller
+// holds lockMu.
+func (r *Runner) persistLock() {
 	r.lock.HeartbeatAt = r.options.Now().Format(time.RFC3339Nano)
 	r.lock.Cycles++
 	if err := driver.WriteLock(r.options.Root, r.lock); err != nil {
@@ -765,8 +771,12 @@ func (r *Runner) refreshLock() {
 	}
 }
 
-// stopLock removes the liveness document on a clean shutdown, which immediately
-// hands the loop back to the PowerShell fallback.
+// stopLock ends the liveness of this run. A daemon removes the document on a
+// clean shutdown, which immediately hands the loop back to the PowerShell
+// fallback. A scheduled `run-loop -once` pass is period-driven instead: it keeps
+// the document with a fresh heartbeat, so the PowerShell poller stands down
+// between two scheduled passes and the heartbeat expires on its own (see
+// driver.DefaultLockTTL) when the schedule stops firing.
 func (r *Runner) stopLock() {
 	r.lockMu.Lock()
 	defer r.lockMu.Unlock()
@@ -774,6 +784,10 @@ func (r *Runner) stopLock() {
 		return
 	}
 	r.hasLock = false
+	if r.options.Once {
+		r.persistLock()
+		return
+	}
 	if err := driver.RemoveLock(r.options.Root); err != nil {
 		r.logf("lock: cannot remove driver.lock: %v", err)
 	}

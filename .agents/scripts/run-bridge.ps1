@@ -17,6 +17,13 @@ $getToken = Join-Path $here 'get-secret.ps1'
 $runSecrets = Join-Path $here 'run-with-secrets.ps1'
 $bridgePy = Join-Path (Split-Path -Parent (Split-Path -Parent $here)) 'projects\telegram-bridge\bridge.py'
 
+# Proxy is optional (mode=off by default): the pip hint below follows the mode.
+$proxyArgs = @()
+$proxyModePath = Join-Path $here 'proxy-mode.ps1'
+if (Test-Path -LiteralPath $proxyModePath -PathType Leaf) {
+    try { . $proxyModePath; $proxyArgs = @(Get-ProxyArgs) } catch { $proxyArgs = @() }
+}
+
 # 1) secret presence check (exit 1 + error from get-secret if missing)
 & $getToken -Name tg-bot-token -Verify
 if ($LASTEXITCODE -ne 0) {
@@ -51,7 +58,9 @@ if (-not $pythonExe) {
 $aiogramVersion = & $pythonExe @pythonArgs -c "import aiogram; print(aiogram.__version__)"
 if ($LASTEXITCODE -ne 0) {
     Write-Host 'aiogram не установлен в этом интерпретаторе. Установка:'
-    Write-Host '  pip install --proxy http://127.0.0.1:3128 -r projects\telegram-bridge\requirements.txt'
+    $pipProxy = ''
+    if ($proxyArgs.Count -gt 0) { $pipProxy = ' --proxy ' + [string]$proxyArgs[1] }
+    Write-Host ('  pip install' + $pipProxy + ' -r projects\telegram-bridge\requirements.txt')
     exit 1
 }
 Write-Host ("[run-bridge] python: {0} | aiogram {1}" -f $pythonExe, $aiogramVersion)

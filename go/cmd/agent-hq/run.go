@@ -140,8 +140,12 @@ func defaultHealOptions(root string) healOptions {
 }
 
 // resolveProxyURL returns the proxy the retry runs through, following the same
-// precedence the rest of the fleet uses (AGENTS.md section 10).
+// precedence the rest of the fleet uses (AGENTS.md section 10). With the proxy
+// switched off there is no retry-through-proxy step at all.
 func resolveProxyURL() string {
+	if net.DirectMode() {
+		return ""
+	}
 	for _, name := range []string{"AGENT_HQ_PROXY", "HTTPS_PROXY", "https_proxy", "HTTP_PROXY", "http_proxy"} {
 		if value := strings.TrimSpace(os.Getenv(name)); value != "" {
 			return value
@@ -321,7 +325,7 @@ func healRun(ctx context.Context, handle *store.Store, worker executor.Executor,
 	if heal.proxyURL != "" {
 		proxy = heal.prober.ProbeProxy(ctx, proxyAddress(heal.proxyURL))
 	}
-	if proxy.Status == net.StatusOK {
+	if proxy.Status == net.StatusOK && proxy.Mode != "off" {
 		_, _ = handle.AppendEvent(store.RunEvent{TaskID: spec.ID, Attempt: attempt.seq,
 			Kind: store.EventProviderRetry, Detail: fmt.Sprintf("%s; retrying through %s", attempt.reason, proxy.Address),
 			CreatedAt: stamp(time.Now())})

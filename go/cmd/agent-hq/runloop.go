@@ -200,6 +200,12 @@ func runDriver(globals globalOptions, args []string, stdout, stderr io.Writer) i
 			fmt.Fprintf(stderr, "%s: cannot clear mode: %v\n", cliName, err)
 			return 1
 		}
+		// Drop the liveness document as well: one command rolls the whole
+		// cut-over back, leaving no Go heartbeat for the PS guard to read.
+		if err := driver.RemoveLock(root); err != nil {
+			fmt.Fprintf(stderr, "%s: cannot remove lock: %v\n", cliName, err)
+			return 1
+		}
 	} else if strings.TrimSpace(*set) != "" {
 		if err := driver.Write(root, *set); err != nil {
 			fmt.Fprintf(stderr, "%s: %v (want go or ps)\n", cliName, err)

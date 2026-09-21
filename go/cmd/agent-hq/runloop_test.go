@@ -188,6 +188,11 @@ func TestDriverCommandSwitchAndReport(t *testing.T) {
 	if _, err := os.Stat(driver.ModePath(root)); !os.IsNotExist(err) {
 		t.Errorf("mode file survived -clear")
 	}
+	// The rollback must also drop the Go liveness file: one command restores the
+	// PS default with no leftover heartbeat for the guard to read.
+	if _, err := os.Stat(driver.LockPath(root)); !os.IsNotExist(err) {
+		t.Errorf("liveness file survived -clear")
+	}
 }
 
 func TestDriverRejectsUnknownMode(t *testing.T) {

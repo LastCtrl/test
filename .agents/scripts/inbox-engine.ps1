@@ -854,9 +854,40 @@ function Get-PendingInboxItems {
     return @($items | Sort-Object -Property FilePath)
 }
 
+# M5 cut-over: is the Go driver owning the bus right now? True only when
+# .memory/driver.mode says "go" AND the Go loop's liveness heartbeat
+# (.memory/driver.lock) is fresh, so a crashed or never-started Go loop falls
+# back to this engine automatically. Default (no mode file) is false: nothing
+# changes for the running fleet. Pure read, never throws.
+function Test-GoDriverActive {
+    param([int]$LockTtlSeconds = 180)
+    try {
+        $modePath = Join-Path $Memory "driver.mode"
+        if (-not (Test-Path -LiteralPath $modePath -PathType Leaf)) { return $false }
+        $mode = ([System.IO.File]::ReadAllText($modePath, $script:Utf8NoBom)).Trim()
+        if ($mode.ToLower() -ne "go") { return $false }
+
+        $lockPath = Join-Path $Memory "driver.lock"
+        if (-not (Test-Path -LiteralPath $lockPath -PathType Leaf)) { return $false }
+        $lock = ([System.IO.File]::ReadAllText($lockPath, $script:Utf8NoBom)) | ConvertFrom-Json -ErrorAction Stop
+        if (-not $lock.heartbeat_at) { return $false }
+        $heartbeat = [datetime]::MinValue
+        if (-not [datetime]::TryParse([string]$lock.heartbeat_at, [ref]$heartbeat)) { return $false }
+        $age = ((Get-Date).ToUniversalTime() - $heartbeat.ToUniversalTime()).TotalSeconds
+        return ($age -ge 0 -and $age -lt $LockTtlSeconds)
+    } catch {
+        return $false
+    }
+}
+
 # Serial processing: scan every agent inbox and process each message in order.
 # The daemon does NOT use this — it keeps the same engine but runs a worker pool.
 function Process-Inbox {
+    if (Test-GoDriverActive) {
+        Write-Log "Go driver active (driver.mode=go, fresh heartbeat) - PS poller stands down for this cycle"
+        return @()
+    }
+
     # Schedule the sweep once per poll cycle, before any "Already claimed" skip.
     $null = Invoke-StaleClaimSweep -TtlSeconds 900
 

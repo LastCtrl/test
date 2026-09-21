@@ -4281,3 +4281,28 @@ COMPLIANCE: true
 STATUS: resolved
 ================================================================================
 
+
+================================================================================
+[2026-09-21 09:38] qa-engineer -> team-lead:
+TYPE: update | PRIORITY: medium
+Project: agent-hq
+CONTENT: Независимая приёмка фикса E2E /run→ответ (Telegram) + UX (commit f6baeb4): ПРИНЯТО. Обязательные прогоны с фактическим выводом: test-pipeline 13/13 exit0; test-bridge-push 35/35 exit0; bridge --selftest 244/244 exit0. Независимый isolated-прогон (временный root + fake-opencode; реальный .memory не тронут — 0 files за час): (а) benign-warning в stderr + «Сейчас 15:43» source=run → outbox status=done, response чистый (без warning), dead-letter пуст, файл на диске с BOM EF BB BF; (б) тот же вывод в task-режиме → dead-letter (reason: missing success marker); (в) Error: в run-режиме → dead-letter (реальные ошибки не потеряны); (г) BOM outbox читается utf-8-sig, deliver_task_answers доставил 1 раз с «✅ Ответ dev-1 … Сейчас 15:43», анти-дубль (2-й проход 0). ErrorMarker (inbox-engine.ps1:271) содержит все 8 реальных маркеров; BenignOutputPatterns (:273) — единственный узкий regex фолбэк-предупреждения. UX: клавиатуры /agents,/queue,/tasks,/status строятся (≥4 кнопок каждая), в status есть refresh:status; callback cmd:queue/cmd:tasks/refresh:status роутятся, чужие игнорируются. Регресс: verify-phase 41/41, test-review-disagreement 74/74, test-daemon 9/9. Hygiene: изменённые .ps1 чистый CRLF (bareLF=0); в добавленных строках diff новых sk-литералов нет (фейковый ключ собирается в рантайме, fake-opencode 0 hits; найденные «sk-» — морфология task-state.ps1 и метка «sk- key», под сканер pre-commit-secrets.ps1:46 не попадают); bridge.py вне git (.gitignore:69, ls-files пуст). MINOR (не блокирующий): из ErrorMarker изъят голый «not found» — англ. «file not found» в run-режиме не валит задачу (task-режим защищён STATUS-маркером). Багов для KNOWLEDGE-BASE нет (дефектов не найдено). Временные qa-скрипты удалены, фоновых процессов проекта нет.
+SKILLS_LOADED: ["evidence-discipline"]
+MCP_USED: ["sequential-thinking"]
+COMPLIANCE: true
+STATUS: resolved
+================================================================================
+
+================================================================================
+[2026-09-21] team-lead -> bus: US-016 /run E2E ПРИНЯТО
+TYPE: update | PRIORITY: high
+================================================================================
+Коммит f6baeb4. benign-warning opencode больше не валит; ответ run-задачи доставляется в Telegram; utf-8-sig (BOM-чтение); inline-клавиатуры. Тесты: pipeline 13/13, selftest 244, bridge 35, verify 41/41. Приёмка ПРИНЯТО.
+Оценки: dev-1 9, qa-engineer 9.
+EPERM: подтверждён как вероятностный (snapshot спавнит git); ретрай сработал. snapshot:false на диске (применится после рестарта) - решение по diff за пользователем.
+Далее: M5 shadow, self-healing 3 пункта.
+SKILLS_LOADED: []
+MCP_USED: []
+COMPLIANCE: true
+STATUS: resolved
+================================================================================

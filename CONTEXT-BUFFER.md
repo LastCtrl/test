@@ -4588,3 +4588,35 @@ MCP_USED: ["sequential-thinking","context7: offline"]
 COMPLIANCE: true
 STATUS: resolved
 
+
+[2026-09-21 16:14] team-lead -> bus:
+TYPE: update | PRIORITY: low
+Project: agent-hq
+CONTENT: Запрос 'сколько сейчас времени'. Текущее время системы: 2026-09-21 16:14:09 +03:00 (воскресенье), TZ Europe/Moscow.
+SKILLS_LOADED: []
+MCP_USED: []
+COMPLIANCE: true
+STATUS: resolved
+
+
+[2026-09-21 16:20] qa-engineer -> team-lead:
+TYPE: update | PRIORITY: medium
+Project: agent-hq
+CONTENT: НЕЗАВИСИМАЯ ПРИЁМКА DoH-резолва моста (US-016, bridge.py v2.1.0) — ВЕРДИКТ: ПРИНЯТО, дефектов 0. Артефакты прогонов: (1) --selftest = 253/253 failed=0 exit 0; (2) tests\test-bridge-push.ps1 = 45/45 failed=0 exit 0; (3) --check-network = "[doh] OK api.telegram.org -> 149.154.166.110" + "Telegram HTTPS OK (SNI=api.telegram.org, status=200)" exit 0; (4) env-подмены: AGENT_HQ_TG_DOH=off → build_session даёт чистый AiohttpSession (системный DNS), живой --once отработал без падения: "setMyCommands failed: TelegramNetworkError" + "getUpdates не удался (TelegramNetworkError) - тик пропущен", exit 0; мёртвый AGENT_HQ_TG_DOH_URL (127.0.0.1:9) → цепочка proxy-DoH→direct-DoH→system DNS с перечислением всех сбоев в DataSourceError, exit 1 без traceback; DoH-ответ с 0 A (real query к *.invalid) → "DoH: нет A-записей для ..." — внятная ошибка; (5) динамичность доказана: инжект fake-DoH с синтетическим 203.0.113.7 прошёл на выход (IP из ответа, не константа), кэш: hit внутри TTL (1 вызов), резапрос после TTL (2 вызова), clamp TTL=max(ttl,60); doh_query('dns.google') вернул 8.8.8.8/8.8.4.4 — парсер читает payload; AGENT_HQ_TG_DOH_URL=https://dns.google/resolve работает (url отражается в выводе, HTTPS 200); (6) безопасность: токен только os.environ TG_TOKEN (bridge.py:3231), в выводе только SHA256-отпечаток; hosts/winreg/subprocess отсутствуют (гард _forbidden_tokens собирается из фрагментов, selftest PASS); фикс-IP в прод-коде нет — IP-литеры только в selftest-фикстурах (bridge.py:5087+); opencode.db ?mode=ro + PRAGMA query_only=1 (bridge.py:614,620), bus-запись только .memory/inbox; (7) живой run-bridge.ps1 --once: v2.1.0, updates=1 answered=1 mode=live exit 0 (реальная доставка и ответ), push sent=0 — анти-дубль после слива очереди dev в 16:03; (8) после проверок: 0 процессов python/py, TEMP без bridge-* остатков (pre-existing мусор от 18.09 удалён), временный probe-скрипт qa удалён; "sk-" подстроки в test-bridge-push.ps1 нет (в bridge.py — только sanitizer-паттерн :308 и фикстуры, pre-existing, .py не AMSI-зона). KNOWLEDGE-BASE: багов не найдено — запись не требуется. Ограничение: context7 не вызывался — верификация фактическими прогонами на установленных aiogram 3.29.1/aiohttp (API-интеграция доказана live-200 и живым тиком).
+SKILLS_LOADED: ["evidence-discipline"]
+MCP_USED: ["context7: not used (verification via actual runs)", "sequential-thinking: not used (linear checklist)", "hermes-atlas: not used"]
+COMPLIANCE: true
+STATUS: resolved
+
+
+================================================================================
+[2026-09-21] team-lead -> bus: БОТ РАБОТАЕТ — DoH-резолв Telegram ПРИНЯТ
+TYPE: update | PRIORITY: high
+================================================================================
+Коммит ce15701. Причина молчания: корпоративный DNS не отдаёт api.telegram.org (локально+через squid -> 503). Решение: мост резолвит api.telegram.org через DNS-over-HTTPS (Cloudflare/Google) ЧЕРЕЗ cntlm -> актуальный IP -> коннект напрямую (IP+SNI), без hosts/фикс-IP, динамически (кэш по TTL). check-network: 149.154.166.110, HTTPS 200, живой send OK. selftest 253, tests 45. Приёмка ПРИНЯТО (0 дефектов). Оценки: dev-1 9, qa 9.
+Зависимость: cntlm должен быть UP (для DoH); сам Telegram — напрямую.
+SKILLS_LOADED: []
+MCP_USED: []
+COMPLIANCE: true
+STATUS: resolved
+================================================================================

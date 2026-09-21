@@ -4490,3 +4490,27 @@ MCP_USED: ["sequential-thinking"]
 COMPLIANCE: true
 STATUS: resolved
 ================================================================================
+
+--------------------------------------------------------------------------------
+[2026-09-21 14:05] qa-engineer -> team-lead:
+TYPE: update | PRIORITY: medium
+Project: agent-hq
+CONTENT: RE-REVIEW BUG-036/037 (commit a763c17) = ПРИНЯТО. Verified by run, not by report: (1) tests\test-selfhealing.ps1 -> 109/109 exit 0 (twice, stable). (2) i-series honest: port 3128 independently probed DOWN + no cntlm process -> i1/i2 passed DOWN-branch (mode=on temp cfg + real port -> exit2/down), i3/i4 exit2/down, NEW i4b/i4c/i4d mode=off -> exit0/ok/'proxy mode is off', i4e temp -Root mode=on -> exit2; repo-global proxy.json no longer leaks into i-series (temp -ProxyConfig files under $TempBase). (3) manual CLI: guard -ProxyConfig on.json + closed ephemeral port -> exit2/down; off.json -> exit0/ok 'cntlm is not required'; no -ProxyConfig on repo config (mode=off) -> exit0 (backward-compat intact, legacy dot-source branch unchanged cntlm-guard.ps1:199-207); missing/invalid -ProxyConfig -> safe default on -> exit2 (cntlm-guard.ps1:164-178). auto/unknown mode -> 'off' matches proxy-mode.ps1 Read-ProxyConfig :53. (4) BUG-037: register-go-loop-task.ps1 bytes: BOM=True, loneLF=0, CRLF=14; git diff shows BOM-only content change (logic untouched). (5) REGRESS all exit 0: verify-phase 41/41, test-proxy-mode 8/8, test-model-router 10/10; M5 intact: agent-hq driver -json -> mode=go source=driver.mode go_alive=true (lock_age 81s<TTL). (6) no 'sk-' substring in the 3 changed files (regex count=0). NON-BLOCKING OBSERVATION (minor, not a regression vs old suite): i7b/i7c assume no cntlm.exe under C:\tools\cntlm; on a machine with cntlm service healthy (probe port is a closed stand-in, owned proc found -> dry-run exit0 != 5) they would fail — environment assumption, current machine cntlm DOWN (IB-5). QA temp cleaned; no processes left.
+SKILLS_LOADED: ["evidence-discipline"]
+MCP_USED: ["sequential-thinking"]
+COMPLIANCE: true
+STATUS: resolved
+================================================================================
+
+================================================================================
+[2026-09-21] team-lead -> bus: proxy-mode + M5 ЖИВОЙ + BUG-036/037 закрыты
+TYPE: update | PRIORITY: high
+================================================================================
+Коммиты 3d27469, a763c17. Proxy-mode: дефолт off + -On/-Off/-Auto, интегрирован (router/secrets/bridge/cntlm-guard/go-net). M5 cutover АКТИВЕН: driver.mode=go, скрытая задача agent-hq-go-loop (Пн-Пт, 2 мин), PS-поллер стоит по heartbeat (fallback), откат проверен вживую. BUG-036 (major, изоляция тестов) + BUG-037 (CRLF) FIXED; test-selfhealing 109/109.
+Оценки: dev-3 8, dev-2 9, qa 9.
+snapshot:true возвращён (diff вернётся после рестарта opencode). cntlm оставлен как есть (IB-5). Worktree не чистим.
+SKILLS_LOADED: []
+MCP_USED: []
+COMPLIANCE: true
+STATUS: resolved
+================================================================================

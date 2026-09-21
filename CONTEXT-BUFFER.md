@@ -4345,3 +4345,19 @@ MCP_USED: []
 COMPLIANCE: true
 STATUS: resolved
 ================================================================================
+
+================================================================================
+[2026-09-21 10:05] dev-3 -> team-lead:
+TYPE: update | PRIORITY: high
+Project: agent-hq
+CONTENT: Operational self-healing — 3 пункта (PS, Go не тронут).
+(1) .agents\scripts\cntlm-guard.ps1 — probe 127.0.0.1:3128 + безопасный restart ТОЛЬКО owned cntlm (Name=cntlm.exe AND ExecutablePath под -AllowedDir=C:\tools\cntlm), stop по PID после identity-recheck; restart budget (MaxRestarts/WindowMinutes) + circuit breaker; лог .memory\cntlm-guard.log (+ state .json); режимы -Check (default)/-Restart/-DryRun; exit 0 ok / 2 down / 3 breaker-open / 4 restart-failed / 5 no-process / 1 usage. НЕ выполнялся реально: только -DryRun → «DRY-RUN: would stop PID 18076 ... would start cntlm.exe -c cntlm.ini» exit 0, cntlm PID 18076 жив, state-файл не создан.
+(2) .agents\scripts\snapshot-backoff.ps1 — Test-SnapshotRetryable (Busy:FileSystem.writeFile/snapshot/exclude/EPERM/uv_spawn/EBUSY/failed to get diff) + Get-SnapshotBackoffDelay (exp, cap) + Invoke-SnapshotBackoff (bounded, status ok|exhausted|non-retryable, Attempts/Delays/ElapsedMs/Result); CLI -ErrorText (exit 2 retryable / 0 нет / 1 usage), -Json. Доккомментарий: применять в обёртках opencode (agent-hq-daemon/run-poller/run-daemons/CI).
+(3) .agents\scripts\token-preflight.ps1 — read-only оценка chars/(CharsPerToken=4) против -LimitTokens (default 200000); -Check, -Input (через [Alias('Input')] — прямое имя $Input затирается автоматической переменной), -Files/-Dir/-Recurse, -Json; verdict ok|warn(>=WarnPercent)|over → рекомендация /compact; exit 0/2/3; битые/пустые/отсутствующие/бинарные входы не падают.
+ТЕСТ tests\test-selfhealing.ps1: 98 checks PASS exit 0 — unit (ownership/prefix-guard/budget/breaker/backoff delays/retry-classify/preflight estimate) + integration (live-proxy -Check exit0; closed-port exit2; -Restart -DryRun планирует но не действует, state не пишется; чужой AllowedDir → exit5 no-process, реальный cntlm жив; breaker exit3; -MaxRestarts 0 exit3; usage exit1; CLI exit codes) + инварианты файлов (UTF-8 BOM, CRLF lone-LF=0, PSParser 0, ASCII-only, нет "s"+"k"+"-").
+РЕГРЕСС: verify-phase 41/41 PASS exit 0. temp почищен (0 leftovers), фоновых процессов не осталось, cntlm не рестартился, коммитов нет (4 файла untracked).
+SKILLS_LOADED: ["evidence-discipline", "windows-safety"]
+MCP_USED: ["sequential-thinking", "context7: n/a (нет внешней библиотеки — только PS 5.1 + .NET BCL)"]
+COMPLIANCE: true
+STATUS: resolved
+================================================================================

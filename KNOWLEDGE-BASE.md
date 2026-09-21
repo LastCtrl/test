@@ -494,3 +494,10 @@
 ### Minor-находки приёмки Go G3-M3 (QA 2026-09-18, не блокируют) [FIXED 2026-09-18]
 - **SESSION_INVALID на retry-попытке не помечается:** FIXED (2026-09-18, dev-3). Логика проставления durable-метки вынесена в `markSessionInvalid` (`go/cmd/agent-hq/run.go:369-383`) и вызывается при session-фолте первого аттемпта, retry (`run.go:338-340`) и fallback (`run.go:358-360`); после session-фолта retry fallback не выполняется (ранний возврат). Регресс-тест `TestHealMarksSessionInvalidOnRetryAttempt` (durable mark + `session.invalid`, ровно 2 аттемпта, без `model.fallback`).
 - **Сбой проставления session-метки пишется событием `heartbeat.error`:** FIXED (2026-09-18, dev-3). Добавлен отдельный вид `store.EventSessionMarkError = "session.mark.error"` (`go/internal/store/run.go:46-49`), используется в `markSessionInvalid` (`run.go:377`). Контракт закреплён `TestSessionMarkErrorEventKindIsDistinct`.
+
+### BUG-033: M5 shadow — несуществующий root молча создаёт `.memory/shadow/` и даёт пустой план (minor, QA-приёмка G5-M5 2026-09-21)
+- **Симптом:** `agent-hq shadow -root <опечатка/нет пути>` → exit 0, steps=[], и при этом создаётся дерево `<root>/.memory/shadow/<ts>.json`.
+- **Причина:** `state.ResolveRoot` (go/internal/state/root.go:39-47) не валидирует существование root; `shadow.Write` (go/internal/shadow/plan.go:370-373) делает `MkdirAll` по пути отчёта.
+- **Влияние:** read-only контракт к состоянию PS не нарушен (создаётся только собственная shadow-директория), но опечатка в `-root` не обнаруживается — пустой план вместо ошибки.
+- **Решение:** не блокирует приёмку M5. Рекомендация на будущую итерацию: в `runShadow` проверять `os.Stat(root)` (или наличие `.memory`/`opencode.json`) и выдавать warning/exit 1.
+- **Смежное (не баг):** queue-задачи `done`/`dead` помечаются `processed_by_ps=true` даже если их завершила Go-ветка — семантика «завершено на диске», задокументирована в go/README.md:312-313.

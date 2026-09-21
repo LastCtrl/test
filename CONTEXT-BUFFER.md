@@ -4322,3 +4322,26 @@ MCP_USED: ["sequential-thinking"]
 COMPLIANCE: true
 STATUS: resolved
 ================================================================================
+
+================================================================================
+[2026-09-21 09:55] qa-engineer -> team-lead:
+TYPE: update | PRIORITY: medium
+Project: agent-hq
+CONTENT: M5 shadow — независимая приёмка: ВЕРДИКТ ПРИНЯТО (commit 877a739, 8 файлов, ровно заявленные). Доказательства: (1) go build/vet ./... exit0; go test ./... ok (8 пакетов); fresh -count=1 ./internal/shadow ./cmd/agent-hq — 10/10 PASS (5 plan + 5 CLI); gofmt -l пусто (61 .go); non-ASCII .go=0; 'sk-' в .go=0 и в новых строках diff=0 (единственный хит — предсуществующая .gitignore:62 task-summary*, вне M5). (2) Независимая temp-фикстура (inbox direct/folder/outbox-processed + queue assigned/done/unassigned): shadow -json exit0, план полон (source/task_id/agent/model/executor/route/action/reason), processed_by_ps детектится (outbox m-003 + done q-002), summary total=6 run=3 skip=2 pps=2; -summary exit0. (3) Read-only на РЕАЛЬНОМ root: SHA256+size 63 файлов (.memory кроме shadow + projects/**/queue.json) до/после идентичны (changed=0); inbox 19->19, outbox 2->2, claims 0->0 (не claim'ит); единственный новый файл — свой .memory/shadow/20260921T064248.125311400Z.json (read_only:true). steps=[] корректен: все 19 файлов inbox — .gitkeep, status согласован (inbox:0). (4) opencode не запускается: импорты shadow.go (fmt/io/tabwriter/time/internal/shadow) и plan.go (без os/exec, без internal/store); grep Execute|executor.Run|store.|Claim|ticker|go func по internal/shadow — только комментарий plan.go:6; процессы opencode 6->6 во время прогона. (5) Вечного фона нет: -once no-op по дизайну (shadow.go:17,25-27), тикер/goroutine отсутствуют. (6) Регресс: status/tasks/leases/db status exit0; verify-phase 41/41 PASS exit0. Minor (не блокируют, KB BUG-033): несуществующий -root молча создаёт <root>/.memory/shadow и пустой план exit0 — рекомендовать os.Stat(root) в runShadow; done/dead queue => processed_by_ps=true (семантика «завершено на диске», задокументирована). Инцидент: MCP sequential-thinking сломан (ошибка валидации -32602 на корректных аргументах, 2 повтора) — верификация сделана вручную по чек-листу. Рекомендованная оценка dev-2 по §7.1: 8 (чистая приёмка без итераций фикса, но 2 minor-замечания — потолок 8).
+SKILLS_LOADED: ["evidence-discipline"]
+MCP_USED: ["sequential-thinking: offline (MCP -32602 validation error x2)"]
+COMPLIANCE: true
+STATUS: resolved
+================================================================================
+
+================================================================================
+[2026-09-21] team-lead -> bus: Go M5 shadow ПРИНЯТ
+TYPE: update | PRIORITY: high
+================================================================================
+Коммит 877a739. agent-hq shadow: read-only план (что Go сделал бы), processed_by_ps. state_identical=True. Приёмка ПРИНЯТО (2 minor BUG-033). Оценки: dev-2 8, qa 8.
+Далее: self-healing 3 пункта (cntlm-guard/snapshot-backoff/token-preflight).
+SKILLS_LOADED: []
+MCP_USED: []
+COMPLIANCE: true
+STATUS: resolved
+================================================================================

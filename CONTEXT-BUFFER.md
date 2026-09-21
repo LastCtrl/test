@@ -4435,3 +4435,16 @@ MCP_USED: ["sequential-thinking"]
 COMPLIANCE: true
 STATUS: resolved
 --------------------------------------------------------------------------------
+
+================================================================================
+[2026-09-21] team-lead -> bus: M5-cutover готов (default OFF) + BUG-033/034/035
+TYPE: update | PRIORITY: high
+================================================================================
+Коммит 3b619a5. Go run-loop ведёт задачи (PS-совместимая шина, parity 8/8), driver-switch default=ps (PS fallback по heartbeat), shadow перепроверен (+найден/исправлен баг плана). BUG-033/034/035 FIXED. snapshot:true возвращён (diff вернётся после рестарта). Приёмка ПРИНЯТО (2 minor OBS). Оценки: dev-2 9, dev-3 8, qa 9.
+АКТИВАЦИЯ cutover = agent-hq driver -set go + run-loop (демон/расписание) - ТРЕБУЕТ ОК пользователя (schtasks).
+Worktree: не чистим (решение пользователя).
+SKILLS_LOADED: []
+MCP_USED: []
+COMPLIANCE: true
+STATUS: resolved
+================================================================================

@@ -263,9 +263,16 @@ function Test-ScriptSyntax {
     }
 }
 
-# --- Result definition (DRY): success = real exit code 0 + explicit marker + clean stderr ---
+# --- Result definition (DRY). Structured bus tasks: exit 0 + success marker +
+# clean output. Interactive Telegram tasks (source=run/reply or from=telegram):
+# exit 0 + non-empty stdout, marker optional because the answer is the result.
+# Benign opencode warnings are stripped before the error marker is matched.
 $script:SuccessMarker = '(?i)STATUS:\s*(resolved|done|completed)'
-$script:ErrorMarker = '(?i)(not found|permission denied|auto-rejecting|rejected permission|Error:)'
+$script:ErrorMarker = '(?i)(permission denied|auto-rejecting|rejected permission|Error:|command not found|not recognized|no such file|cannot find path)'
+$script:BenignOutputPatterns = @(
+    '(?i)agent\s+"[^"]*"\s+not found\.\s*Falling back to default agent'
+)
+$script:TelegramFrom = 'telegram'
 $script:JobTimeoutSeconds = 900
 if ($env:AGENT_HQ_JOB_TIMEOUT) {
     $envTimeout = 0
@@ -506,26 +513,40 @@ function Invoke-OpencodeAttempt {
     return (Add-AttemptTiming -attempt $timeoutResult -startedAt $startedAt -finishedAt $finishedAt)
 }
 
+# Remove benign opencode warnings (e.g. the subagent fallback notice) so they
+# cannot trip the error marker. Real errors are never in this list.
+function Remove-BenignOutput {
+    param([string]$Text)
+    if ([string]::IsNullOrEmpty($Text)) { return "" }
+    $clean = $Text
+    foreach ($pattern in $script:BenignOutputPatterns) {
+        $clean = [regex]::Replace($clean, $pattern, '')
+    }
+    return $clean
+}
+
 # Success ONLY when: exit code == 0 AND stdout has the explicit success marker AND stderr has no error markers.
 # A non-empty error text (stderr) or unmatched stdout is NOT success.
 function Test-OpencodeSuccess {
-    param($attempt)
+    param($attempt, [switch]$RequireMarker)
     if ($null -eq $attempt) { return $false }
     if ($attempt.exitCode -ne 0) { return $false }
     if ([string]::IsNullOrWhiteSpace($attempt.stdout)) { return $false }
     # Error markers anywhere in the captured output (stdout or stderr) mean failure.
-    if (("$($attempt.stdout)`n$($attempt.stderr)") -match $script:ErrorMarker) { return $false }
-    if ($attempt.stdout -notmatch $script:SuccessMarker) { return $false }
+    $combined = Remove-BenignOutput "$($attempt.stdout)`n$($attempt.stderr)"
+    if ($combined -match $script:ErrorMarker) { return $false }
+    if ($RequireMarker -and $attempt.stdout -notmatch $script:SuccessMarker) { return $false }
     return $true
 }
 
 function Get-AttemptFailureReason {
-    param($attempt)
+    param($attempt, [switch]$RequireMarker)
     if ($null -eq $attempt) { return "no result object" }
     if ($attempt.exitCode -ne 0) { return "exit code $($attempt.exitCode)" }
     if ([string]::IsNullOrWhiteSpace($attempt.stdout)) { return "empty stdout" }
-    if (("$($attempt.stdout)`n$($attempt.stderr)") -match $script:ErrorMarker) { return "error marker in output: '$($matches[0])'" }
-    if ($attempt.stdout -notmatch $script:SuccessMarker) { return "missing success marker '$($script:SuccessMarker)'" }
+    $combined = Remove-BenignOutput "$($attempt.stdout)`n$($attempt.stderr)"
+    if ($combined -match $script:ErrorMarker) { return "error marker in output: '$($matches[0])'" }
+    if ($RequireMarker -and $attempt.stdout -notmatch $script:SuccessMarker) { return "missing success marker '$($script:SuccessMarker)'" }
     return "unknown reason"
 }
 
@@ -681,6 +702,14 @@ function Process-InboxFile {
 
     $startedAt = Format-DateTime
 
+    # Interactive Telegram tasks (source=run/reply or from=telegram) are answered
+    # by the agent's stdout itself, so the STATUS marker is optional for them.
+    # Structured bus tasks keep the strict marker requirement.
+    $requireMarker = -not (($msg.source -eq 'run') -or ($msg.source -eq 'reply') -or ($from -eq $script:TelegramFrom))
+    if (-not $requireMarker) {
+        Write-Log "ℹ️ Interactive task (source=$($msg.source), from=$from) — success = exit 0 + non-empty stdout"
+    }
+
     # P1-1: atomic claim. If another worker already owns this message id, skip it
     # instead of running the same task twice (this is what lets the daemon run a
     # parallel pool without a global mutex).
@@ -727,8 +756,8 @@ function Process-InboxFile {
     # Refresh the lease right before a possibly long run (RISK-001b).
     $null = Update-Heartbeat -TaskId $messageId -StateDir $ClaimsDir
     $attempt1 = Invoke-OpencodeAttempt -targetAgent $targetAgent -taskPrompt $prompt -TaskId $messageId -AttemptId "attempt-1" -Launch $launchPlan
-    $success1 = Test-OpencodeSuccess $attempt1
-    $reason1 = if ($success1) { "" } else { Get-AttemptFailureReason $attempt1 }
+    $success1 = Test-OpencodeSuccess $attempt1 -RequireMarker:$requireMarker
+    $reason1 = if ($success1) { "" } else { Get-AttemptFailureReason $attempt1 -RequireMarker:$requireMarker }
     $status1 = if ($success1) { "success" } else { "failed" }
     $evidencePath = Write-AttemptEvidence -attempt $attempt1 -taskId $messageId -attemptId "attempt-1" `
         -agent $targetAgent -command $evidenceCommand -status $status1 -reason $reason1
@@ -748,8 +777,8 @@ function Process-InboxFile {
     # Heartbeat between attempts: attempt-1 may have consumed most of the lease.
     $null = Update-Heartbeat -TaskId $messageId -StateDir $ClaimsDir
     $attempt2 = Invoke-OpencodeAttempt -targetAgent $targetAgent -taskPrompt $prompt -TaskId $messageId -AttemptId "attempt-2" -Launch $launchPlan
-    $success2 = Test-OpencodeSuccess $attempt2
-    $reason2 = if ($success2) { "" } else { Get-AttemptFailureReason $attempt2 }
+    $success2 = Test-OpencodeSuccess $attempt2 -RequireMarker:$requireMarker
+    $reason2 = if ($success2) { "" } else { Get-AttemptFailureReason $attempt2 -RequireMarker:$requireMarker }
     $status2 = if ($success2) { "success" } else { "failed" }
     $evidencePath = Write-AttemptEvidence -attempt $attempt2 -taskId $messageId -attemptId "attempt-2" `
         -agent $targetAgent -command $evidenceCommand -status $status2 -reason $reason2

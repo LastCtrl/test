@@ -62,6 +62,10 @@ $required = @(
     'lock: второй тик отклонён',
     'ux: inline-кнопка обновления построена',
     'ux: /status с inline-кнопкой',
+    'ux: клавиатура agents построена',
+    "ux: callback 'cmd:queue' -> queue",
+    'answer: ответ run-задачи доставлен',
+    'answer: анти-дубль (повторная доставка не идёт)',
     'ux: setMyCommands покрывает команды',
     'sqlite ro: запись отклонена'
 )

@@ -1,4 +1,4 @@
-﻿COMPLIANCE: true
+COMPLIANCE: true
 STATUS: resolved
 
 [2026-09-09T10:20:00] code-reviewer -> team-lead:
@@ -4269,3 +4269,15 @@ MCP_USED: []
 COMPLIANCE: true
 STATUS: resolved
 ================================================================================
+
+================================================================================
+[2026-09-21 09:12] dev-1 -> team-lead:
+TYPE: update | PRIORITY: high
+Project: agent-hq
+CONTENT: E2E Telegram /run -> ответ агента починен. (1) .agents/scripts/inbox-engine.ps1 (фикс benign-warning уже был в рабочем дереве uncommitted; проверил, оставил): warning `agent "..." not found. Falling back to default agent` больше не валит (Remove-BenignOutput поверх stdout+stderr ДО ErrorMarker); ErrorMarker сужен до реальных (permission denied/auto-rejecting/rejected permission/Error:/command not found/not recognized/no such file/cannot find path); для source=run/reply или from=telegram успех = exit0 + непустой stdout (STATUS-маркер опционален), структурированный task-режим по-прежнему требует маркер. (2) projects/telegram-bridge/bridge.py (папка /projects/ в .gitignore => вне git, правки на диске): enqueue_task пишет поле source; BridgeState.pending_tasks персистится в state; добавлены read_task_outcome (outbox -> dead-letter -> evidence после grace), render_task_answer, deliver_task_answers (redaction через единый deliver_chunks, обрезка TASK_ANSWER_MAX_CHARS=3000, whitelist-check, анти-дубль снятием из pending); run_once доставляет ответы каждый тик; bus-JSON читается через utf-8-sig, т.к. PS-движок пишет BOM (иначе ответ не парсился бы никогда - найдено при E2E). (3) UX: /agents,/queue,/tasks,/status несут inline-клавиатуры (build_section_keyboard), callback cmd:* и refresh:status переключают раздел через edit_text. (4) Тесты: tests/fake-opencode.ps1 режим benign-run; tests/test-pipeline.ps1 кейсы k/l/m; bridge --selftest +15 проверок (доставка ответа, BOM, клавиатуры, callback); tests/test-bridge-push.ps1 required-строки + CRLF. Артефакты: test-pipeline 13/13, bridge --selftest 244/0, test-bridge-push 35/0, verify-phase 41/41, E2E-имитация /run -> inbox -> poller(fake benign-run) -> outbox(BOM) -> доставлено "Ответ dev-1 ... Сейчас 15:43" в chat 777. Временный e2e-скрипт удалён, фоновых процессов/каталогов нет.
+SKILLS_LOADED: ["evidence-discipline", "windows-safety"]
+MCP_USED: ["sequential-thinking", "context7: offline"]
+COMPLIANCE: true
+STATUS: resolved
+================================================================================
+

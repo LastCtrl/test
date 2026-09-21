@@ -9,6 +9,7 @@
 #   empty        -> no stdout, exit 0
 #   stderr-only  -> stderr only, no stdout, exit 0
 #   nomarker     -> stdout without a success marker, exit 0
+#   benign-run   -> benign opencode warning on stderr + stdout answer, no marker, exit 0
 #   errormarker  -> stdout with an error marker, exit 0
 #   leak         -> stdout with fake secrets but no success marker, exit 0 (must be redacted in dead-letter)
 #   slow         -> sleeps FAKE_OPENCODE_DELAY_MS (default 1500) then success, exit 0.
@@ -44,6 +45,14 @@ switch ($mode) {
     }
     "nomarker" {
         Write-Output "everything fine, but no status marker"
+        exit 0
+    }
+    "benign-run" {
+        # A benign opencode warning on stderr plus a real answer on stdout and no
+        # STATUS marker: the exact /run case (source=run / from=telegram) that must
+        # succeed because the answer is the result.
+        [Console]::Error.WriteLine('agent "dev-1" not found. Falling back to default agent')
+        Write-Output "Сейчас 15:43"
         exit 0
     }
     "errormarker" {

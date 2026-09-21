@@ -9,6 +9,10 @@ $Backoff    = Join-Path $RepoRoot '.agents\scripts\snapshot-backoff.ps1'
 $Preflight  = Join-Path $RepoRoot '.agents\scripts\token-preflight.ps1'
 $TempBase   = Join-Path $env:TEMP ('agent-hq-selfhealing-' + [guid]::NewGuid().ToString('N'))
 $Utf8NoBom  = New-Object System.Text.UTF8Encoding($false)
+$ProxyOnCfg  = Join-Path $TempBase 'proxy-on.json'
+$ProxyOffCfg = Join-Path $TempBase 'proxy-off.json'
+$ProxyRoot   = Join-Path $TempBase 'root-on'
+$ProxyRootCfg = Join-Path $ProxyRoot '.agents\config\proxy.json'
 
 $script:Pass = 0
 $script:Fail = 0
@@ -87,6 +91,32 @@ function Get-FreeTcpPort {
     return $port
 }
 
+function Test-TcpPortOpen {
+    param([string]$TargetHost = '127.0.0.1', [int]$Port = 3128, [int]$TimeoutMs = 800)
+    if ($Port -lt 1 -or $Port -gt 65535) { return $false }
+    $client = $null
+    try {
+        $client = New-Object System.Net.Sockets.TcpClient
+        $iar = $client.BeginConnect($TargetHost, $Port, $null, $null)
+        if (-not $iar.AsyncWaitHandle.WaitOne($TimeoutMs, $false)) { return $false }
+        $client.EndConnect($iar)
+        return [bool]$client.Connected
+    } catch {
+        return $false
+    } finally {
+        if ($null -ne $client) { try { $client.Close() } catch { } }
+    }
+}
+
+function Write-ProxyConfigFile {
+    param([string]$Path, [string]$Mode)
+    $dir = Split-Path -Parent $Path
+    if ($dir -and -not (Test-Path -LiteralPath $dir)) { New-Item -ItemType Directory -Path $dir -Force | Out-Null }
+    if ($Mode -ne 'on') { $Mode = 'off' }
+    $doc = [ordered]@{ mode = $Mode; url = 'http://127.0.0.1:3128'; no_proxy = 'localhost,127.0.0.1' }
+    [System.IO.File]::WriteAllText($Path, (ConvertTo-Json -InputObject $doc -Depth 3), $script:Utf8NoBom)
+}
+
 if (-not (Test-Path -LiteralPath $TempBase -PathType Container)) { New-Item -ItemType Directory -Path $TempBase -Force | Out-Null }
 
 try {
@@ -153,33 +183,64 @@ try {
     Write-Check 'u15) malformed state -> empty' ((@(Get-CntlmRestartTimes -StatePath $badState)).Count -eq 0)
     Write-Check 'u16) missing state -> empty' ((@(Get-CntlmRestartTimes -StatePath (Join-Path $TempBase 'nope.json'))).Count -eq 0)
 
-    # integration: real live proxy probe
-    $live = Invoke-Cli -Script $CntlmGuard -ArgsList @('-Check', '-LogFile', $logFile, '-StateFile', $dryState)
-    Write-Check 'i1) -Check on live proxy exit 0' ($live.Code -eq 0)
-    Write-Check 'i2) -Check on live proxy reports STATUS: ok' ($live.Out -match 'STATUS: ok')
+    # integration: isolated proxy configs (never the repo-global config)
+    Write-ProxyConfigFile -Path $ProxyOnCfg -Mode 'on'
+    Write-ProxyConfigFile -Path $ProxyOffCfg -Mode 'off'
+    Write-ProxyConfigFile -Path $ProxyRootCfg -Mode 'on'
+
+    # live proxy probe with mode=on: the verdict must reflect the real port state
+    $livePort = 3128
+    $liveUp = Test-TcpPortOpen -TargetHost '127.0.0.1' -Port $livePort
+    $live = Invoke-Cli -Script $CntlmGuard -ArgsList @('-Check', '-ProxyConfig', $ProxyOnCfg, '-ProxyPort', ([string]$livePort), '-LogFile', $logFile, '-StateFile', $dryState)
+    if ($liveUp) {
+        Write-Check 'i1) live proxy UP (mode=on) -> exit 0' ($live.Code -eq 0)
+        Write-Check 'i2) live proxy UP (mode=on) -> STATUS: ok' ($live.Out -match 'STATUS: ok')
+    } else {
+        Write-Check 'i1) live proxy DOWN (mode=on) -> exit 2' ($live.Code -eq 2)
+        Write-Check 'i2) live proxy DOWN (mode=on) -> STATUS: down' ($live.Out -match 'STATUS: down')
+    }
 
     $closedPort = Get-FreeTcpPort
-    $down = Invoke-Cli -Script $CntlmGuard -ArgsList @('-Check', '-ProxyPort', ([string]$closedPort), '-LogFile', $logFile)
-    Write-Check 'i3) -Check on closed port exit 2' ($down.Code -eq 2)
-    Write-Check 'i4) -Check on closed port reports STATUS: down' ($down.Out -match 'STATUS: down')
+    $down = Invoke-Cli -Script $CntlmGuard -ArgsList @('-Check', '-ProxyConfig', $ProxyOnCfg, '-ProxyPort', ([string]$closedPort), '-LogFile', $logFile)
+    Write-Check 'i3) mode=on closed port -> exit 2' ($down.Code -eq 2)
+    Write-Check 'i4) mode=on closed port -> STATUS: down' ($down.Out -match 'STATUS: down')
+
+    $offChk = Invoke-Cli -Script $CntlmGuard -ArgsList @('-Check', '-ProxyConfig', $ProxyOffCfg, '-ProxyPort', ([string]$closedPort), '-LogFile', $logFile)
+    Write-Check 'i4b) mode=off short-circuit -> exit 0' ($offChk.Code -eq 0)
+    Write-Check 'i4c) mode=off short-circuit -> STATUS: ok' ($offChk.Out -match 'STATUS: ok')
+    Write-Check 'i4d) mode=off short-circuit -> cntlm not required' ($offChk.Out -match 'proxy mode is off')
+
+    $rootIso = Invoke-Cli -Script $CntlmGuard -ArgsList @('-Check', '-Root', $ProxyRoot, '-ProxyPort', ([string]$closedPort), '-LogFile', $logFile)
+    Write-Check 'i4e) isolated -Root (mode=on) -> exit 2' ($rootIso.Code -eq 2)
 
     # locate the real owned cntlm so we can prove it survives every dry-run
     $realOwned = @(Get-CimInstance Win32_Process -Filter "Name='cntlm.exe'" -ErrorAction SilentlyContinue |
         Where-Object { Test-CntlmOwnedProcess -Process $_ -AllowedDir 'C:\tools\cntlm' })
     if ($realOwned.Count -gt 0) { $script:CntlmPid = [int]$realOwned[0].ProcessId }
 
-    $dry = Invoke-Cli -Script $CntlmGuard -ArgsList @('-Restart', '-DryRun', '-ProxyPort', ([string]$closedPort), '-LogFile', $logFile, '-StateFile', $dryState)
-    Write-Check 'i5) -Restart -DryRun exit 0' ($dry.Code -eq 0)
-    Write-Check 'i6) dry-run plans a stop, does not execute' (($dry.Out -match 'DRY-RUN: would stop') -and ($dry.Out -match 'STATUS: dry-run'))
-    Write-Check 'i7) dry-run never mentions the test process' (-not ($dry.Out -match ('would stop PID ' + $PID)))
-    Write-Check 'i8) dry-run does not create a budget state file' (-not (Test-Path -LiteralPath $dryState))
+    # default cntlm scope with mode=on: no cntlm process -> guard must refuse to act
+    $safe = Invoke-Cli -Script $CntlmGuard -ArgsList @('-Restart', '-DryRun', '-ProxyConfig', $ProxyOnCfg, '-ProxyPort', ([string]$closedPort), '-LogFile', $logFile, '-StateFile', (Join-Path $TempBase 'safe.state.json'))
+    Write-Check 'i7) default scope never mentions the test process' (-not ($safe.Out -match ('would stop PID ' + $PID)))
+    Write-Check 'i7b) default scope, no cntlm process -> exit 5' ($safe.Code -eq 5)
+    Write-Check 'i7c) default scope, no cntlm process -> STATUS: no-process' ($safe.Out -match 'STATUS: no-process')
+
+    # dry-run plumbing on an owned stand-in scope (powershell.exe, -DryRun never acts)
+    $psDir = ''
+    try { $psDir = Split-Path -Parent ((Get-Command powershell -ErrorAction Stop).Source) } catch { $psDir = '' }
+    if (-not [string]::IsNullOrWhiteSpace($psDir) -and (Test-Path -LiteralPath $psDir -PathType Container)) {
+        $dry = Invoke-Cli -Script $CntlmGuard -ArgsList @('-Restart', '-DryRun', '-ProxyConfig', $ProxyOnCfg, '-ProxyPort', ([string]$closedPort), '-AllowedDir', $psDir, '-ExeName', 'powershell.exe', '-LogFile', $logFile, '-StateFile', $dryState)
+        Write-Check 'i5) -Restart -DryRun with an owned process -> exit 0' ($dry.Code -eq 0)
+        Write-Check 'i6) dry-run plans a stop, does not execute' (($dry.Out -match 'DRY-RUN: would stop') -and ($dry.Out -match 'STATUS: dry-run'))
+        Write-Check 'i6b) dry-run reports nothing was stopped or started' ($dry.Out -match 'nothing was stopped or started')
+        Write-Check 'i8) dry-run does not create a budget state file' (-not (Test-Path -LiteralPath $dryState))
+    }
     if ($script:CntlmPid -gt 0) {
         Write-Check 'i9) real cntlm process still alive after dry-run' ($null -ne (Get-Process -Id $script:CntlmPid -ErrorAction SilentlyContinue))
     }
 
     # foreign processes: an allowed dir that holds no cntlm -> nothing to restart
     if (-not (Test-Path -LiteralPath $foreignDir)) { New-Item -ItemType Directory -Path $foreignDir -Force | Out-Null }
-    $noProc = Invoke-Cli -Script $CntlmGuard -ArgsList @('-Restart', '-DryRun', '-ProxyPort', ([string]$closedPort), '-AllowedDir', $foreignDir, '-LogFile', $logFile)
+    $noProc = Invoke-Cli -Script $CntlmGuard -ArgsList @('-Restart', '-DryRun', '-ProxyConfig', $ProxyOnCfg, '-ProxyPort', ([string]$closedPort), '-AllowedDir', $foreignDir, '-LogFile', $logFile, '-StateFile', (Join-Path $TempBase 'noproc.state.json'))
     Write-Check 'i10) no owned process -> exit 5' ($noProc.Code -eq 5)
     Write-Check 'i11) no owned process -> STATUS: no-process' ($noProc.Out -match 'STATUS: no-process')
     if ($script:CntlmPid -gt 0) {
@@ -190,11 +251,11 @@ try {
     $null = Add-CntlmRestartTime -StatePath $breakerState -At (Get-Date)
     $null = Add-CntlmRestartTime -StatePath $breakerState -At (Get-Date)
     $null = Add-CntlmRestartTime -StatePath $breakerState -At (Get-Date)
-    $brk = Invoke-Cli -Script $CntlmGuard -ArgsList @('-Restart', '-DryRun', '-ProxyPort', ([string]$closedPort), '-StateFile', $breakerState, '-MaxRestarts', '3', '-LogFile', $logFile)
+    $brk = Invoke-Cli -Script $CntlmGuard -ArgsList @('-Restart', '-DryRun', '-ProxyConfig', $ProxyOnCfg, '-ProxyPort', ([string]$closedPort), '-StateFile', $breakerState, '-MaxRestarts', '3', '-LogFile', $logFile)
     Write-Check 'i13) exhausted budget -> exit 3' ($brk.Code -eq 3)
     Write-Check 'i14) exhausted budget -> STATUS: breaker-open' ($brk.Out -match 'STATUS: breaker-open')
 
-    $zero = Invoke-Cli -Script $CntlmGuard -ArgsList @('-Restart', '-DryRun', '-ProxyPort', ([string]$closedPort), '-StateFile', (Join-Path $TempBase 'zero.state.json'), '-MaxRestarts', '0', '-LogFile', $logFile)
+    $zero = Invoke-Cli -Script $CntlmGuard -ArgsList @('-Restart', '-DryRun', '-ProxyConfig', $ProxyOnCfg, '-ProxyPort', ([string]$closedPort), '-StateFile', (Join-Path $TempBase 'zero.state.json'), '-MaxRestarts', '0', '-LogFile', $logFile)
     Write-Check 'i15) -MaxRestarts 0 -> exit 3 (breaker open)' ($zero.Code -eq 3)
 
     $usage = Invoke-Cli -Script $CntlmGuard -ArgsList @('-Check', '-Restart')

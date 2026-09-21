@@ -1,5 +1,6 @@
 ﻿# cntlm-guard.ps1 - watchdog for the local cntlm proxy (127.0.0.1:3128).
 # Modes: -Check (default, read-only) | -Restart (real heal; -DryRun simulates only).
+# Proxy source: -ProxyConfig <path> (explicit file) overrides -Root/.agents/config/proxy.json.
 # Safety: heals ONLY an owned cntlm (name + exe path under -AllowedDir); stop by PID
 # after identity re-check; restart budget + circuit breaker; -DryRun never acts.
 # Exit: 0 ok, 2 proxy down, 3 breaker open, 4 restart failed, 5 no owned process, 1 usage.
@@ -17,6 +18,7 @@ param(
     [int]$WindowMinutes = 60,
     [int]$StartWaitSeconds = 10,
     [string]$Root = '',
+    [string]$ProxyConfig = '',
     [string]$LogFile = '',
     [string]$StateFile = ''
 )
@@ -159,6 +161,22 @@ function Add-CntlmRestartTime {
     }
 }
 
+function Read-CntlmProxyModeFromFile {
+    param([string]$Path)
+    if ([string]::IsNullOrWhiteSpace($Path)) { return 'on' }
+    if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) { return 'on' }
+    try {
+        $raw = [System.IO.File]::ReadAllText($Path, [System.Text.Encoding]::UTF8)
+        if ([string]::IsNullOrWhiteSpace($raw)) { return 'on' }
+        $doc = $raw | ConvertFrom-Json -ErrorAction Stop
+        if ($null -eq $doc) { return 'on' }
+        if (([string]$doc.mode).Trim().ToLowerInvariant() -eq 'on') { return 'on' }
+        return 'off'
+    } catch {
+        return 'on'
+    }
+}
+
 if ($MyInvocation.InvocationName -ne '.') {
 
     if ($Check -and $Restart) {
@@ -176,12 +194,16 @@ if ($MyInvocation.InvocationName -ne '.') {
     # Proxy mode (default off): when off, cntlm is not required and its absence
     # is healthy, so the guard must not report a fault nor restart anything.
     $proxyMode = 'on'
-    $proxyModePath = Join-Path $PSScriptRoot 'proxy-mode.ps1'
-    if (Test-Path -LiteralPath $proxyModePath -PathType Leaf) {
-        try {
-            . $proxyModePath
-            $proxyMode = (Read-ProxyConfig -Root $rootValue).mode
-        } catch { $proxyMode = 'on' }
+    if (-not [string]::IsNullOrWhiteSpace($ProxyConfig)) {
+        $proxyMode = Read-CntlmProxyModeFromFile -Path $ProxyConfig
+    } else {
+        $proxyModePath = Join-Path $PSScriptRoot 'proxy-mode.ps1'
+        if (Test-Path -LiteralPath $proxyModePath -PathType Leaf) {
+            try {
+                . $proxyModePath
+                $proxyMode = (Read-ProxyConfig -Root $rootValue).mode
+            } catch { $proxyMode = 'on' }
+        }
     }
 
     $mode = if ($Restart) { 'restart' } else { 'check' }

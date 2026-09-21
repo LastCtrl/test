@@ -1,4 +1,4 @@
-param(
+﻿param(
     [string]$TaskName = 'agent-hq-go-loop'
 )
 $ErrorActionPreference = 'Stop'

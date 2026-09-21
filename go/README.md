@@ -314,6 +314,74 @@ agent-hq shadow [-once] [-summary] [-json] [-root <path>]
 - `-summary` печатает только сводку; `-json` — полный отчёт. Одиночный проход,
   без фонового демона.
 
+## M5 cut-over: `run-loop` (Go ведёт задачи) + `driver`
+
+Go-драйвер умеет вести ту же шину, что `inbox-engine.ps1`, и включается
+переключателем. **По умолчанию выключен** (`ps`): пока нет файла режима, всё
+работает как раньше, а `run-loop` в демон-режиме просто ничего не делает.
+
+```
+agent-hq run-loop [-root <path>] [-once] [-max N] [-interval <sec>]
+                  [-executor opencode|fake] [-queue=false] [-json]
+agent-hq driver [-root <path>] [-set go|ps] [-clear] [-json]
+```
+
+Что делает `run-loop` (как PowerShell-движок, но на Go):
+
+- сканирует `.memory/inbox/<agent>/*.json` и очереди `projects/*/queue.json`
+  (`-queue=false` отключает очереди), элементы обрабатываются в порядке
+  приоритета/FIFO;
+- claim **атомарно в SQLite** (`run_claims`, `INSERT ... ON CONFLICT ... WHERE
+  heartbeat истёк`) и параллельно зеркалит аренду в файл
+  `.memory/claims/<id>.claim.json` (CREATE_NEW) — так Go и PS никогда не
+  выполнят одно сообщение дважды в момент переключения;
+- heartbeat обеих аренд раз в 30 с во время длинного запуска (плюс heartbeat
+  liveness-файла драйвера);
+- исполняет через `OpenCodeExecutor` (opencode, при наличии ключей в vault — через
+  `run-with-secrets.ps1`); `-executor fake` — детерминированный воркер для тестов;
+- классифицирует результат как PowerShell: `exit 0` + непустой stdout + нет
+  error-marker (+ `STATUS:` для структурных задач; для `source=run|reply`/
+  `from=telegram` маркер необязателен). Benign-предупреждение
+  `agent "X" not found. Falling back...` вырезается и ошибкой НЕ считается;
+- до 2 попыток; успех → `.memory/outbox/<id>.json` + архивация inbox в
+  `.memory/archive/<agent>-<файл>`; провал → `.memory/dead-letter/<id>.json`
+  (payload/response редактируются `Redact`, как `redact.ps1`);
+- битый JSON → файл переносится в `dead-letter` без изменения (как PS); пустой
+  payload → `dead-letter` с `Empty payload — no task to process`;
+- пишет машинное evidence в тот же формат (`stdout_sha256`, длины, статус,
+  `git_head`, `git_diff_sha256`, host, pid);
+- очередь: `queued|assigned` → `in_progress` → `done` (или `dead` с
+  `dead_reason`/`dead_at`); задача с успешным evidence не запускается повторно, а
+  сверяется в `done`. Неизвестные поля очереди сохраняются (документ правится как
+  JSON-объект, не как структура); перед записью создаётся `.bak`;
+- stale-восстановление: running-попытки без heartbeat → `stale`
+  (`store.RecoverAttempt`), истёкшие файловые аренды отзываются (TTL 900 с, как
+  `Revoke-StaleClaimSweep`);
+- `-max N` ограничивает работу одного прохода, `-once` — ровно один проход,
+  `-interval` — пауза между проходами демона; логи идут в stderr и в
+  `.memory/traces/run-loop.log`.
+
+Переключатель (`driver`):
+
+- файл `<root>/.memory/driver.mode` со строкой `go` или `ps`; переменная
+  `AGENT_HQ_DRIVER` перекрывает файл; дефолт (файла нет) — `ps`;
+- `driver -set go` включает Go-драйвер, `driver -clear` возвращает дефолт;
+- пока Go-цикл работает, он держит liveness-файл `.memory/driver.lock`
+  (`{mode,pid,started_at,heartbeat_at,cycles}`) и обновляет heartbeat;
+- **fallback**: PowerShell-поллер (`Test-GoDriverActive` в `inbox-engine.ps1`)
+  пропускает цикл только когда `driver.mode = go` И heartbeat свежий (< 180 с).
+  Go-цикл упал/не стартовал → heartbeat протух → PS продолжает работать как
+  раньше;
+- schtasks не меняется: режим переключается файлом, а не расписанием.
+
+Проверка переключения:
+
+```
+agent-hq driver                 # mode, источник, свежесть heartbeat
+agent-hq run-loop -once         # один проход независимо от режима (тест/ручная)
+agent-hq run-loop               # демон: только при driver.mode=go
+```
+
 ## Форматы состояния (что читает CLI)
 
 Источник форматов — действующие PowerShell-скрипты в `.agents/scripts/`.

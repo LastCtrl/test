@@ -171,3 +171,37 @@ func TestRunShadowHelp(t *testing.T) {
 		t.Errorf("exit = %d, want 0 for -h", code)
 	}
 }
+
+func TestRunShadowRejectsMissingRoot(t *testing.T) {
+	// A typo in -root must fail loudly and must not create a stray
+	// <root>/.memory/shadow tree.
+	missing := filepath.Join(t.TempDir(), "does-not-exist")
+
+	code, _, stderr := runShadowCLI(t, missing, "-json")
+	if code == 0 {
+		t.Fatalf("exit = 0, want a non-zero exit for a missing root")
+	}
+	if _, err := os.Stat(missing); !os.IsNotExist(err) {
+		t.Fatalf("missing root %s was created (stat err = %v), want it left absent", missing, err)
+	}
+	if !strings.Contains(stderr, "root") {
+		t.Errorf("stderr = %q, want a diagnostic naming the root", stderr)
+	}
+}
+
+func TestRunShadowRejectsRootWithoutMemory(t *testing.T) {
+	// An existing directory that is not an agent-hq checkout (no .memory) is
+	// rejected and .memory must not be created by the shadow pass.
+	root := t.TempDir()
+
+	code, _, stderr := runShadowCLI(t, root)
+	if code == 0 {
+		t.Fatalf("exit = 0, want a non-zero exit for a root without .memory")
+	}
+	if _, err := os.Stat(filepath.Join(root, ".memory")); !os.IsNotExist(err) {
+		t.Fatalf(".memory was created under %s, want it left absent", root)
+	}
+	if !strings.Contains(stderr, ".memory") {
+		t.Errorf("stderr = %q, want a diagnostic about the missing .memory", stderr)
+	}
+}

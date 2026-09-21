@@ -30,6 +30,12 @@ func runShadow(globals globalOptions, args []string, stdout, stderr io.Writer) i
 	if !ok {
 		return 1
 	}
+	// Guard against a typo in -root: fail before Write creates
+	// <root>/.memory/shadow under a path that is not an agent-hq checkout.
+	if err := shadow.ValidateRoot(root); err != nil {
+		fmt.Fprintf(stderr, "%s: %v\n", cliName, err)
+		return 1
+	}
 
 	now := time.Now()
 	report := shadow.Build(root, version, now)

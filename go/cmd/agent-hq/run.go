@@ -7,13 +7,13 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
 	"text/tabwriter"
 	"time"
 
+	"agent-hq/internal/bus"
 	"agent-hq/internal/executor"
 	"agent-hq/internal/net"
 	"agent-hq/internal/store"
@@ -480,14 +480,10 @@ func commandDescription(worker executor.Executor, spec executor.TaskSpec) string
 }
 
 // buildPrompt mirrors the prompt construction of inbox-engine.ps1 so both
-// engines drive the worker with the same contract.
+// engines drive the worker with the same contract. The text itself lives in
+// internal/bus, where the bus loop uses the identical function.
 func buildPrompt(root, taskText string) string {
-	contextBuffer := filepath.Join(root, "CONTEXT-BUFFER.md")
-	return "You received a task from agent-hq bus. Read the last 30 lines of " + contextBuffer +
-		" (iron rules protocol), execute the task, result write to CONTEXT-BUFFER.md, answer briefly. " +
-		"CRITICAL: end your final answer with a line containing exactly 'STATUS: resolved' " +
-		"(or 'STATUS: done' if completed) in stdout, otherwise the run is treated as failed. " +
-		"TASK: " + taskText
+	return bus.BuildPrompt(root, taskText)
 }
 
 func extractRunOptions(args []string) (runOptions, []string) {

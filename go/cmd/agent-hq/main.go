@@ -42,6 +42,8 @@ Commands:
   recover             mark stale running attempts stale, release their lease (flags: -requeue, -ttl, -json, -net)
   checkpoint <op>     save|list|latest durable handoff points of a run
   shadow              read-only plan of what a Go control plane would do (no claim, no run)
+  run-loop            drive the bus on Go (scan inbox + queues, claim, execute, publish)
+  driver              show or switch the driver mode (go | ps, default ps)
   worktree <op>       list|add <name>|remove <name> per-project git worktrees (branch project/<name>)
   project buffer <name>  read the project CONTEXT-BUFFER (flags: -tail N, -append, -source)
   version             print the CLI version
@@ -77,6 +79,12 @@ Examples:
   agent-hq shadow
   agent-hq shadow -summary
   agent-hq shadow -once -json
+  agent-hq run-loop -once          (one bounded pass; same bus as the PS engine)
+  agent-hq run-loop -once -json
+  agent-hq run-loop                (daemon; requires driver mode go)
+  agent-hq driver                  (show mode, source and Go heartbeat)
+  agent-hq driver -set go          (enable the Go driver)
+  agent-hq driver -clear           (back to the default: ps)
 `
 
 func main() {
@@ -122,6 +130,10 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return runRecover(globals, commandArgs, stdout, stderr)
 	case "shadow":
 		return runShadow(globals, commandArgs, stdout, stderr)
+	case "run-loop", "runloop":
+		return runRunLoop(globals, commandArgs, stdout, stderr)
+	case "driver":
+		return runDriver(globals, commandArgs, stdout, stderr)
 	case "checkpoint":
 		return runCheckpoint(globals, commandArgs, stdout, stderr)
 	case "worktree":

@@ -359,6 +359,13 @@ func loadOpenCodeConfig(path string) (map[string]string, error) {
 	return models, nil
 }
 
+// ValidateRoot verifies that root is an existing agent-hq checkout before the
+// planner writes anything. A typo in -root must fail loudly: without this guard
+// Write would MkdirAll a stray <root>/.memory/shadow and report an empty plan.
+func ValidateRoot(root string) error {
+	return state.ValidateRoot(root)
+}
+
 // ReportPath returns the timestamped report file under .memory/shadow.
 func ReportPath(root string, now time.Time) string {
 	name := now.UTC().Format("20060102T150405.000000000Z") + ".json"

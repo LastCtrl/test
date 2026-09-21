@@ -196,6 +196,24 @@ func TestBuildToleratesBrokenInputs(t *testing.T) {
 	}
 }
 
+func TestValidateRoot(t *testing.T) {
+	missing := filepath.Join(t.TempDir(), "does-not-exist")
+	if err := ValidateRoot(missing); err == nil {
+		t.Error("ValidateRoot(missing) = nil, want an error")
+	}
+
+	empty := t.TempDir()
+	if err := ValidateRoot(empty); err == nil {
+		t.Error("ValidateRoot(dir without .memory) = nil, want an error")
+	}
+
+	good := t.TempDir()
+	writeTestFile(t, filepath.Join(good, ".memory", "inbox", ".gitkeep"), "")
+	if err := ValidateRoot(good); err != nil {
+		t.Errorf("ValidateRoot(agent-hq root) = %v, want nil", err)
+	}
+}
+
 func TestWriteLeavesStateUnchanged(t *testing.T) {
 	root := t.TempDir()
 	writeTestFile(t, filepath.Join(root, "opencode.json"),

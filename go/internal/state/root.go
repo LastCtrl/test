@@ -46,6 +46,35 @@ func ResolveRoot(flagValue string) (string, error) {
 	return os.Getwd()
 }
 
+// ValidateRoot checks that root is an existing agent-hq checkout: the path must
+// exist, be a directory and contain the .memory directory. Callers that would
+// otherwise create files below root (such as the shadow planner) use this first
+// so a typo in -root fails loudly instead of silently growing a stray tree.
+func ValidateRoot(root string) error {
+	info, err := os.Stat(root)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return fmt.Errorf("root %s does not exist", root)
+		}
+		return fmt.Errorf("cannot stat root %s: %w", root, err)
+	}
+	if !info.IsDir() {
+		return fmt.Errorf("root %s is not a directory", root)
+	}
+
+	memoryInfo, err := os.Stat(MemoryDir(root))
+	if err != nil {
+		if os.IsNotExist(err) {
+			return fmt.Errorf("root %s does not look like an agent-hq checkout: missing %s", root, MemoryDirName)
+		}
+		return fmt.Errorf("cannot stat %s: %w", MemoryDir(root), err)
+	}
+	if !memoryInfo.IsDir() {
+		return fmt.Errorf("%s is not a directory", MemoryDir(root))
+	}
+	return nil
+}
+
 // MemoryDir returns <root>/.memory.
 func MemoryDir(root string) string {
 	return filepath.Join(root, MemoryDirName)

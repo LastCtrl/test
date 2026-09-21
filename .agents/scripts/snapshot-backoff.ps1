@@ -18,11 +18,13 @@ $ErrorActionPreference = 'Continue'
 function Test-SnapshotRetryable {
     param([string]$Message)
     if ([string]::IsNullOrWhiteSpace($Message)) { return $false }
+    # snapshot/exclude are matched only as a composed pair: a lone mention of
+    # either word (e.g. a fatal "SyntaxError in snapshot.ts") must not retry.
     $patterns = @(
         'Busy:\s*FileSystem',
         'FileSystem\.writeFile',
-        'snapshot',
-        'exclude',
+        'snapshot[^\r\n]{0,40}exclude',
+        'exclude[^\r\n]{0,40}snapshot',
         'EPERM',
         'uv_spawn',
         'EBUSY',

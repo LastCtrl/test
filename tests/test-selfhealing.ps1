@@ -15,12 +15,13 @@ $script:Fail = 0
 $script:CntlmPid = 0
 
 function Write-Check {
-    param([string]$Label, [bool]$Condition)
+    param([string]$Label, [bool]$Condition, [string]$Detail = '')
+    $suffix = if ([string]::IsNullOrEmpty($Detail)) { '' } else { ' (' + $Detail + ')' }
     if ($Condition) {
-        Write-Host ('    ok  : ' + $Label)
+        Write-Host ('    ok  : ' + $Label + $suffix)
         $script:Pass++
     } else {
-        Write-Host ('    FAIL: ' + $Label)
+        Write-Host ('    FAIL: ' + $Label + $suffix)
         $script:Fail++
     }
 }
@@ -94,6 +95,18 @@ try {
     Write-Check 'cntlm-guard.ps1 exists' (Test-Path -LiteralPath $CntlmGuard -PathType Leaf)
     Write-Check 'snapshot-backoff.ps1 exists' (Test-Path -LiteralPath $Backoff -PathType Leaf)
     Write-Check 'token-preflight.ps1 exists' (Test-Path -LiteralPath $Preflight -PathType Leaf)
+
+    # harness self-test: the catch block calls Write-Check with an extra detail
+    # argument, so the function must accept it or a real harness failure would
+    # throw again and hide itself.
+    $detailOk = $false
+    try {
+        Write-Check 'h0) Write-Check accepts a detail argument' $true 'detail text'
+        $detailOk = $true
+    } catch {
+        $detailOk = $false
+    }
+    Write-Check 'h1) Write-Check detail call did not throw' $detailOk
 
     if (-not (Test-Path -LiteralPath $CntlmGuard -PathType Leaf) -or
         -not (Test-Path -LiteralPath $Backoff -PathType Leaf) -or
@@ -195,6 +208,9 @@ try {
     Write-Check 'b3) EPERM/uv_spawn is retryable' (Test-SnapshotRetryable -Message "EPERM: operation not permitted, uv_spawn 'git'")
     Write-Check 'b4) failed-to-get-diff is retryable' (Test-SnapshotRetryable -Message 'WARN "failed to get diff"')
     Write-Check 'b5) syntax error is not retryable' (-not (Test-SnapshotRetryable -Message 'SyntaxError: unexpected token'))
+    Write-Check 'b5b) fatal error naming snapshot is not retryable' (-not (Test-SnapshotRetryable -Message 'SyntaxError in snapshot.ts: unexpected token'))
+    Write-Check 'b5c) fatal error naming exclude is not retryable' (-not (Test-SnapshotRetryable -Message 'FAIL exclude: cannot parse config'))
+    Write-Check 'b5d) composed exclude+snapshot is retryable' (Test-SnapshotRetryable -Message 'opencode error: exclude lock while writing snapshot')
     Write-Check 'b6) empty message is not retryable' (-not (Test-SnapshotRetryable -Message ''))
     Write-Check 'b7) null message is not retryable' (-not (Test-SnapshotRetryable -Message $null))
 
@@ -238,6 +254,8 @@ try {
     Write-Check 'b26) CLI -Json valid' ($jsonOk)
     $c4 = Invoke-Cli -Script $Backoff -ArgsList @('-ErrorText', '')
     Write-Check 'b27) CLI empty error text -> exit 1' ($c4.Code -eq 1)
+    $c5 = Invoke-Cli -Script $Backoff -ArgsList @('-ErrorText', 'SyntaxError in snapshot.ts: unexpected token')
+    Write-Check 'b28) CLI snapshot word alone -> exit 0' ($c5.Code -eq 0)
 
     # ---------------- token-preflight ----------------
     $warnFile = Join-Path $TempBase 'warn.txt'

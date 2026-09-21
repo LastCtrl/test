@@ -4514,3 +4514,77 @@ MCP_USED: []
 COMPLIANCE: true
 STATUS: resolved
 ================================================================================
+
+[2026-09-21 14:09] team-lead -> bus:
+TYPE: update | PRIORITY: low
+CONTENT: Запрос «сколько сейчас времени» выполнен. Текущее локальное время: 2026-09-21 14:09 (Europe/Minsk, host clock). Без делегирования (информационный запрос, кода нет).
+SKILLS_LOADED: []
+MCP_USED: []
+COMPLIANCE: true
+STATUS: resolved
+================================
+
+### 2026-09-21 14:20 | team-lead | Project: 1c-kis-teplo | ВЕРИФИКАЦИЯ ТЕСТОВОЙ БАЗЫ
+Пользователь загрузил боевую конфигурацию 1с-Kis2109 в тестовую базу (1с_KisTest2109) и снял выгрузку D:\Тест\agent-hq\projects\1с-TestОбновленнаяСосновной. Сверка с боевой: объектный состав совпал (0 объектов только в одной), наши объекты (ВыгрузкаВOracle .xml/.bsl, регистр ОчередьВыгрузкиВOracle, регзадание ОбработкаОчередиВыгрузкиВOracle, модули объектов Тепло/Топливо/оба Графика) — контент ПОСТРОЧНО ИДЕНТИЧЕН боевой. Роль ПользовательТепло: права на 4 документа есть (в т.ч. Document.Топливо Edit=true); явных записей по ТЧ нет, но setForAttributesByDefault=true и Edit документа=true → поля ТЧ редактируемы. Отличия 42 файлов — косметика (BOM/переводы строк/теги платформы Behavior,PagesRepresentation/ConfigDumpInfo версии), функционал не затронут. Вывод: тестовая = боевая + фича, готова к тестам. Тестовая пишет в БОЕВУЮ Oracle (DSN teplo/topln). Снимок Oracle на 10.10.2019: spr05=36 строк, spr07=22, spr08=2, spr03/spr04=0 (для графиков на эту дату только INSERT).
+================================================================================
+[2026-09-21 14:41] dev-1 → team-lead:
+TYPE: update | PRIORITY: high
+Project: 1c-kis-teplo
+CONTENT: фикс живого бага: ADODB.Parameters.Clear -> ОчиститьПараметры(Cmd) (Delete-цикл), 20 замен + 1 процедура. Файл CommonModules/ВыгрузкаВOracle/Ext/Module.bsl, 730 строк.
+SKILLS_LOADED: ["1c-dev"]
+MCP_USED: ["sequential-thinking"]
+COMPLIANCE: true
+STATUS: resolved
+================================================================================
+
+### 2026-09-21 14:43 | team-lead | Project: 1c-kis-teplo | ЖИВОЙ ТЕСТ ВЫЯВИЛ И ИСПРАВИЛ БАГ
+Пользователь запустил автозагрузку в тестовой базе за 09-10.10.2019. Результат: Тепло загружено (документы без проведения), Топливо проведено и НАШЛАСЬ ОШИБКА: "Метод объекта не обнаружен (Clear)" в ОбщийМодуль.ВыгрузкаВOracle.Модуль(183). Документ проведён, поставлен в очередь (механизм очереди сработал!). Причина: у COM-коллекции ADODB.Parameters НЕТ метода Clear. Тимлид живой проверкой подтвердил: Clear падает, Delete(0) работает, и паттерн "одна команда + Delete-цикл + повторный Append + Execute" корректно исполняется на реальной Oracle (SELECT COUNT spr05 за 10.10.2019 = 36). ФИКС (dev-1, glm-5.3): добавлена процедура ОчиститьПараметры(Cmd) (Delete-цикл), все 20 вхождений Cmd.Parameters.Clear() заменены на вызов. Файл 1с-Kis2109/CommonModules/ВыгрузкаВOracle/Ext/Module.bsl, 730 строк. Проверка тимлидом: Clear=0, вызовов=20, определение=1, баланс блоков ок (Проц 4/4, Функ 4/4, Цикл 16/16, Если 40/40, Попытка 18/18), других .Clear() на COM нет. code-reviewer-1 и code-reviewer НЕДОСТУПНЫ (лимит провайдера OpenCode free tier) — по §3.3 базовая проверка выполнена тимлидом, эскалация пользователю. ВАЖНО: фикс нужно применить в тестовой базе (перезагрузить конфигурацию из 1с-Kis2109). Также: ORA-12170 (emcos, Электро) — сетевая ошибка до 10.16.16.16, вне задачи.
+
+[TIME] senior-reviewer-1 → team-lead:
+TYPE: update | PRIORITY: medium
+Project: 1c-kis-teplo
+CONTENT: ревью фикса Parameters.Clear: ПРИНЯТО. Module.bsl (1с-Kis2109/CommonModules/ВыгрузкаВOracle/Ext) — 0 вхождений Parameters.Clear (grep по проекту), 20 вызовов ОчиститьПараметры(Cmd) (стр.48,59,74,105,191,202,212,238,271,286,309,336,420,432,443,460,544,555,565,581), 1 определение (стр.5). Процедура корректна: Delete(0) при Count>0, 0-based ADO, зацикливания нет. Баланс блоков: Проц 4/4, Функ 4/4, Цикл 16/16, Если 40/40, Попытка 18/18. COM-методы валидны. SQL/транзакции/порядок Append не изменены. Экспортный интерфейс не тронут, вызовы из 4 ObjectModule + регзадания целы. Наблюдение (pre-existing, вне фикса): хардкод кредов Oracle стр.18,162,389,514. Ограничение: write в CONTEXT-BUFFER недоступен (read-only) — блок передан team-lead.
+SKILLS_LOADED: ["1c-dev"]
+MCP_USED: ["sequential-thinking"]
+COMPLIANCE: true
+STATUS: resolved
+
+### 2026-09-21 15:00 | team-lead | Project: 1c-kis-teplo | НАЙДЕН РИСК ПО ПРАВАМ (очередь) + фикс
+При разборе очереди обнаружено: ни одна роль (в т.ч. ПользовательТепло) НЕ имеет прав на регистр сведений ОчередьВыгрузкиВOracle. Модуль ВыгрузкаВOracle был НЕ привилегированный (Privileged=false). Риск: при проведении документа оператором, если Oracle недоступен, вызов ПоставитьВОчередь пишет в регистр под контекстом пользователя → отказ по правам → исключение срывает ПРОВЕДЕНИЕ документа (плохо). В тесте не проявилось, т.к. автозагрузку запускал админ. ФИКС: в 1с-Kis2109/CommonModules/ВыгрузкаВOracle.xml установлено Privileged=true (модуль только выгружает в Oracle, пишет очередь и журнал — привилегированность безопасна). Применить в тестовой: галка «Привилегированный» в свойствах общего модуля + Обновить конфигурацию БД, либо перезагрузка из файлов.
+
+================================================================================
+[2026-09-21 15:27] dev-1 -> team-lead:
+TYPE: update | PRIORITY: high
+Project: 1c-kis-teplo
+CONTENT: фикс: числовые параметры ADODB 131 (adNumeric) -> 5 (adDouble), 53 замены. Файл CommonModules/ВыгрузкаВOracle/Ext/Module.bsl, 730 строк.
+SKILLS_LOADED: ["1c-dev"]
+MCP_USED: ["sequential-thinking"]
+COMPLIANCE: true
+STATUS: resolved
+
+[TIME] senior-reviewer → team-lead:
+TYPE: update | PRIORITY: medium
+Project: 1c-kis-teplo
+CONTENT: ревью фикса 131->5: ПРИНЯТО. Module.bsl (1с-Kis2109, 730 стр): ", 131, 1,"=0 (и голое 131=0), ", 5, 1,"=53, ", 135, 1,"=20, CreateParameter=73. Все 53 замены строго в Cmd.CreateParameter; имена/порядок Append/SQL идентичны дофиксной копии, плейсхолдеры=параметры во всех блоках. Даты 135 не тронуты. Блоки: Проц 4/4, Функ 4/4, Цикл 16/16, Если 40/40, Попытка 18/18. Транзакции x4 не изменены. Находки (не блокеры): (1) minor/release-risk — R8->NUMBER без scale может дать ложное "Контрольная перечитка: данные не совпадают" (Успех при этом Истина; проверить живым прогоном); (2) живая валидация типа 5 была на topln, teplo покрыть живым тестом; (3) pre-existing: хардкод кредов стр.18,162,389,514. Ограничение: write в CONTEXT-BUFFER недоступен (read-only).
+SKILLS_LOADED: ["1c-dev"]
+MCP_USED: ["sequential-thinking"]
+COMPLIANCE: true
+STATUS: resolved
+
+### 2026-09-21 15:38 | team-lead | Project: 1c-kis-teplo | ФИКС 131->5 (adNumeric->adDouble) ПРИМЕНЁН
+Живой тест: Топливо проведено, но выгрузка упала на Cmd.Execute (стр.194) с "Multiple-step OLE DB operation generated errors". Тимлид живьём подтвердил на реальной Oracle: type 131 (adNumeric) не поддерживается драйвером Oracle ODBC (ошибка и при Size=0, и Size=15); type 5 (adDouble) РАБОТАЕТ; type 12 не поддерживается. dev-1 (glm-5.3): все 53 числовых параметра переведены 131->5, даты 135 не тронуты. Ревью senior-reviewer (qwen3.8-flash): ПРИНЯТО. ИТОГО в модуле ВыгрузкаВOracle 3 фикса: (1) Parameters.Clear->ОчиститьПараметры (Delete-цикл); (2) Privileged=false->true (права на регистр очереди); (3) числовые параметры 131->5.
+
+### 2026-09-21 15:53 | team-lead | Project: 1c-kis-teplo | 🎉 ФИЧА ПОДТВЕРЖДЕНА В ORACLE (Топливо)
+Пользователь применил 3 фикса (Parameters.Clear->helper, Privileged=true, 131->5) и запустил регзадание вручную. Проверка Oracle: spr07 за 10.10.2019 — ВСЕ 22 строки datez=21.09.26 15:47:3x (обновлены), spr08 (s11=26 -> 135, s11=55 -> 50) datez=15:47. Значит: очередь заполнялась при падавших проведениях, регзадание обработало её и успешно выгрузило в Oracle, записи из очереди удалены (пустая очередь = норма после успеха). ПОДТВЕРЖДЕНО рабочим прогоном: фиксы, очередь, регзадание, выгрузка в Oracle. Осталось проверить ветку ПРАВКИ (изменить значение в документе и провести) по Тепло/Топливо/Графикам.
+
+
+================================================================================
+[2026-09-21 16:03] dev-1 -> team-lead:
+TYPE: update | PRIORITY: high
+Project: agent-hq
+CONTENT: DoH-резолв api.telegram.org для моста (bridge.py v2.1.0). Добавлено: resolve_telegram_ip() — DoH JSON через прокси cntlm (Cloudflare/Google), кэш по TTL>=60с, fallback системный DNS, иначе понятная DataSourceError; TelegramDohResolver (api.telegram.org -> DoH IP, прочие хосты -> системный резолвер); DohAiohttpSession (AiohttpSession с кастомным TCPConnector, use_dns_cache=False; Telegram напрямую, SNI=api.telegram.org, без hosts/фикс-IP). Env: AGENT_HQ_TG_DOH(on), AGENT_HQ_TG_DOH_URL, AGENT_HQ_BRIDGE_PROXY (только для DoH). CLI --check-network. Файлы: projects/telegram-bridge/bridge.py, README.md, tests/test-bridge-push.ps1. Артефакты: --selftest 253 checks failed=0; tests\test-bridge-push.ps1 45 PASS exit 0; --check-network -> 149.154.166.110 + Telegram HTTPS OK 200; run-bridge.ps1 --once -> v2.1.0, push sent=2, getUpdates 0; live sendMessage chat 795037246 message_id=29. NOT ENOUGH EVIDENCE: MCP context7 недоступен (fetch failed) — API aiohttp 3.14.1/aiogram 3.29.1 сверен по установленным исходникам.
+SKILLS_LOADED: ["evidence-discipline","windows-safety"]
+MCP_USED: ["sequential-thinking","context7: offline"]
+COMPLIANCE: true
+STATUS: resolved
+

@@ -67,7 +67,14 @@ $required = @(
     'answer: ответ run-задачи доставлен',
     'answer: анти-дубль (повторная доставка не идёт)',
     'ux: setMyCommands покрывает команды',
-    'sqlite ro: запись отклонена'
+    'sqlite ro: запись отклонена',
+    'doh: резолв вернул IP',
+    'doh: кэш жив в пределах TTL',
+    'doh: TTL не ниже минимума',
+    'doh: fallback на системный DNS',
+    'doh: всё пусто -> понятная ошибка',
+    'resolver: api.telegram.org -> DoH IP',
+    'resolver: прочие хосты -> делегат'
 )
 foreach ($line in $required) {
     Assert-Check "selftest содержит: $line" ($selfOut -match [regex]::Escape($line)) 'строка PASS не найдена'
@@ -81,6 +88,29 @@ Assert-Check 'demo: critical instant' ($demoOut -match 'tier=critical silent=Fal
 Assert-Check 'demo: тихие ярусы' ($demoOut -match 'tier=reject silent=True' -and $demoOut -match 'tier=done silent=True') 'нет тихих'
 Assert-Check 'demo: анти-дубль (tick2 sent=0)' ($demoOut -match 'tick2 sent=0') 'повтор отправил'
 Assert-Check 'demo: hard cap 5' ($demoOut -match 'hard cap 5') 'нет упоминания cap'
+
+# Network checks: only when the cntlm proxy is up. DoH must return an A-record
+# for api.telegram.org and the direct HTTPS connection (SNI) must succeed.
+$proxyUp = $false
+try {
+    $client = New-Object System.Net.Sockets.TcpClient
+    $iar = $client.BeginConnect('127.0.0.1', 3128, $null, $null)
+    if ($iar.AsyncWaitHandle.WaitOne(1000, $false)) {
+        $client.EndConnect($iar)
+        $proxyUp = [bool]$client.Connected
+    }
+    $client.Close()
+} catch { $proxyUp = $false }
+if ($proxyUp) {
+    $netOut = & $py @pyArgs $bridge --check-network 2>&1 | Out-String
+    $netCode = $LASTEXITCODE
+    $netHead = $netOut.Substring(0, [Math]::Min(240, $netOut.Length))
+    Assert-Check 'network: --check-network exit 0' ($netCode -eq 0) "exit=$netCode out=$netHead"
+    Assert-Check 'network: DoH вернул IP' ($netOut -match '\[doh\] OK api\.telegram\.org -> \d+\.\d+\.\d+\.\d+') $netHead
+    Assert-Check 'network: Telegram HTTPS OK' ($netOut -match 'Telegram HTTPS OK') $netHead
+} else {
+    Write-Host 'SKIP network checks (proxy 127.0.0.1:3128 down)'
+}
 
 Write-Host ""
 Write-Host "checks=$script:checks failed=$($script:failures.Count)"

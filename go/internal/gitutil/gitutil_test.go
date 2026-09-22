@@ -330,6 +330,15 @@ func containsWorktree(list []Worktree, path, branch string) bool {
 	return false
 }
 
+// samePath compares paths by filesystem identity first (os.SameFile), so a
+// Windows 8.3 short name (C:\Users\RUNNER~1\...) equals the long name git
+// reports (C:\Users\runneradmin\...). Only non-existent paths fall back to a
+// case-insensitive string comparison.
 func samePath(a, b string) bool {
+	if infoA, err := os.Stat(a); err == nil {
+		if infoB, err := os.Stat(b); err == nil && os.SameFile(infoA, infoB) {
+			return true
+		}
+	}
 	return strings.EqualFold(filepath.Clean(a), filepath.Clean(b))
 }

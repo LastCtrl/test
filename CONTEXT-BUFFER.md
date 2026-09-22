@@ -5127,3 +5127,11 @@ STATUS: resolved
 
 ### 09/22/2026 14:47:47 | team-lead | Project: 1c-kis-teplo | ПОЛНАЯ СИНХРОНИЗАЦИЯ ВЫГРУЗКИ (все 4 документа)
 Добавлено удаление «сирот» за дату документа (строки Oracle, которых нет в ТЧ) для spr05/spr07/spr08/spr03/spr04 — в той же транзакции. Guard 0.8 (если строк в документе < 80% от существующих в Oracle -> удаление пропускается + предупреждение). Отдельный список для spr08 (МестноеТопливо<>0). Это закрывает случаи: удаление строки из документа, смена объекта/tnv (старые строки не остаются). Синтаксис (s02,tnv) NOT IN (...) проверен на живой Oracle. Ревью+ре-ревью qwen: ПРИНЯТО. Файл Module.bsl 894 строки.
+
+[TIME] dev-2 -> team-lead:
+TYPE: update | PRIORITY: high
+CONTENT: Fix CI Go worktree tests under Windows 8.3 short paths (RUNNER~1 vs runneradmin). Files: go/internal/worktree/paths.go (+canonicalPath = Abs+Clean+EvalSymlinks with deepest-existing-ancestor fallback for not-yet-created paths; +samePath = os.SameFile first, EqualFold(canonicalPath) fallback; isWithin now canonicalises both sides before the EqualFold prefix check); go/internal/gitutil/gitutil_test.go (samePath helper -> os.SameFile first, then EqualFold(Clean)); go/internal/worktree/worktree_test.go (second.Path vs first.Path -> samePath). No new deps (stdlib only). Evidence: reproduced the exact CI failure locally by pointing TEMP/TMP at the 8.3 short alias of a temp dir (AGENTH~1) -> before: TestAddCreatesRegisteredGitWorktree / TestCyrillicSpaceNameRoundTrip Registration=<nil>, TestWorktreeLifecycle / TestCyrillicWorktreePath WorktreeList long-vs-short mismatch; after: all PASS. go build/vet ./... exit 0; go test ./... -count=1 all packages ok; exact filter -run 'Worktree|Cyrillic|FindRegistration' -v PASS in worktree, gitutil and cmd/agent-hq. gofmt clean; temp artifacts removed; not committed. Note: local TEMP is long-form, so this env-flake is visible only via the forced short TEMP (cf. BUG-040).
+SKILLS_LOADED: ["evidence-discipline"]
+MCP_USED: ["sequential-thinking"]
+COMPLIANCE: true
+STATUS: resolved

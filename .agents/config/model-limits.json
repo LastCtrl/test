@@ -1,0 +1,71 @@
+{
+  "version": 1,
+  "generated_by": "budget.ps1 (P3-3)",
+  "notes": "Free-tier request/token ceilings. null = no published limit (NOT ENOUGH EVIDENCE) and can never trigger a warning. budget.ps1 treats requests_per_day as a rolling window (-SinceHours, default 24h). Token figures produced by budget.ps1 are ESTIMATES (evidence stdout/stderr chars / 4); the traces do not record real token usage yet.",
+  "models": {
+    "opencode/big-pickle": {
+      "provider": "opencode",
+      "tier": "free",
+      "requests_per_day": 100,
+      "tokens_per_day": 1000000,
+      "confidence": "documented",
+      "source": "AGENTS.md section 1 (free limit 100 req/day, 1M tok/day)"
+    },
+    "aihubmix/gpt-5.5-free": {
+      "provider": "aihubmix",
+      "tier": "free",
+      "requests_per_day": 100,
+      "tokens_per_day": 1000000,
+      "confidence": "documented",
+      "source": "AGENTS.md section 1 + P3-3 task brief"
+    },
+    "aihubmix/coding-glm-5.1-free": {
+      "provider": "aihubmix",
+      "tier": "free",
+      "requests_per_day": null,
+      "tokens_per_day": null,
+      "confidence": "unknown",
+      "source": "no published limit (NOT ENOUGH EVIDENCE)"
+    },
+    "opencode/ling-3.0-flash-fin-free": {
+      "provider": "opencode",
+      "tier": "free",
+      "requests_per_day": null,
+      "tokens_per_day": null,
+      "confidence": "unknown",
+      "source": "no published limit (NOT ENOUGH EVIDENCE)"
+    },
+    "opencode/mimo-v2.5-free": {
+      "provider": "opencode",
+      "tier": "free",
+      "requests_per_day": null,
+      "tokens_per_day": null,
+      "confidence": "unknown",
+      "source": "no published limit (NOT ENOUGH EVIDENCE)"
+    },
+    "opencode/nemotron-3.5-lightning-free": {
+      "provider": "opencode",
+      "tier": "free",
+      "requests_per_day": null,
+      "tokens_per_day": null,
+      "confidence": "unknown",
+      "source": "no published limit (NOT ENOUGH EVIDENCE)"
+    },
+    "opencode-go/deepseek-v4.1-flash": {
+      "provider": "opencode-go",
+      "tier": "paid",
+      "requests_per_day": null,
+      "tokens_per_day": null,
+      "confidence": "unknown",
+      "source": "paid endpoint (approval-based, no daily ceiling configured)"
+    },
+    "opencode-go/qwen3.8-flash": {
+      "provider": "opencode-go",
+      "tier": "paid",
+      "requests_per_day": null,
+      "tokens_per_day": null,
+      "confidence": "unknown",
+      "source": "paid endpoint (approval-based, no daily ceiling configured)"
+    }
+  }
+}

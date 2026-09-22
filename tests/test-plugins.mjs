@@ -191,6 +191,115 @@ const main = async () => {
     `error=${sessionError && sessionError.message}`
   );
 
+  // -------------------------------------------------------------------------
+  // tracer v2.1: agent resolution as measured on opencode 1.18.31
+  // (hook probe, 2026-09-17): chat.message receives ONLY { sessionID, model }
+  // - no agent, no messageID; tool.execute.* receive { tool, sessionID, callID };
+  // the agent appears on session.updated => properties.info.agent.
+  // -------------------------------------------------------------------------
+  const agentDir = path.join(tmpRoot, "traces-agent");
+  const agentTracer = TracerPlugin({ directory: tmpRoot, tracesDir: agentDir });
+
+  await agentTracer["chat.message"](
+    { sessionID: "ses_a", model: { providerID: "p", modelID: "m" } },
+    { message: { id: "msg_a" }, parts: [] }
+  );
+  await agentTracer.event({
+    event: { type: "session.created", properties: { info: { id: "ses_a" } } },
+  });
+  for (let i = 0; i < 2; i += 1) {
+    await agentTracer.event({
+      event: {
+        type: "session.updated",
+        properties: { sessionID: "ses_a", info: { id: "ses_a", agent: "dev-1" } },
+      },
+    });
+  }
+  await agentTracer["tool.execute.before"](
+    { tool: "bash", sessionID: "ses_a", callID: "call_a" },
+    {}
+  );
+  await agentTracer["tool.execute.after"](
+    { tool: "bash", sessionID: "ses_a", callID: "call_a" },
+    { title: "bash", output: "hi", metadata: { exit: 0 } }
+  );
+  await agentTracer.event({ event: { type: "session.idle", properties: { sessionID: "ses_a" } } });
+
+  const agentSpans = readJsonl(path.join(agentDir, "traces.jsonl"));
+  const agentToolSpan = agentSpans.find((record) => record.type === "tool");
+  const bindings = agentSpans.filter((record) => record.type === "session_agent");
+  const diag = agentSpans.find((record) => record.type === "plugin_diag");
+  check(
+    "tracer/agent-from-session-updated",
+    Boolean(agentToolSpan) &&
+      agentToolSpan.agent === "dev-1" &&
+      agentToolSpan.agent_source === "session.updated" &&
+      agentToolSpan.message_id === "msg_a" &&
+      agentToolSpan.session_id === "ses_a" &&
+      agentToolSpan.call_id === "call_a",
+    `tool=${JSON.stringify(agentToolSpan)}`
+  );
+  check(
+    "tracer/session-agent-binding-written-once",
+    bindings.length === 1 &&
+      bindings[0].session_id === "ses_a" &&
+      bindings[0].agent === "dev-1" &&
+      bindings[0].agent_source === "session.updated",
+    `bindings=${JSON.stringify(bindings)}`
+  );
+  check(
+    "tracer/plugin-diag-carries-hook-evidence",
+    Boolean(diag) &&
+      diag.agent === "dev-1" &&
+      diag.agent_source === "session.updated" &&
+      diag.runtime_agent === "dev-1" &&
+      diag.chat_message === 1 &&
+      diag.session_updated_agent === 2 &&
+      diag.tool_spans === 1 &&
+      diag.agent_mismatch === 0,
+    `diag=${JSON.stringify(diag)}`
+  );
+
+  // The launcher env carries the FLEET agent (inbox-engine.ps1 exports
+  // AGENT_HQ_AGENT); every fleet agent is mode=subagent, so the runtime reports
+  // the fallback primary agent instead. Explicit launcher data must win, and the
+  // disagreement must be visible in plugin_diag rather than hidden.
+  process.env.AGENT_HQ_AGENT = "dev-7";
+  const envDir = path.join(tmpRoot, "traces-env");
+  const envTracer = TracerPlugin({ directory: tmpRoot, tracesDir: envDir });
+  await envTracer.event({
+    event: { type: "session.created", properties: { info: { id: "ses_e" } } },
+  });
+  await envTracer.event({
+    event: {
+      type: "session.updated",
+      properties: { sessionID: "ses_e", info: { id: "ses_e", agent: "build" } },
+    },
+  });
+  await envTracer.event({ event: { type: "session.idle", properties: { sessionID: "ses_e" } } });
+  delete process.env.AGENT_HQ_AGENT;
+
+  const envSpans = readJsonl(path.join(envDir, "traces.jsonl"));
+  const envStart = envSpans.find((record) => record.type === "session_start");
+  const envDiag = envSpans.find((record) => record.type === "plugin_diag");
+  check(
+    "tracer/env-agent-wins-over-runtime-fallback",
+    Boolean(envStart) &&
+      envStart.agent === "dev-7" &&
+      envStart.agent_source === "env" &&
+      Boolean(envDiag) &&
+      envDiag.agent === "dev-7" &&
+      envDiag.agent_source === "env" &&
+      envDiag.runtime_agent === "build" &&
+      envDiag.agent_mismatch === 1,
+    `start=${JSON.stringify(envStart)}; diag=${JSON.stringify(envDiag)}`
+  );
+  check(
+    "tracer/no-agent-means-empty-field",
+    Boolean(agentSpans[0]) && agentSpans[0].agent === "" && agentSpans[0].agent_source === "",
+    `first=${JSON.stringify(agentSpans[0])}`
+  );
+
   // hostile input must never break the host process
   const hostile = new Proxy(
     {},
@@ -421,6 +530,48 @@ const main = async () => {
       joinedOk.trace_tool_spans === 0 &&
       joinedOk.traces === null,
     `summaries=${JSON.stringify(summaries)}`
+  );
+
+  // Mixed live file: legacy records (written by a plugin version without
+  // correlation fields) sitting next to correlated ones must not corrupt the
+  // attribution of the correlated sessions - the legacy spans land in their own
+  // "(unknown)" bucket instead.
+  const mixedFixtureDir = path.join(tmpRoot, "traces-mixed-fixture");
+  writeFile(
+    path.join(mixedFixtureDir, "traces.jsonl"),
+    [
+      JSON.stringify({ ts: "2026-01-01T00:00:00.000Z", type: "tool", tool: "bash", ms: 12 }),
+      JSON.stringify({ ts: "2026-01-01T00:00:01.000Z", type: "session_start", id: "ses_legacy" }),
+      JSON.stringify({
+        ts: "2026-01-01T00:00:02.000Z",
+        type: "tool",
+        tool: "edit",
+        duration_ms: 7,
+        status: "ok",
+        session_id: "ses_c",
+        agent: "dev-9",
+        task_id: "task-abc",
+      }),
+      traceLine({ session_id: "ses_c", agent: "", duration_ms: 3 }),
+      "still-not-json",
+    ].join("\n") + "\n"
+  );
+  const mixedTraces = scoring.readTracesDir(mixedFixtureDir);
+  const mixedSummaries = scoring.summarizeTraces(mixedTraces.records);
+  const mixedCorrelated = mixedSummaries.find((entry) => entry.session_id === "ses_c");
+  const mixedLegacy = mixedSummaries.find((entry) => entry.session_id === "(unknown)");
+  check(
+    "scoring/mixed-traces-keep-correlated-attribution",
+    mixedTraces.records.length === 4 &&
+      mixedTraces.errors.length === 1 &&
+      Boolean(mixedCorrelated) &&
+      mixedCorrelated.tool_spans === 2 &&
+      mixedCorrelated.agents.join(",") === "dev-9" &&
+      mixedCorrelated.task_id === "task-abc" &&
+      Boolean(mixedLegacy) &&
+      mixedLegacy.tool_spans === 1 &&
+      mixedLegacy.agents.length === 0,
+    `summaries=${JSON.stringify(mixedSummaries)}; errors=${JSON.stringify(mixedTraces.errors)}`
   );
 
   // The traces file grows unbounded -> only the tail is parsed, the partial

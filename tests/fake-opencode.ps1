@@ -9,6 +9,7 @@
 #   empty        -> no stdout, exit 0
 #   stderr-only  -> stderr only, no stdout, exit 0
 #   nomarker     -> stdout without a success marker, exit 0
+#   benign-run   -> benign opencode warning on stderr + stdout answer, no marker, exit 0
 #   errormarker  -> stdout with an error marker, exit 0
 #   leak         -> stdout with fake secrets but no success marker, exit 0 (must be redacted in dead-letter)
 #   slow         -> sleeps FAKE_OPENCODE_DELAY_MS (default 1500) then success, exit 0.
@@ -44,6 +45,14 @@ switch ($mode) {
     }
     "nomarker" {
         Write-Output "everything fine, but no status marker"
+        exit 0
+    }
+    "benign-run" {
+        # A benign opencode warning on stderr plus a real answer on stdout and no
+        # STATUS marker: the exact /run case (source=run / from=telegram) that must
+        # succeed because the answer is the result.
+        [Console]::Error.WriteLine('agent "dev-1" not found. Falling back to default agent')
+        Write-Output "Сейчас 15:43"
         exit 0
     }
     "errormarker" {
@@ -106,18 +115,20 @@ switch ($mode) {
         # P1-4/BUG-022 probe: report the correlation env the inbox engine exported
         # to this worker. The values are echoed on stdout (the poller stores it in
         # the outbox response) and appended to FAKE_OPENCODE_ENV_TRACK_DIR, so a
-        # test can assert the task/attempt ids really reached the child process.
+        # test can assert the task/attempt/agent ids really reached the child.
         $taskId = if ($env:AGENT_HQ_TASK_ID) { $env:AGENT_HQ_TASK_ID } else { "<unset>" }
         $attemptId = if ($env:AGENT_HQ_ATTEMPT_ID) { $env:AGENT_HQ_ATTEMPT_ID } else { "<unset>" }
+        $agentName = if ($env:AGENT_HQ_AGENT) { $env:AGENT_HQ_AGENT } else { "<unset>" }
         Write-Output ("AGENT_HQ_TASK_ID=" + $taskId)
         Write-Output ("AGENT_HQ_ATTEMPT_ID=" + $attemptId)
+        Write-Output ("AGENT_HQ_AGENT=" + $agentName)
         if ($env:FAKE_OPENCODE_ENV_TRACK_DIR) {
             try {
                 if (-not (Test-Path -LiteralPath $env:FAKE_OPENCODE_ENV_TRACK_DIR -PathType Container)) {
                     New-Item -ItemType Directory -Path $env:FAKE_OPENCODE_ENV_TRACK_DIR -Force | Out-Null
                 }
                 $probeFile = Join-Path $env:FAKE_OPENCODE_ENV_TRACK_DIR ([guid]::NewGuid().ToString("N") + ".txt")
-                [System.IO.File]::WriteAllText($probeFile, ($taskId + "|" + $attemptId), (New-Object System.Text.UTF8Encoding($false)))
+                [System.IO.File]::WriteAllText($probeFile, ($taskId + "|" + $attemptId + "|" + $agentName), (New-Object System.Text.UTF8Encoding($false)))
             } catch {
                 # A probe failure must never break the fixture itself.
             }

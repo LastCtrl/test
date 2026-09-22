@@ -286,6 +286,19 @@ try {
             ("exit=$($r.Exit) pendingId=$pendingId reasonsHasRmRf=$reasonsOk noRawSecret=$noRawSecret")
     } finally { End-IsolatedRoot $root }
 
+    # --- C14: message-queue send -Strict blocks a secret (no outbox artefact) -
+    # Default policy scrubs+warns; with -Strict a secret-shaped payload must be
+    # refused: exit != 0 and NOTHING written to outbox.
+    $root = New-IsolatedRoot
+    try {
+        $r = Invoke-Capture { & $Mq -Action send -From team-lead -To testagent -Type task -Priority normal -Payload ("credential " + $FakeSecret) -Strict }
+        $outboxCount = Get-JsonCount (Join-Path $root ".memory\outbox")
+        $pendingCount = Get-JsonCount (Join-Path $root ".memory\approvals\pending")
+        $leaks = $r.Out.Contains($FakeSecret)
+        Add-Check 'C14-strict-queue-blocks-secret' (($r.Exit -eq 1) -and ($outboxCount -eq 0) -and (-not $leaks)) `
+            ("exit=$($r.Exit) outboxJson=$outboxCount pending=$pendingCount leaksSecret=$leaks")
+    } finally { End-IsolatedRoot $root }
+
 } catch {
     Add-Check 'harness' $false ("unhandled exception: " + $_.Exception.Message + " @ " + $_.InvocationInfo.PositionMessage)
 } finally {

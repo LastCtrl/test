@@ -36,3 +36,27 @@ jobs:
             .memory/
             CONTEXT-BUFFER.md
           retention-days: 7
+
+  go:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Setup Go
+        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version-file: go/go.mod
+          cache-dependency-path: go/go.sum
+
+      - name: Build
+        working-directory: go
+        run: go build ./...
+
+      - name: Vet
+        working-directory: go
+        run: go vet ./...
+
+      - name: Test
+        working-directory: go
+        run: go test ./...

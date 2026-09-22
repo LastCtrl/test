@@ -23,6 +23,17 @@
     timestamped backup of the agent JSON is created first and sync-agents.ps1
     runs afterwards. If sync-agents.ps1 fails, the agent file is rolled back.
 
+    P3 - capability passport. Get-RouteDecision replaces the bare ladder walk: it
+    loads the passport through capability-passport.ps1 (lazily, a missing or
+    broken passport only degrades the decision) and rejects candidates that are
+    OPEN (breaker), that do not cover -TaskType (capability-mismatch) or that
+    cost more than -MaxCostTier. The decision keeps a machine code in reason, the
+    explanation in reason_text and the per-candidate codes, cost tier, grades and
+    measured latency in candidates. Speed and reliability rank candidates only
+    with -Optimize; otherwise a viable configured model always wins, so default
+    routing stays stable. Get-ModelRoute is a thin wrapper keeping the pre-P3
+    fields and reason codes for the regression tests.
+
     Environment hooks (used by tests, ignored in normal operation):
       $env:AGENT_HQ_ROOT      - repository root override
       $env:AGENT_HQ_OPENCODE  - CLI path override (fake CLI in tests)
@@ -92,6 +103,12 @@ $script:ProbeCandidates = @(
 )
 
 $script:ProbePrompt = "Reply with exactly: PONG"
+
+# Passport scoring weights (documented so a reason string can be reproduced).
+$script:RouterPassportModuleFile = "capability-passport.ps1"
+$script:RouterCostTierRank = @{ "free" = 0; "medium" = 1; "paid" = 2; "unknown" = 2 }
+$script:RouterSpeedReferenceMs = 600000.0
+$script:RouterWeights = @{ reliability = 0.5; speed = 0.2; cost = 0.3 }
 
 # ===========================================================================
 # Path / CLI resolution
@@ -548,40 +565,319 @@ function Get-FallbackLadder {
 
 function Get-ModelRoute {
     param([Parameter(Mandatory = $true)][string]$Agent, [string]$Root)
+    return (Get-RouteDecision -Agent $Agent -Root $Root)
+}
+
+# ===========================================================================
+# Passport-aware, explainable routing (P3)
+# ===========================================================================
+
+function Resolve-PassportModulePath {
+    param([string]$Root)
+    if (-not [string]::IsNullOrWhiteSpace($PSScriptRoot)) {
+        $candidate = Join-Path $PSScriptRoot $script:RouterPassportModuleFile
+        if (Test-Path -LiteralPath $candidate -PathType Leaf) { return $candidate }
+    }
+    $fallback = Join-Path (Get-RouterRoot -Root $Root) (".agents\scripts\" + $script:RouterPassportModuleFile)
+    if (Test-Path -LiteralPath $fallback -PathType Leaf) { return $fallback }
+    return ""
+}
+
+$script:PassportLoaded = $false
+$script:PassportLoadNote = ""
+
+# The passport module is loaded here, in the script scope: dot-sourcing inside a
+# function would define its functions in the function scope only, so they would
+# be gone once that function returns. A missing or damaged module is not fatal -
+# routing then falls back to health only and reports the note.
+function Initialize-PassportModule {
+    param([string]$Root)
+    if (Get-Command Get-AgentPassport -ErrorAction SilentlyContinue) { return $true }
+    if ([string]::IsNullOrWhiteSpace($script:PassportLoadNote)) {
+        $script:PassportLoadNote = "capability-passport.ps1 is not loaded - routed on health only"
+    }
+    return $false
+}
+
+function Import-PassportModule {
+    param([string]$Root)
+    $script:PassportLoaded = $false
+    if (Get-Command Get-AgentPassport -ErrorAction SilentlyContinue) {
+        $script:PassportLoaded = $true
+        return $true
+    }
+    return $false
+}
+
+function Get-PassportDataStatus {
+    param([string]$Root)
+    if (-not (Get-Command Read-PassportDocument -ErrorAction SilentlyContinue)) {
+        return [ordered]@{ status = "module-missing"; note = "" }
+    }
+    $doc = Read-PassportDocument -Root $Root
+    if ($doc.ok) { return [ordered]@{ status = "ok"; note = "" } }
+    $status = "broken"
+    if ([string]$doc.error -match "not found") { $status = "missing" }
+    return [ordered]@{ status = $status; note = [string]$doc.error }
+}
+
+function Get-RouteCandidateMetrics {
+    param($ModelPassport)
+    $metrics = [ordered]@{
+        cost_tier = "unknown"
+        avg_grade = $null
+        samples   = 0
+        p50_ms    = $null
+    }
+    if ($null -eq $ModelPassport) { return $metrics }
+    if ($null -ne $ModelPassport["cost_tier"]) {
+        $tier = [string]$ModelPassport["cost_tier"]
+        if (-not [string]::IsNullOrWhiteSpace($tier)) { $metrics.cost_tier = $tier }
+    }
+    $reliability = $ModelPassport["reliability"]
+    if ($reliability -is [System.Collections.IDictionary]) {
+        if ($null -ne $reliability["avg_grade"]) { $metrics.avg_grade = $reliability["avg_grade"] }
+        if ($null -ne $reliability["samples"]) { $metrics.samples = [int]$reliability["samples"] }
+    }
+    $speed = $ModelPassport["speed"]
+    if ($speed -is [System.Collections.IDictionary]) {
+        if ($null -ne $speed["p50_ms"]) { $metrics.p50_ms = $speed["p50_ms"] }
+    }
+    return $metrics
+}
+
+function Get-CandidateRejections {
+    param([string]$Model, [string]$TaskType, [string]$MaxCostTier, [bool]$PassportAvailable, [string]$Root)
+    $reasons = New-Object System.Collections.ArrayList
+    if (Test-ModelOpen -Model $Model -Root $Root) { [void]$reasons.Add("breaker-open") }
+
+    $passport = $null
+    if ($PassportAvailable) { $passport = Get-ModelPassport -Model $Model -Root $Root }
+
+    if (($null -ne $passport) -and (-not [string]::IsNullOrWhiteSpace($TaskType))) {
+        $declared = Get-PassportTaskTypes -Passport $passport
+        if (@($declared).Count -gt 0) {
+            $match = Test-CapabilityMatch -Declared $declared -Requested $TaskType
+            if (-not $match.matched) { [void]$reasons.Add("capability-mismatch") }
+        }
+    }
+
+    if ((-not [string]::IsNullOrWhiteSpace($MaxCostTier)) -and ($MaxCostTier -ne "any")) {
+        $tier = "unknown"
+        if (($null -ne $passport) -and ($null -ne $passport["cost_tier"])) {
+            $candidateTier = [string]$passport["cost_tier"]
+            if (-not [string]::IsNullOrWhiteSpace($candidateTier)) { $tier = $candidateTier }
+        }
+        $allowed = $script:RouterCostTierRank["unknown"]
+        if ($script:RouterCostTierRank.ContainsKey($MaxCostTier)) { $allowed = $script:RouterCostTierRank[$MaxCostTier] }
+        $rank = $script:RouterCostTierRank["unknown"]
+        if ($script:RouterCostTierRank.ContainsKey($tier)) { $rank = $script:RouterCostTierRank[$tier] }
+        if ($rank -gt $allowed) { [void]$reasons.Add("cost-tier-above-max") }
+    }
+    return $reasons.ToArray()
+}
+
+function Get-CandidateScore {
+    param($Metrics)
+    $reliabilityScore = 0.5
+    if ([int]$Metrics.samples -gt 0) { $reliabilityScore = [double]$Metrics.avg_grade / 10.0 }
+    $speedScore = 0.5
+    if (($null -ne $Metrics.p50_ms) -and ([double]$Metrics.p50_ms -gt 0)) {
+        $speedScore = 1.0 - ([double]$Metrics.p50_ms / $script:RouterSpeedReferenceMs)
+        if ($speedScore -lt 0) { $speedScore = 0 }
+        if ($speedScore -gt 1) { $speedScore = 1 }
+    }
+    $costScore = 0.2
+    if ($Metrics.cost_tier -eq "free") { $costScore = 1.0 }
+    elseif ($Metrics.cost_tier -eq "medium") { $costScore = 0.6 }
+    $total = ($script:RouterWeights.reliability * $reliabilityScore) +
+             ($script:RouterWeights.speed * $speedScore) +
+             ($script:RouterWeights.cost * $costScore)
+    return [ordered]@{
+        score       = [math]::Round($total, 3)
+        reliability = [math]::Round($reliabilityScore, 3)
+        speed       = [math]::Round($speedScore, 3)
+        cost        = [math]::Round($costScore, 3)
+    }
+}
+
+function Format-RouteCandidateLine {
+    param($Candidate)
+    $state = "candidate"
+    if ($Candidate.decision -eq "chosen") { $state = "CHOSEN   " }
+    elseif ($Candidate.decision -eq "rejected") { $state = "rejected " }
+    $metrics = "cost=" + $Candidate.cost_tier
+    if ($null -ne $Candidate.avg_grade) { $metrics = $metrics + " grade=" + $Candidate.avg_grade + "/" + $Candidate.samples }
+    else { $metrics = $metrics + " grade=-/0" }
+    if ($null -ne $Candidate.p50_ms) { $metrics = $metrics + " p50=" + $Candidate.p50_ms + "ms" }
+    if ($null -ne $Candidate.score) { $metrics = $metrics + " score=" + $Candidate.score }
+    return ("  {0} {1,-45} {2,-26} {3}" -f $state, [string]$Candidate.model, [string]$Candidate.code, $metrics)
+}
+
+function Format-RouteReason {
+    param($Decision)
+    $parts = New-Object System.Collections.ArrayList
+    [void]$parts.Add("reason=" + $Decision.reason)
+    if (-not [string]::IsNullOrWhiteSpace([string]$Decision.task_type)) {
+        [void]$parts.Add("task_type=" + $Decision.task_type)
+    }
+    [void]$parts.Add("configured=" + $Decision.configured)
+    [void]$parts.Add("chosen=" + $Decision.model)
+    [void]$parts.Add("mode=" + $Decision.decision_mode)
+    [void]$parts.Add("passport=" + $Decision.passport)
+    foreach ($candidate in @($Decision.candidates)) {
+        if ($candidate.decision -eq "rejected") {
+            [void]$parts.Add("rejected " + $candidate.model + " [" + $candidate.code + "]")
+        }
+    }
+    return ($parts -join "; ")
+}
+
+function Get-RouteDecision {
+    param(
+        [Parameter(Mandatory = $true)][string]$Agent,
+        [string]$TaskType = "",
+        [string]$MaxCostTier = "any",
+        [switch]$Optimize,
+        [string]$Root
+    )
+    $passportAvailable = Initialize-PassportModule -Root $Root
+    $passportData = Get-PassportDataStatus -Root $Root
+    $passportNote = $script:PassportLoadNote
+    if (-not [string]::IsNullOrWhiteSpace([string]$passportData.note)) {
+        if ([string]::IsNullOrWhiteSpace($passportNote)) { $passportNote = [string]$passportData.note }
+        else { $passportNote = $passportNote + " | " + [string]$passportData.note }
+    }
+    $passportState = [string]$passportData.status
     $configured = Get-AgentConfiguredModel -Agent $Agent -Root $Root
     if ([string]::IsNullOrWhiteSpace($configured)) {
         return [pscustomobject]@{
-            agent      = $Agent
-            configured = ""
-            model      = ""
-            changed    = $false
-            reason     = "agent-model-unknown"
+            agent         = $Agent
+            task_type     = $TaskType
+            configured    = ""
+            model         = ""
+            changed       = $false
+            reason        = "agent-model-unknown"
+            reason_text   = "agent-model-unknown: no model for $Agent in .opencode\agents or in the runtime config"
+            decision_mode = "stable"
+            passport      = $passportState
+            passport_note = $passportNote
+            policy        = $MaxCostTier
+            candidates    = @()
+        }
+    }
+
+    # Agent capability gate: a task the agent does not declare is not silently
+    # routed - the caller gets the mismatch instead of a wrong specialist.
+    if ($passportAvailable -and (-not [string]::IsNullOrWhiteSpace($TaskType))) {
+        $agentPassport = Get-AgentPassport -Agent $Agent -Root $Root
+        $agentTypes = Get-PassportTaskTypes -Passport $agentPassport
+        if (@($agentTypes).Count -gt 0) {
+            $agentMatch = Test-CapabilityMatch -Declared $agentTypes -Requested $TaskType
+            if (-not $agentMatch.matched) {
+                return [pscustomobject]@{
+                    agent         = $Agent
+                    task_type     = $TaskType
+                    configured    = $configured
+                    model         = ""
+                    changed       = $false
+                    reason        = "agent-capability-mismatch"
+                    reason_text   = "agent-capability-mismatch: $Agent declares [" + (@($agentTypes) -join ",") + "], task type '$TaskType' resolves to [" + (@($agentMatch.requested) -join ",") + "] - pick an agent whose passport covers it"
+                    decision_mode = "stable"
+                    passport      = $passportState
+                    passport_note = $passportNote
+                    policy        = $MaxCostTier
+                    candidates    = @()
+                }
+            }
         }
     }
 
     $ladder = Get-FallbackLadder -Model $configured
-    $chosen = ""
-    $reason = "configured-healthy"
+    $candidates = New-Object System.Collections.ArrayList
+    $viable = New-Object System.Collections.ArrayList
     foreach ($candidate in $ladder) {
-        if (-not (Test-ModelOpen -Model $candidate -Root $Root)) {
-            $chosen = $candidate
-            break
+        $modelPassport = $null
+        if ($passportAvailable) { $modelPassport = Get-ModelPassport -Model $candidate -Root $Root }
+        $metrics = Get-RouteCandidateMetrics -ModelPassport $modelPassport
+        $rejections = Get-CandidateRejections -Model $candidate -TaskType $TaskType -MaxCostTier $MaxCostTier -PassportAvailable $passportAvailable -Root $Root
+        $code = "selected"
+        if (@($rejections).Count -gt 0) { $code = (@($rejections) -join "+") }
+        $entry = [pscustomobject]@{
+            model     = $candidate
+            decision  = $(if (@($rejections).Count -gt 0) { "rejected" } else { "candidate" })
+            code      = $code
+            cost_tier = $metrics.cost_tier
+            avg_grade = $metrics.avg_grade
+            samples   = $metrics.samples
+            p50_ms    = $metrics.p50_ms
+            score     = $null
         }
-    }
-    if ([string]::IsNullOrWhiteSpace($chosen)) {
-        $chosen = [string]$ladder[$ladder.Count - 1]
-        $reason = "all-candidates-open"
-    } elseif ($chosen -ne $configured) {
-        $reason = "configured-open-fallback"
+        [void]$candidates.Add($entry)
+        if (@($rejections).Count -eq 0) { [void]$viable.Add($entry) }
     }
 
-    return [pscustomobject]@{
-        agent      = $Agent
-        configured = $configured
-        model      = $chosen
-        changed    = ($chosen -ne $configured)
-        reason     = $reason
+    $decisionMode = "stable"
+    $chosen = $null
+    if ($Optimize) {
+        $decisionMode = "scored"
+        $bestScore = -1.0
+        foreach ($entry in @($viable)) {
+            $score = Get-CandidateScore -Metrics $entry
+            $entry.score = $score.score
+            if ([double]$score.score -gt $bestScore) { $bestScore = [double]$score.score; $chosen = $entry }
+        }
+    } elseif (@($viable).Count -gt 0) {
+        $chosen = $viable[0]
     }
+
+    $reason = "configured-healthy"
+    if ($null -eq $chosen) {
+        $configuredEntry = $null
+        foreach ($entry in @($candidates)) { if ($entry.model -eq $configured) { $configuredEntry = $entry } }
+        $allBreaker = $true
+        foreach ($entry in @($candidates)) {
+            if ($entry.code -notmatch "breaker-open") { $allBreaker = $false }
+        }
+        $chosenModel = [string]$ladder[$ladder.Count - 1]
+        foreach ($entry in @($candidates)) { if ($entry.model -eq $chosenModel) { $entry.decision = "chosen"; $entry.code = "forced-last-resort"; $chosen = $entry } }
+        if ($null -eq $chosen) {
+            $chosen = [pscustomobject]@{ model = $chosenModel; decision = "chosen"; code = "forced-last-resort"; cost_tier = "unknown"; avg_grade = $null; samples = 0; p50_ms = $null; score = $null }
+        }
+        if ($allBreaker) { $reason = "all-candidates-open" } else { $reason = "all-candidates-rejected" }
+    } else {
+        $chosen.decision = "chosen"
+        if ($chosen.model -ne $configured) {
+            $configuredEntry = $null
+            foreach ($entry in @($candidates)) { if ($entry.model -eq $configured) { $configuredEntry = $entry } }
+            $configuredCode = ""
+            if ($null -ne $configuredEntry) { $configuredCode = [string]$configuredEntry.code }
+            if ($decisionMode -eq "scored") { $reason = "scored-preferred" }
+            elseif ($configuredCode -match "breaker-open") { $reason = "configured-open-fallback" }
+            elseif ($configuredCode -match "capability-mismatch") { $reason = "capability-fallback" }
+            elseif ($configuredCode -match "cost-tier-above-max") { $reason = "cost-tier-fallback" }
+            else { $reason = "configured-open-fallback" }
+        } elseif ($decisionMode -eq "scored") {
+            $reason = "configured-healthy"
+        }
+    }
+
+    $decision = [pscustomobject]@{
+        agent         = $Agent
+        task_type     = $TaskType
+        configured    = $configured
+        model         = [string]$chosen.model
+        changed       = ([string]$chosen.model -ne $configured)
+        reason        = $reason
+        reason_text   = ""
+        decision_mode = $decisionMode
+        passport      = $passportState
+        passport_note = $passportNote
+        policy        = $MaxCostTier
+        candidates    = @($candidates.ToArray())
+    }
+    $decision.reason_text = Format-RouteReason -Decision $decision
+    return $decision
 }
 
 # Write the routed model into .opencode\agents\<agent>.json (first "model" key
@@ -699,6 +995,10 @@ function Show-ModelRouterUsage {
     Write-Host "  -Status                        print the health/breaker table"
     Write-Host "  -Probe                         probe the SKILL candidate set and refresh state"
     Write-Host "  -Route -Agent <name>       resolve the model for one agent (read-only)"
+    Write-Host "  -TaskType <t>              with -Route: capability check against the passport"
+    Write-Host "  -MaxCostTier <tier>        with -Route: free | medium | paid | any (default any)"
+    Write-Host "  -Optimize                  with -Route: rank viable candidates by passport score"
+    Write-Host "  -Quiet                     with -Route: no candidate table, reason line only"
     Write-Host "  -Route -Agent <name> -Apply  write the routed model + sync-agents.ps1"
     Write-Host "  -Models a,b                candidate override for -Probe"
     Write-Host "  -FailThreshold <n>         failures before the breaker opens (default 2)"
@@ -715,7 +1015,11 @@ function Parse-ModelRouterArguments {
         Status          = $false
         Route           = $false
         Apply           = $false
+        Optimize        = $false
+        Quiet           = $false
         Agent           = ""
+        TaskType        = ""
+        MaxCostTier     = "any"
         Root            = ""
         Models          = @()
         FailThreshold   = $script:DefaultFailThreshold
@@ -738,8 +1042,10 @@ function Parse-ModelRouterArguments {
         elseif ($name -eq "-Probe") { $options.Probe = $true; $index++ }
         elseif ($name -eq "-Route") { $options.Route = $true; $index++ }
         elseif ($name -eq "-Apply") { $options.Apply = $true; $index++ }
+        elseif ($name -eq "-Optimize") { $options.Optimize = $true; $index++ }
+        elseif ($name -eq "-Quiet") { $options.Quiet = $true; $index++ }
         elseif ($name -eq "-Help") { $options.Help = $true; $index++ }
-        elseif (@("-Agent", "-Root", "-Models", "-FailThreshold", "-CooldownMinutes", "-TimeoutSec") -contains $name) {
+        elseif (@("-Agent", "-Root", "-Models", "-FailThreshold", "-CooldownMinutes", "-TimeoutSec", "-TaskType", "-MaxCostTier") -contains $name) {
             $value = $inlineValue
             if ($null -eq $value) {
                 if (($index + 1) -ge $Arguments.Count) { throw "Missing value for $name" }
@@ -751,14 +1057,15 @@ function Parse-ModelRouterArguments {
             if ($name -eq "-Agent") { $options.Agent = $value }
             elseif ($name -eq "-Root") { $options.Root = $value }
             elseif ($name -eq "-Models") { $options.Models = @($value -split ',' | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }) }
+            elseif ($name -eq "-TaskType") { $options.TaskType = $value }
+            elseif ($name -eq "-MaxCostTier") { $options.MaxCostTier = $value }
             elseif ($name -eq "-FailThreshold") { $options.FailThreshold = [int]$value }
             elseif ($name -eq "-CooldownMinutes") { $options.CooldownMinutes = [int]$value }
             elseif ($name -eq "-TimeoutSec") { $options.TimeoutSec = [int]$value }
         }
         else {
             throw "Unknown argument '$token'. Usage: -Status | -Probe | -Route -Agent <name> [-Apply]"
-        }
-    }
+        }    }
     return $options
 }
 
@@ -781,6 +1088,12 @@ function Invoke-ModelRouterCommandLine {
 
     $root = $options.Root
 
+    # Honour the proxy mode: mode=on exports HTTP(S)_PROXY for the probed CLI,
+    # mode=off removes them so probes go direct (default).
+    if (Get-Command Initialize-ProxyEnvironment -ErrorAction SilentlyContinue) {
+        [void](Initialize-ProxyEnvironment -Root $root)
+    }
+
     if ($options.Status) {
         Show-ModelStatus -Root $root
     }
@@ -801,15 +1114,32 @@ function Invoke-ModelRouterCommandLine {
             Write-Host "-Route requires -Agent <name>" -ForegroundColor Red
             exit 1
         }
-        $route = Get-ModelRoute -Agent $options.Agent -Root $root
+        $route = Get-RouteDecision -Agent $options.Agent -TaskType $options.TaskType -MaxCostTier $options.MaxCostTier -Optimize:($options.Optimize) -Root $root
         Write-Host ""
         Write-Host ("AGENT      : " + $route.agent)
+        if (-not [string]::IsNullOrWhiteSpace([string]$route.task_type)) {
+            Write-Host ("TASK TYPE  : " + $route.task_type)
+        }
         Write-Host ("CONFIGURED : " + $route.configured)
         Write-Host ("ROUTE      : " + $route.model)
         Write-Host ("REASON     : " + $route.reason)
+        Write-Host ("WHY        : " + $route.reason_text)
+        Write-Host ("POLICY     : max_cost_tier=" + $route.policy + " mode=" + $route.decision_mode + " passport=" + $route.passport)
+        if (-not [string]::IsNullOrWhiteSpace([string]$route.passport_note)) {
+            Write-Host ("PASSPORT   : " + $route.passport_note) -ForegroundColor Yellow
+        }
+        if (-not $options.Quiet) {
+            Write-Host "CANDIDATES :"
+            foreach ($candidate in @($route.candidates)) {
+                Write-Host (Format-RouteCandidateLine -Candidate $candidate)
+            }
+        }
 
         if (-not $options.Apply) {
             Write-Host "APPLY      : skipped (pass -Apply to write into .opencode\agents and sync)"
+        } elseif ([string]::IsNullOrWhiteSpace([string]$route.model)) {
+            Write-Host "APPLY      : refused - no viable model for this request" -ForegroundColor Red
+            exit 1
         } elseif (-not $route.changed) {
             Write-Host "APPLY      : not needed - configured model is healthy"
         } else {
@@ -827,7 +1157,23 @@ function Invoke-ModelRouterCommandLine {
 }
 
 # Only a direct invocation (.\model-router.ps1 ...) runs the CLI; dot-sourcing
-# (tests) merely loads the functions above.
+# (tests) merely loads the functions above. The passport module is dot-sourced
+# right here: at the top level, so its functions land in this script scope.
+$script:PassportModulePath = Resolve-PassportModulePath -Root ""
+if ([string]::IsNullOrWhiteSpace($script:PassportModulePath)) {
+    $script:PassportLoadNote = "capability-passport.ps1 not found - routed on health only"
+} else {
+    try {
+        . $script:PassportModulePath
+    } catch {
+        $script:PassportLoadNote = "capability-passport.ps1 failed to load - routed on health only"
+    }
+}
+[void](Import-PassportModule -Root "")
+$script:ProxyModePath = Join-Path $PSScriptRoot "proxy-mode.ps1"
+if (Test-Path -LiteralPath $script:ProxyModePath -PathType Leaf) {
+    try { . $script:ProxyModePath } catch { }
+}
 if ($MyInvocation.InvocationName -ne '.') {
     Invoke-ModelRouterCommandLine -Arguments $args
 }

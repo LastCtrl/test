@@ -9,6 +9,7 @@ env/
 # Build
 dist/
 build/
+go/bin/
 *.egg-info/
 
 # IDE
@@ -31,6 +32,10 @@ Desktop.ini
 .memory/evidence/
 .memory/claims/
 .memory/archive/*/
+# M5 shadow: read-only plan reports are a derived artifact
+.memory/shadow/
+# G2: SQLite index is a derived artifact (rebuild with `agent-hq index`)
+.memory/agent-hq.db*
 
 # Secrets
 .env
@@ -71,3 +76,7 @@ opencode.local.json
 .env*
 *.enc
 .memory/*.lock
+.memory/failure-memory.jsonl
+# M5 cut-over: driver switch and Go-loop liveness are runtime state
+.memory/driver.mode
+.memory/traces/run-loop.log

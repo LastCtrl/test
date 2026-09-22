@@ -11,7 +11,8 @@ param(
     [string]$Type,
     [string]$Priority,
     [string]$Payload,
-    [string]$Days
+    [string]$Days,
+    [switch]$Strict
 )
 
 $Base = if ($env:AGENT_HQ_ROOT) { $env:AGENT_HQ_ROOT } else { Split-Path (Split-Path $PSScriptRoot -Parent) -Parent }
@@ -253,9 +254,14 @@ if ([string]::IsNullOrWhiteSpace($Action)) {
         "send" {
             # P1-5: перед постановкой в очередь промпт проходит гейт —
             # scrub секретов + ручное одобрение рискованных промптов.
+            # -Strict: секретоподобное в payload = жёсткий блок (в очередь не пишем).
             # Контракт действия не меняется: успех => exit 0, отказ гейта => exit 1.
             $gateOk = $true
             $payloadToSend = $Payload
+            # ВАЖНО: prompt-gate.ps1 объявляет СВОЙ param([switch]$Strict) и
+            # dot-source перезаписывает $Strict в этой области видимости, поэтому
+            # значение снимается ДО загрузки гейта.
+            $strictMode = [bool]$Strict
             $gateScript = Join-Path $PSScriptRoot "prompt-gate.ps1"
             if (-not (Test-Path -LiteralPath $gateScript -PathType Leaf)) {
                 Write-Fail "prompt-gate.ps1 не найден ($gateScript) — scrub невозможен, отправка отменена"
@@ -268,13 +274,17 @@ if ([string]::IsNullOrWhiteSpace($Action)) {
                         Write-Fail "Invoke-PromptScrub недоступен после загрузки prompt-gate.ps1"
                         $gateOk = $false
                     } else {
-                        $gate = Invoke-PromptScrub -Text $Payload -Root $Base
+                        $gate = Invoke-PromptScrub -Text $Payload -Root $Base -Strict:$strictMode
                         if ($gate.SecretsFound) {
                             Write-Log "🔒 scrub: замаскировано секретоподобных фрагментов: $($gate.RedactedCount)"
                         }
                         if (-not [string]::IsNullOrEmpty($Payload)) { $payloadToSend = $gate.Text }
                         if ($gate.Blocked) {
-                            Write-Fail "промпт заблокирован гейтом (strict/scrub недоступен): $($gate.RiskReasons -join ', ')"
+                            if ($strictMode -and $gate.SecretsFound) {
+                                Write-Fail "промпт заблокирован (-Strict): секретоподобное содержимое, в очередь не записано"
+                            } else {
+                                Write-Fail "промпт заблокирован гейтом (strict/scrub недоступен): $($gate.RiskReasons -join ', ')"
+                            }
                             $gateOk = $false
                         } elseif ($gate.Pending) {
                             $hint = if ($gate.ApprovalWriteFailed) { " (ВНИМАНИЕ: заявку не удалось записать — fail-closed)" } else { "" }

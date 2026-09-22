@@ -20,9 +20,15 @@
 #   $SuccessMarker $ErrorMarker
 #   $JobTimeoutSeconds       - env AGENT_HQ_JOB_TIMEOUT (positive int), else 900
 #   $ClaimLeaseSeconds       - 2 x JobTimeout + 300 (RISK-001b)
-#   $OpencodeCmd             - env AGENT_HQ_OPENCODE, else "opencode"
+#   $OpencodeCmd             - resolved CLI (env AGENT_HQ_OPENCODE, else the npm shim,
+#                              else "opencode" from PATH)
 # It also creates the .memory directories and dot-sources the helpers
 # redact.ps1 / evidence-writer.ps1 / task-state.ps1, each with a logged fallback.
+#
+# Variant B (vault-only provider keys): in production the workers are started through
+# run-with-secrets.ps1, so OPENCODE_API_KEY / AIHUBMIX_API_KEY / OPENROUTER_API_KEY /
+# GROQ_API_KEY / TOKENROUTER_API_KEY live in the child environment for that run only
+# and are never read from HKCU\Environment. See Get-OpencodeLaunchPlan.
 #
 # Pure PowerShell 5.1. No secrets are ever written to the bus or to the log.
 
@@ -130,24 +136,114 @@ if (Test-Path -LiteralPath $taskStateHelperPath) {
     }
 }
 
-# Resolve the CLI to invoke: env override (used by tests) or plain `opencode` from PATH.
-$script:OpencodeCmd = if ($env:AGENT_HQ_OPENCODE) { $env:AGENT_HQ_OPENCODE } else { "opencode" }
+# --- CLI resolution + variant B (vault-only provider keys) -------------------
+# Provider keys must never live in HKCU\Environment. In production the CLI is
+# launched through run-with-secrets.ps1: the wrapper decrypts the keys from the
+# DPAPI vault and puts them into the environment of the CHILD process only.
+#
+#   $env:AGENT_HQ_OPENCODE       CLI path override (tests / fake CLI). BYPASSES the
+#                                vault wrapper on purpose: fixtures must run without
+#                                reading the real vault.
+#   $env:AGENT_HQ_OPENCODE_PATH  CLI file path that STILL goes through the wrapper
+#                                (test hook used to exercise the vault path).
+#   $env:AGENT_HQ_NO_VAULT       kill switch: never use the wrapper (debug/incident).
+$script:VaultSecretNames = @('opencode-api-key', 'aihubmix-api-key', 'openrouter-api-key', 'groq-api-key', 'tokenrouter-api-key')
+$script:SecretWrapperPath = Join-Path $PSScriptRoot 'run-with-secrets.ps1'
+$script:VaultDir = if ($env:AGENT_HQ_SECRETS) {
+    $env:AGENT_HQ_SECRETS
+} elseif ($env:USERPROFILE) {
+    Join-Path $env:USERPROFILE '.agent-secrets'
+} else {
+    ''
+}
+
+# Resolve the CLI file to invoke. Order: explicit override -> test path hook ->
+# npm shim (a real FILE, required by run-with-secrets -FilePath) -> PATH lookup.
+function Resolve-OpencodeCli {
+    if (-not [string]::IsNullOrWhiteSpace($env:AGENT_HQ_OPENCODE)) { return $env:AGENT_HQ_OPENCODE }
+    if (-not [string]::IsNullOrWhiteSpace($env:AGENT_HQ_OPENCODE_PATH)) { return $env:AGENT_HQ_OPENCODE_PATH }
+    if ($env:APPDATA) {
+        $shim = Join-Path $env:APPDATA 'npm\opencode.ps1'
+        if (Test-Path -LiteralPath $shim -PathType Leaf) { return $shim }
+    }
+    $cmd = Get-Command opencode -CommandType Application, ExternalScript -ErrorAction SilentlyContinue |
+        Select-Object -First 1
+    if ($null -ne $cmd -and $cmd.Source) { return $cmd.Source }
+    return 'opencode'
+}
+
+# Provider secrets that ACTUALLY exist in the vault. A single missing key must not
+# abort every launch (the wrapper exits 2 when a requested secret is absent).
+function Get-VaultSecretNames {
+    $names = @()
+    if (-not $script:VaultDir) { return @() }
+    if (-not (Test-Path -LiteralPath $script:VaultDir -PathType Container)) { return @() }
+    foreach ($n in $script:VaultSecretNames) {
+        if (Test-Path -LiteralPath (Join-Path $script:VaultDir ('secret.' + $n + '.enc')) -PathType Leaf) {
+            $names += $n
+        }
+    }
+    return @($names)
+}
+
+# How the CLI must be launched for one attempt:
+#   Cli     - path/name handed to the launcher
+#   UseVault- $true => run through run-with-secrets.ps1 with Secrets injected
+#   Wrapper - absolute path of the wrapper ('' when unused)
+#   Secrets - vault secret names (empty when unused)
+function Get-OpencodeLaunchPlan {
+    $plan = [pscustomobject]@{
+        Cli       = (Resolve-OpencodeCli)
+        UseVault  = $false
+        Wrapper   = ''
+        Secrets   = @()
+    }
+    # Test/override path: raw CLI, vault wrapper intentionally bypassed.
+    if ($env:AGENT_HQ_OPENCODE) { return $plan }
+    if ($env:AGENT_HQ_NO_VAULT) {
+        Write-Log "⚠️ AGENT_HQ_NO_VAULT is set — provider keys are NOT injected from the vault"
+        return $plan
+    }
+    if (-not (Test-Path -LiteralPath $script:SecretWrapperPath -PathType Leaf)) {
+        Write-Log "⚠️ run-with-secrets.ps1 not found at $($script:SecretWrapperPath) — launching CLI without vault keys"
+        return $plan
+    }
+    $secrets = @(Get-VaultSecretNames)
+    if ($secrets.Count -eq 0) {
+        Write-Log "⚠️ no provider keys in vault '$($script:VaultDir)' — launching CLI without vault keys"
+        return $plan
+    }
+    $plan.UseVault = $true
+    $plan.Wrapper = $script:SecretWrapperPath
+    $plan.Secrets = $secrets
+    return $plan
+}
+
+# Resolved CLI for logging/evidence (informational; the launch plan is authoritative).
+$script:OpencodeCmd = Resolve-OpencodeCli
 
 # Guard: is the RESOLVED opencode command available? Returns $true/$false — the
 # runner decides what exit code a missing CLI means.
 function Test-OpencodeAvailable {
     if ($env:AGENT_HQ_OPENCODE) {
-        if (-not (Test-Path -LiteralPath $script:OpencodeCmd)) {
-            Write-Log "❌ AGENT_HQ_OPENCODE is set but path not found: $script:OpencodeCmd"
+        if (-not (Test-Path -LiteralPath $env:AGENT_HQ_OPENCODE)) {
+            Write-Log "❌ AGENT_HQ_OPENCODE is set but path not found: $env:AGENT_HQ_OPENCODE"
             return $false
         }
         return $true
     }
-    if (-not (Get-Command opencode -ErrorAction SilentlyContinue)) {
-        Write-Log "❌ opencode not found in PATH. Install opencode or add to PATH."
-        return $false
+    if ($env:AGENT_HQ_OPENCODE_PATH) {
+        if (-not (Test-Path -LiteralPath $env:AGENT_HQ_OPENCODE_PATH -PathType Leaf)) {
+            Write-Log "❌ AGENT_HQ_OPENCODE_PATH is set but file not found: $env:AGENT_HQ_OPENCODE_PATH"
+            return $false
+        }
+        return $true
     }
-    return $true
+    $resolved = Resolve-OpencodeCli
+    if ($resolved -ne 'opencode' -and (Test-Path -LiteralPath $resolved -PathType Leaf)) { return $true }
+    if (Get-Command opencode -CommandType Application, ExternalScript -ErrorAction SilentlyContinue) { return $true }
+    Write-Log "❌ opencode not found in PATH. Install opencode or add to PATH."
+    return $false
 }
 
 # PSParser syntax self-check for a script file. Returns $true/$false.
@@ -167,9 +263,16 @@ function Test-ScriptSyntax {
     }
 }
 
-# --- Result definition (DRY): success = real exit code 0 + explicit marker + clean stderr ---
+# --- Result definition (DRY). Structured bus tasks: exit 0 + success marker +
+# clean output. Interactive Telegram tasks (source=run/reply or from=telegram):
+# exit 0 + non-empty stdout, marker optional because the answer is the result.
+# Benign opencode warnings are stripped before the error marker is matched.
 $script:SuccessMarker = '(?i)STATUS:\s*(resolved|done|completed)'
-$script:ErrorMarker = '(?i)(not found|permission denied|auto-rejecting|rejected permission|Error:)'
+$script:ErrorMarker = '(?i)(permission denied|auto-rejecting|rejected permission|Error:|command not found|not recognized|no such file|cannot find path)'
+$script:BenignOutputPatterns = @(
+    '(?i)agent\s+"[^"]*"\s+not found\.\s*Falling back to default agent'
+)
+$script:TelegramFrom = 'telegram'
 $script:JobTimeoutSeconds = 900
 if ($env:AGENT_HQ_JOB_TIMEOUT) {
     $envTimeout = 0
@@ -304,12 +407,22 @@ function Add-AttemptTiming {
 # Run opencode in a background job, capturing stdout/stderr separately and the REAL exit code.
 # Returns: [PSCustomObject]@{ stdout; stderr; exitCode; startedAt; finishedAt; durationMs }  (never a bare string)
 function Invoke-OpencodeAttempt {
-    param([string]$targetAgent, [string]$taskPrompt, [string]$TaskId = "", [string]$AttemptId = "")
+    param([string]$targetAgent, [string]$taskPrompt, [string]$TaskId = "", [string]$AttemptId = "", $Launch = $null)
 
     $startedAt = Get-Date
 
+    # Variant B: decide here (per attempt) whether the provider keys come from the
+    # DPAPI vault via run-with-secrets.ps1. $env:AGENT_HQ_OPENCODE (test override)
+    # always wins and is launched raw.
+    if ($null -eq $Launch) { $Launch = Get-OpencodeLaunchPlan }
+    $cliPath = [string]$Launch.Cli
+    $useVault = [bool]$Launch.UseVault
+    $wrapperPath = [string]$Launch.Wrapper
+    # Start-Job flattens array arguments, so the secret-name list travels as CSV.
+    $secretsCsv = (@($Launch.Secrets) -join ',')
+
     $job = Start-Job -ScriptBlock {
-        param($agent, $taskPrompt, $correlationTaskId, $correlationAttemptId)
+        param($agent, $taskPrompt, $correlationTaskId, $correlationAttemptId, $cliPath, $wrapperPath, $useVault, $secretsCsv)
         # P1-4/BUG-022: export the correlation ids into the worker environment so
         # the tracer/scoring plugins of the spawned CLI can join traces with the
         # engine's machine evidence. Start-Job runs in a child process that
@@ -326,11 +439,27 @@ function Invoke-OpencodeAttempt {
         } else {
             Remove-Item Env:\AGENT_HQ_ATTEMPT_ID -ErrorAction SilentlyContinue
         }
-        # Resolve the CLI inside the job: the Start-Job child process inherits env vars.
-        $opencodeCmd = if ($env:AGENT_HQ_OPENCODE) { $env:AGENT_HQ_OPENCODE } else { "opencode" }
+        # P3-3 gap: the fleet agent name is exported too. Every agent in
+        # .opencode\agents is mode=subagent and `opencode run --agent <subagent>`
+        # falls back to the default primary agent, so the runtime cannot report
+        # the fleet agent (observed 2026-09-17 on opencode 1.18.31: --agent
+        # qa-engineer -> session agent "build"). The launcher knows the name.
+        if ($agent) {
+            $env:AGENT_HQ_AGENT = $agent
+        } else {
+            Remove-Item Env:\AGENT_HQ_AGENT -ErrorAction SilentlyContinue
+        }
+        $cliArgs = @('run', '--agent', $agent, $taskPrompt)
         $errFile = [System.IO.Path]::GetTempFileName()
         try {
-            $stdout = & $opencodeCmd run --agent $agent $taskPrompt 2>$errFile
+            if ($useVault -and $wrapperPath) {
+                # Variant B: keys are decrypted into THIS process' environment for the
+                # duration of the call only and restored by the wrapper's finally.
+                $secretNames = @($secretsCsv -split ',' | Where-Object { $_ })
+                $stdout = & $wrapperPath -Secret $secretNames -FilePath $cliPath -Args $cliArgs 2>$errFile
+            } else {
+                $stdout = & $cliPath @cliArgs 2>$errFile
+            }
             $exitCode = $LASTEXITCODE
             $stderr = ""
             if (Test-Path $errFile) {
@@ -344,7 +473,7 @@ function Invoke-OpencodeAttempt {
         } finally {
             Remove-Item $errFile -Force -ErrorAction SilentlyContinue
         }
-    } -ArgumentList $targetAgent, $taskPrompt, $TaskId, $AttemptId
+    } -ArgumentList $targetAgent, $taskPrompt, $TaskId, $AttemptId, $cliPath, $wrapperPath, $useVault, $secretsCsv
 
     # Heartbeat the lease while we wait: a single attempt may run almost
     # $script:JobTimeoutSeconds, so without this the claim could expire
@@ -384,26 +513,40 @@ function Invoke-OpencodeAttempt {
     return (Add-AttemptTiming -attempt $timeoutResult -startedAt $startedAt -finishedAt $finishedAt)
 }
 
+# Remove benign opencode warnings (e.g. the subagent fallback notice) so they
+# cannot trip the error marker. Real errors are never in this list.
+function Remove-BenignOutput {
+    param([string]$Text)
+    if ([string]::IsNullOrEmpty($Text)) { return "" }
+    $clean = $Text
+    foreach ($pattern in $script:BenignOutputPatterns) {
+        $clean = [regex]::Replace($clean, $pattern, '')
+    }
+    return $clean
+}
+
 # Success ONLY when: exit code == 0 AND stdout has the explicit success marker AND stderr has no error markers.
 # A non-empty error text (stderr) or unmatched stdout is NOT success.
 function Test-OpencodeSuccess {
-    param($attempt)
+    param($attempt, [switch]$RequireMarker)
     if ($null -eq $attempt) { return $false }
     if ($attempt.exitCode -ne 0) { return $false }
     if ([string]::IsNullOrWhiteSpace($attempt.stdout)) { return $false }
     # Error markers anywhere in the captured output (stdout or stderr) mean failure.
-    if (("$($attempt.stdout)`n$($attempt.stderr)") -match $script:ErrorMarker) { return $false }
-    if ($attempt.stdout -notmatch $script:SuccessMarker) { return $false }
+    $combined = Remove-BenignOutput "$($attempt.stdout)`n$($attempt.stderr)"
+    if ($combined -match $script:ErrorMarker) { return $false }
+    if ($RequireMarker -and $attempt.stdout -notmatch $script:SuccessMarker) { return $false }
     return $true
 }
 
 function Get-AttemptFailureReason {
-    param($attempt)
+    param($attempt, [switch]$RequireMarker)
     if ($null -eq $attempt) { return "no result object" }
     if ($attempt.exitCode -ne 0) { return "exit code $($attempt.exitCode)" }
     if ([string]::IsNullOrWhiteSpace($attempt.stdout)) { return "empty stdout" }
-    if (("$($attempt.stdout)`n$($attempt.stderr)") -match $script:ErrorMarker) { return "error marker in output: '$($matches[0])'" }
-    if ($attempt.stdout -notmatch $script:SuccessMarker) { return "missing success marker '$($script:SuccessMarker)'" }
+    $combined = Remove-BenignOutput "$($attempt.stdout)`n$($attempt.stderr)"
+    if ($combined -match $script:ErrorMarker) { return "error marker in output: '$($matches[0])'" }
+    if ($RequireMarker -and $attempt.stdout -notmatch $script:SuccessMarker) { return "missing success marker '$($script:SuccessMarker)'" }
     return "unknown reason"
 }
 
@@ -559,6 +702,14 @@ function Process-InboxFile {
 
     $startedAt = Format-DateTime
 
+    # Interactive Telegram tasks (source=run/reply or from=telegram) are answered
+    # by the agent's stdout itself, so the STATUS marker is optional for them.
+    # Structured bus tasks keep the strict marker requirement.
+    $requireMarker = -not (($msg.source -eq 'run') -or ($msg.source -eq 'reply') -or ($from -eq $script:TelegramFrom))
+    if (-not $requireMarker) {
+        Write-Log "ℹ️ Interactive task (source=$($msg.source), from=$from) — success = exit 0 + non-empty stdout"
+    }
+
     # P1-1: atomic claim. If another worker already owns this message id, skip it
     # instead of running the same task twice (this is what lets the daemon run a
     # parallel pool without a global mutex).
@@ -596,14 +747,17 @@ function Process-InboxFile {
     # Call opencode run --agent <name> "<prompt>" with a hard timeout
     # (prevents a hung agent from blocking the whole runner forever)
     # Machine-generated evidence (P0-C): the command string is recorded by the runtime.
-    $evidenceCommand = "$($script:OpencodeCmd) run --agent $targetAgent"
+    # Variant B: the plan says whether the keys come from the DPAPI vault (wrapper).
+    $launchPlan = Get-OpencodeLaunchPlan
+    $evidenceCommand = "$($launchPlan.Cli) run --agent $targetAgent"
+    if ($launchPlan.UseVault) { $evidenceCommand += " [vault: run-with-secrets.ps1]" }
 
     Write-Log "🚀 Calling opencode run for agent: $targetAgent (timeout: $($script:JobTimeoutSeconds)s)"
     # Refresh the lease right before a possibly long run (RISK-001b).
     $null = Update-Heartbeat -TaskId $messageId -StateDir $ClaimsDir
-    $attempt1 = Invoke-OpencodeAttempt -targetAgent $targetAgent -taskPrompt $prompt -TaskId $messageId -AttemptId "attempt-1"
-    $success1 = Test-OpencodeSuccess $attempt1
-    $reason1 = if ($success1) { "" } else { Get-AttemptFailureReason $attempt1 }
+    $attempt1 = Invoke-OpencodeAttempt -targetAgent $targetAgent -taskPrompt $prompt -TaskId $messageId -AttemptId "attempt-1" -Launch $launchPlan
+    $success1 = Test-OpencodeSuccess $attempt1 -RequireMarker:$requireMarker
+    $reason1 = if ($success1) { "" } else { Get-AttemptFailureReason $attempt1 -RequireMarker:$requireMarker }
     $status1 = if ($success1) { "success" } else { "failed" }
     $evidencePath = Write-AttemptEvidence -attempt $attempt1 -taskId $messageId -attemptId "attempt-1" `
         -agent $targetAgent -command $evidenceCommand -status $status1 -reason $reason1
@@ -622,9 +776,9 @@ function Process-InboxFile {
     Write-Log "❌ First attempt failed ($reason1), retrying..."
     # Heartbeat between attempts: attempt-1 may have consumed most of the lease.
     $null = Update-Heartbeat -TaskId $messageId -StateDir $ClaimsDir
-    $attempt2 = Invoke-OpencodeAttempt -targetAgent $targetAgent -taskPrompt $prompt -TaskId $messageId -AttemptId "attempt-2"
-    $success2 = Test-OpencodeSuccess $attempt2
-    $reason2 = if ($success2) { "" } else { Get-AttemptFailureReason $attempt2 }
+    $attempt2 = Invoke-OpencodeAttempt -targetAgent $targetAgent -taskPrompt $prompt -TaskId $messageId -AttemptId "attempt-2" -Launch $launchPlan
+    $success2 = Test-OpencodeSuccess $attempt2 -RequireMarker:$requireMarker
+    $reason2 = if ($success2) { "" } else { Get-AttemptFailureReason $attempt2 -RequireMarker:$requireMarker }
     $status2 = if ($success2) { "success" } else { "failed" }
     $evidencePath = Write-AttemptEvidence -attempt $attempt2 -taskId $messageId -attemptId "attempt-2" `
         -agent $targetAgent -command $evidenceCommand -status $status2 -reason $reason2
@@ -700,9 +854,40 @@ function Get-PendingInboxItems {
     return @($items | Sort-Object -Property FilePath)
 }
 
+# M5 cut-over: is the Go driver owning the bus right now? True only when
+# .memory/driver.mode says "go" AND the Go loop's liveness heartbeat
+# (.memory/driver.lock) is fresh, so a crashed or never-started Go loop falls
+# back to this engine automatically. Default (no mode file) is false: nothing
+# changes for the running fleet. Pure read, never throws.
+function Test-GoDriverActive {
+    param([int]$LockTtlSeconds = 180)
+    try {
+        $modePath = Join-Path $Memory "driver.mode"
+        if (-not (Test-Path -LiteralPath $modePath -PathType Leaf)) { return $false }
+        $mode = ([System.IO.File]::ReadAllText($modePath, $script:Utf8NoBom)).Trim()
+        if ($mode.ToLower() -ne "go") { return $false }
+
+        $lockPath = Join-Path $Memory "driver.lock"
+        if (-not (Test-Path -LiteralPath $lockPath -PathType Leaf)) { return $false }
+        $lock = ([System.IO.File]::ReadAllText($lockPath, $script:Utf8NoBom)) | ConvertFrom-Json -ErrorAction Stop
+        if (-not $lock.heartbeat_at) { return $false }
+        $heartbeat = [datetime]::MinValue
+        if (-not [datetime]::TryParse([string]$lock.heartbeat_at, [ref]$heartbeat)) { return $false }
+        $age = ((Get-Date).ToUniversalTime() - $heartbeat.ToUniversalTime()).TotalSeconds
+        return ($age -ge 0 -and $age -lt $LockTtlSeconds)
+    } catch {
+        return $false
+    }
+}
+
 # Serial processing: scan every agent inbox and process each message in order.
 # The daemon does NOT use this — it keeps the same engine but runs a worker pool.
 function Process-Inbox {
+    if (Test-GoDriverActive) {
+        Write-Log "Go driver active (driver.mode=go, fresh heartbeat) - PS poller stands down for this cycle"
+        return @()
+    }
+
     # Schedule the sweep once per poll cycle, before any "Already claimed" skip.
     $null = Invoke-StaleClaimSweep -TtlSeconds 900
 

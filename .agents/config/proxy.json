@@ -1,5 +1,5 @@
 {
-  "mode": "off",
-  "url": "http://127.0.0.1:3128",
-  "no_proxy": "localhost,127.0.0.1,10.*,192.168.*,*.minsk.energo.net"
+    "mode":  "on",
+    "url":  "http://127.0.0.1:3128",
+    "no_proxy":  "localhost,127.0.0.1,10.*,192.168.*,*.minsk.energo.net"
 }

@@ -1,0 +1,11 @@
+{
+  "id": "16c14d28-0b94-496b-9d71-7e3752ba5b0c",
+  "from": "telegram",
+  "to": "dev-1",
+  "type": "task",
+  "priority": "normal",
+  "source": "run",
+  "payload": "сколько сейчас времени",
+  "created": "2026-09-21T16:12:06",
+  "created_at": "2026-09-21T16:12:06"
+}

@@ -1,4 +1,4 @@
-# project-worktree.ps1 - Per-project isolation boundary (P1-2).
+﻿# project-worktree.ps1 - Per-project isolation boundary (P1-2).
 #
 # Provides: per-project git worktree (.agents\worktrees\<name> on branch
 # project/<name>), the canonical per-project CONTEXT-BUFFER path, a filesystem

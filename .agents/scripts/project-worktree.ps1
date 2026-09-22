@@ -665,3 +665,4 @@ if ($CliRemove) {
 
 Write-Output "No action specified. Use -Ensure, -Get, -Remove or -List."
 exit 1
+

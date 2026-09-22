@@ -5040,3 +5040,52 @@ SKILLS_LOADED: ["skill-enforcement", "evidence-discipline", "1c-dev", "1c-query"
 MCP_USED: ["sequential-thinking", "context7: not used (внешних библиотек нет — правка XML/BSL 1С)", "hermes-atlas: not used"]
 COMPLIANCE: true
 STATUS: resolved
+
+[2026-09-22] tech-writer -> team-lead:
+TYPE: update | PRIORITY: medium
+Project: 1с-BuhTest2209
+CONTENT: Создан файл документации projects/1с-BuhTest2209/ОПИСАНИЕ-ПочтоваяКорреспонденция.md (101 строка, UTF-8). Содержит 9 разделов: назначение/состав, таблица объектов метаданных и файлов, реквизиты документа и ТЧ (по фактическому XML с path:line), поведение форм (автозаполнение Ответственный=АвторизованныйПользователь; адрес из РегистрСведений.КонтактнаяИнформация, вид Справочники.ВидыКонтактнойИнформации.АдресКонтрагентаПочтовый (Predefined.xml:46); отбор журнала по Отправителю/Получателю через подзапрос по ТЧ; показ ТЧ выбранного документа), внешние печатные формы (CommonCommand ДополнительныеПечатныеФормы.xml:25 → CommonModules\ДополнительныеПечатныеФормы\Ext\Module.bsl:57-62 Справочник.ВнешниеОбработки), права Role.Секретарь (Rights.xml:65292 документ, :65399 отчёт) и команды Interface.Секретарь (Interface.bin стр.48/129), инструкция загрузки через Конфигуратор, ограничения (рантайм/лицензия 1С), принятое решение журнал=форма списка (не DocumentJournal). Все имена сверены с файлами; не подтверждённое помечено NOT ENOUGH EVIDENCE.
+SKILLS_LOADED: ["skill-enforcement", "evidence-discipline"]
+MCP_USED: ["sequential-thinking"]
+COMPLIANCE: true
+STATUS: resolved
+
+[2026-09-22] team-lead -> bus:
+TYPE: completed | PRIORITY: medium
+Project: 1с-BuhTest2209
+CONTENT: ЗАДАЧА ЗАКРЫТА (принята пользователем без платформенной сборки). Реализован функционал «Учет почтовой корреспонденции исходящей» в XML-выгрузке 1с-BuhTest2209: (1) Enum.ВидыКорреспонденции; (2) Document.ПочтоваяКорреспонденцияИсходящая (Дата/Номер число+Year/Отправитель ПодразделенияОрганизаций+ФизЛица/Комментарий/Ответственный Пользователи; ТЧ Строки: НомерСтроки, Получатель Контрагенты+ФизЛица+строка, Адрес строка с автозаполнением из КонтактнаяИнформация.АдресКонтрагентаПочтовый, Содержание строка+любой документ, ВидКорреспонденции); (3) управляемые формы документа и списка «Журнал почтовой корреспонденции» (отбор по Отправителю/Получателю через подзапрос по ТЧ, показ ТЧ выбранной строки); (4) Report.УчетПочтовойКорреспонденцииИсходящей — универсальная СКД; (5) интеграция: права Role.Секретарь (Rights.xml), тип параметра CommonCommand.ДополнительныеПечатныеФормы, команды в Interface.Секретарь; (6) ОПИСАНИЕ-ПочтоваяКорреспонденция.md. Приёмка: qa-engineer-1 PASS; senior-reviewer 3 major закрыты (РАЗРЕШЕННЫЕ, ГДЕ НЕ ПометкаУдаления, дубли списка→подзапрос). СБОРКА/CheckConfig НЕ ВЫПОЛНЕНЫ — БЛОКЕР: нет лицензии 1С (LoadConfigFromFiles/CheckConfig невозможны; create infobase проходит). Пользователь: «Принять без сборки». Рантайм не проверялся. Артефакты вне репо: temp\opencode\buh-build (ИБ, не удалена — Remove-Item -Recurse запрещён политикой), temp\opencode\iface-backup\Interface.bin.orig (резерв оригинала интерфейса, sha256 FAE1BCAE43807D0DFC3A81EA42E3A43859BE17DC7888BCA1CC0C09BEB5443F86).
+SKILLS_LOADED: ["skill-enforcement", "evidence-discipline"]
+MCP_USED: ["sequential-thinking"]
+COMPLIANCE: true
+STATUS: resolved
+
+[2026-09-22] dev-1 → team-lead:
+TYPE: update | PRIORITY: high
+Project: 1c-kis-teplo
+CONTENT: перенос объекта Тепла по spr02.np (смена s02 строки слота). Изменён ровно один файл: projects/1с-Kis2109/CommonModules/ВыгрузкаВOracle/Ext/Module.bsl (функция ВыгрузитьТепло, строки 38-116). Перед циклом добавлен запрос "SELECT np, kod FROM spr02" и СоответствиеNPКоду (ключ=Число(np), значение=Число(kod)). В цикле: НовыйКод=Число(СсылкаОбъекта.Код); Слот=СтрокаТЧ.НомерСтроки; СтарыйКод=СоответствиеNPКоду.Получить(Слот); Если СтарыйКод=Неопределено то СтарыйКод=НовыйКод. COUNT и WHERE у UPDATE ищут по СтарыйКод; UPDATE spr05 SET s02=?, tnv=?, tpsv=?, tosv=?, cr=?, pp=?, ogv=?, op=?, datez=SYSDATE, datek=SYSDATE WHERE s02=? AND TRUNC(dated)=? (10 плейсхолдеров = 10 параметров); INSERT использует НовыйКод, структура не менялась. При СтарыйКод=НовыйКод поведение эквивалентно прежнему. np<->НомерСтроки подтверждён: ТеплоОбщий.ЗаполнитьДокументОбъект (Module.bsl:169-171) сопоставляет НомерСтроки с Стр.np из запроса Oracle, строки идут по ПолучитьФиксированныеСтроки (36 шт). Баланс блоков: Если/КонецЕсли 32/32; Для+Пока/КонецЦикла 16/16; подпрограммы 5/5. Кодировка сохранена UTF-8 с BOM. git diff/status недоступны: /projects/ в .gitignore:71. Другие функции (Топливо, Графики) не тронуты.
+SKILLS_LOADED: ["1c-dev","1c-query"]
+MCP_USED: ["sequential-thinking"]
+COMPLIANCE: true
+STATUS: resolved
+
+[TIME] senior-reviewer → team-lead: TYPE: update | PRIORITY: medium | Project: 1c-kis-teplo | CONTENT: РЕВЬЮ переноса объекта Тепла (1с-Kis2109/CommonModules/ВыгрузкаВOracle/Ext/Module.bsl, 646 строк): ПРИНЯТО. np->kod (:41-49); Слот=НомерСтроки, СтарыйКод=Соответствие[Слот] с фолбэком (:57-63); COUNT по СтарыйКод (:66-69); UPDATE spr05 10=10 плейсхолдеров, SET s02=НовыйКод + 7 значений + WHERE s02=СтарыйКод, dated (:76-88); INSERT s02=НовыйКод (:99-111); обычный случай эквивалентен прежнему; другие функции не тронуты; блоки сбалансированы. Премиса np<->НомерСтроки подтверждена (ТеплоОбщий:169-171). Minor: Число(NULL) по np -> откат; коллизия с существующей строкой НовыйКод за дату -> ORA-00001 -> безопасный откат, но нечитаемое сообщение. Pre-existing: plaintext DSN. SKILLS_LOADED: ["1c-dev"]. MCP_USED: ["sequential-thinking"]. COMPLIANCE: true. STATUS: resolved.
+
+### 09/22/2026 14:10:33 | team-lead | Project: 1c-kis-teplo | ПЕРЕНОС ОБЪЕКТА (Тепло) ВНЕДРЁН
+Реализован вариант B для Тепла: по номеру строки ТЧ (слот=НомерСтроки=np) находится старый объект через spr02.np; если объект строки сменился, в Oracle строка слота (s02=СтарыйКод, дата) обновляется на новый объект (SET s02=НовыйКод). Обычный случай (объект не менялся) эквивалентен прежнему. Для Топлива (spr011 без np) и Графиков (ключ включает tnv) надёжного слота нет -> смена объекта = строка нового объекта. Ревью qwen: ПРИНЯТО.
+
+[TIME] dev-1 → team-lead:
+TYPE: update | PRIORITY: high
+Project: 1c-kis-teplo
+CONTENT: Полная синхронизация по дате — удаление «сирот» за дату документа в 4 функциях. Файл: projects/1с-Kis2109/CommonModules/ВыгрузкаВOracle/Ext/Module.bsl (было 646, стало 803 строки; UTF-8 с BOM, CRLF сохранён). Добавлены 4 блока DELETE после цикла upsert и ДО CommitTrans, в той же транзакции (при ошибке — RollbackTrans): (1) ВыгрузитьТепло, spr05: DELETE FROM spr05 WHERE TRUNC(dated)=? AND s02 NOT IN (<все s02 из ТЧ>) AND s02 IN (SELECT kod FROM spr02) — Module.bsl:118-151; (2) ВыгрузитьТопливо, spr07 и spr08: DELETE FROM spr07/spr08 WHERE TRUNC(dated)=? AND s11 NOT IN (<все s11 из ТЧ>) AND s11 IN (SELECT kod FROM spr011) — :358-404; (3) ВыгрузитьГрафикПрямойИОбратнойВоды, spr03: DELETE FROM spr03 WHERE TRUNC(dated)=? AND s02 IN (SELECT kod FROM spr02) AND (s02, tnv) NOT IN ((?, ?), ...) — :557-594; (4) ВыгрузитьГрафикЦиркуляцииИПодпитки, spr04: аналогично (1) — :717-750. Защита: при 0 заполненных строк ТЧ блок DELETE пропускается (условие КодыСохранения/ПарыСохранения.Количество() > 0). Значения ключей — только параметрами, плейсхолдеры "?, ?, ...", уникальные имена p_s02_N/p_s11_N/p_tnv_N, перед append — ОчиститьПараметры(Cmd). Ограничение «универсума»: Тепло/графики — s02 IN (SELECT kod FROM spr02), Топливо — s11 IN (SELECT kod FROM spr011). Столбец spr011.kod подтверждён: projects/1с-Kis2109/CommonModules/ТопливоОбщий/Ext/Module.bsl:66-73. Логика upsert, перенос объекта по spr02.np, datez/datek, контрольная перечитка, метаданные/XML — НЕ тронуты. Баланс блоков: Если 44/44, КонецЦикла 29 (Для 22 + Пока 7), Попытка 16/16, Функция 4/4, Процедура 1/1. Проект под .gitignore (git diff недоступен) — верификация прямым чтением файла. Примечание: для spr03 использован Oracle row-value конструктор (s02,tnv) NOT IN ((?,?),...) — валиден Oracle 9i+; при NULL в tnv строка не удаляется (безопасно).
+SKILLS_LOADED: ["1c-dev","1c-query"]
+MCP_USED: ["sequential-thinking"]
+COMPLIANCE: true
+STATUS: resolved
+
+[TIME] dev-2 -> team-lead:
+TYPE: update | PRIORITY: high
+CONTENT: CI+gitattributes+docs. (1) .github/workflows/verify.yml: new job `go` (runs-on windows-latest) — actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5 (pin SHA, verified via git ls-remote), go-version-file: go/go.mod, cache-dependency-path: go/go.sum, steps build/vet/test with working-directory: go; existing verify job untouched. (2) .gitattributes: root cause of `is not a valid attribute name` was UTF-8 BOM (EF BB BF) on line 1; BOM removed (UTF8Encoding($false)), added `*.go text eol=lf`; `git check-attr text go/internal/bus/bus.go` -> text: set. (3) go/README.md: new section "Parity PS<->Go (etalon — PowerShell)" — PS (inbox-engine.ps1/project-worktree.ps1) = reference, Go (internal/bus/classify.go/internal/worktree/name.go) = mirror, change-in-both, runloop_parity_test.go = guard. Checks: go build exit 0, go vet exit 0, go test ./... -count=1 exit 0 (11 pkgs); YAML ok via py+PyYAML 6.0.3 (jobs=verify,go, go_steps=5). NOTE: internal/loop TempDir cleanup flake on Windows (AV holds handles) — intermittent, pre-existing, green on rerun. NOT ENOUGH EVIDENCE: actual GitHub CI run (not pushed). No commits.
+SKILLS_LOADED: ["evidence-discipline","windows-safety"]
+MCP_USED: ["sequential-thinking","context7: offline"]
+COMPLIANCE: true
+STATUS: resolved

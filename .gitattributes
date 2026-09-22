@@ -1,5 +1,8 @@
-﻿# Agent HQ: PowerShell scripts must use CRLF (PS 5.1 + UTF-8 BOM + LF => false 'ScriptContainedMaliciousContent' / AMSI block)
+# Agent HQ line-ending policy. Keep this file UTF-8 WITHOUT BOM: a BOM on
+# line 1 makes git parse it as an invalid attribute name.
+# PowerShell 5.1 + UTF-8 BOM + LF => false 'ScriptContainedMaliciousContent' / AMSI block.
 *.ps1 text eol=crlf
 *.sh text eol=lf
-# JSON: explicit rule. core.autocrlf alone left the worktree mixed (LF / CRLF / mixed).
+*.go text eol=lf
+# JSON: explicit rule; core.autocrlf alone left the worktree mixed (LF/CRLF/mixed).
 *.json text eol=crlf

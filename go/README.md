@@ -8,6 +8,25 @@ durable write-path (claim/attempt/event в SQLite), G3-M2 — устойчиво
 fallback-модель, метка session-invalid). Движок на PowerShell остаётся
 основным: Go-путь сосуществует с ним и не изменяет PS-скрипты.
 
+## Parity PS↔Go (эталон — PowerShell)
+
+Правила поведения задаёт PowerShell; Go обязан им соответствовать, а не
+наоборот.
+
+- **Эталон (источник истины):** `.agents/scripts/inbox-engine.ps1`
+  (классификация результата, формат evidence/шины) и
+  `.agents/scripts/project-worktree.ps1` (валидация имени проекта, layout
+  worktree/branch).
+- **Зеркало (Go):** `internal/bus/classify.go` (успех/провал попытки,
+  benign-предупреждения, `LimitText`/`Truncate`/`FormatAttemptReport`) и
+  `internal/worktree/name.go` (`ValidateName` = `Test-ProjectName`, `Branch`).
+  Меняя правило, правь ОБА места: иначе один и тот же вход два драйвера
+  классифицируют по-разному.
+- **Защита:** `cmd/agent-hq/runloop_parity_test.go` прогоняет один вход через Go
+  `run-loop` и настоящий `inbox-poller.ps1` и сверяет артефакты (папка, имя,
+  поля сообщения, статус, evidence). Красный parity-тест = зеркало разошлось с
+  эталоном: исправляй Go (или синхронно оба), а не «подгоняй» тест.
+
 ## Границы этапов
 
 Реализовано:

@@ -93,18 +93,17 @@ func TestPathBoundary(root, project, path string) bool {
 }
 
 // IsWithin reports whether target is a strict child of base. The comparison is
-// case-insensitive, like the OrdinalIgnoreCase check in project-worktree.ps1.
+// case-insensitive, like the OrdinalIgnoreCase check in project-worktree.ps1,
+// and canonicalises both sides first so the answer does not depend on how a
+// path is spelled (see canonicalPath).
 func IsWithin(base, target string) bool {
 	return isWithin(base, target)
 }
 
 func isWithin(base, target string) bool {
-	baseFull, err := filepath.Abs(filepath.Clean(base))
-	if err != nil {
-		return false
-	}
-	targetFull, err := filepath.Abs(filepath.Clean(target))
-	if err != nil {
+	baseFull := canonicalPath(base)
+	targetFull := canonicalPath(target)
+	if baseFull == "" || targetFull == "" {
 		return false
 	}
 	if len(targetFull) <= len(baseFull) {
@@ -112,6 +111,63 @@ func isWithin(base, target string) bool {
 	}
 	prefix := baseFull + string(os.PathSeparator)
 	return strings.HasPrefix(strings.ToLower(targetFull), strings.ToLower(prefix))
+}
+
+// canonicalPath returns the most canonical spelling of path available on this
+// system: absolute, cleaned and, when the location exists, with symlinks and
+// Windows 8.3 short names resolved. filepath.EvalSymlinks delegates to the OS,
+// which maps C:\Users\RUNNER~1\AppData\... to C:\Users\runneradmin\AppData\...
+// A path that does not exist yet is normalised through its deepest existing
+// ancestor and the missing components are re-appended, so a worktree path can
+// be canonicalised before `git worktree add` creates it. Returns "" for an
+// empty path.
+func canonicalPath(path string) string {
+	if strings.TrimSpace(path) == "" {
+		return ""
+	}
+	absolute, err := filepath.Abs(path)
+	if err != nil {
+		return filepath.Clean(path)
+	}
+	absolute = filepath.Clean(absolute)
+	if resolved, err := filepath.EvalSymlinks(absolute); err == nil {
+		return filepath.Clean(resolved)
+	}
+	// The leaf, or one of its parents, does not exist yet: resolve the deepest
+	// existing ancestor and re-append the missing components.
+	dir, tail := absolute, ""
+	for {
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			return absolute
+		}
+		tail = filepath.Join(filepath.Base(dir), tail)
+		dir = parent
+		if resolved, err := filepath.EvalSymlinks(dir); err == nil {
+			return filepath.Clean(filepath.Join(resolved, tail))
+		}
+	}
+}
+
+// samePath reports whether a and b denote the same filesystem location. The
+// identity of an existing file is decided by the OS (os.SameFile), which is
+// immune to Windows 8.3 short names (C:\Users\RUNNER~1\... versus
+// C:\Users\runneradmin\...), symlinks and case differences. Paths that do not
+// exist yet fall back to a case-insensitive canonical string comparison.
+func samePath(a, b string) bool {
+	if strings.TrimSpace(a) == "" || strings.TrimSpace(b) == "" {
+		return false
+	}
+	if infoA, err := os.Stat(a); err == nil {
+		if infoB, err := os.Stat(b); err == nil && os.SameFile(infoA, infoB) {
+			return true
+		}
+	}
+	canonicalA, canonicalB := canonicalPath(a), canonicalPath(b)
+	if canonicalA == "" || canonicalB == "" {
+		return false
+	}
+	return strings.EqualFold(canonicalA, canonicalB)
 }
 
 // gitWorktreesDir returns <root>/.git/worktrees, where git stores the

@@ -98,7 +98,7 @@ func TestAddIsIdempotentAndCreatesNoGarbage(t *testing.T) {
 	if !second.OK || second.Created || second.Mode != "git-worktree" {
 		t.Errorf("second Add = %+v, want an idempotent hit", second)
 	}
-	if second.Path != first.Path {
+	if !samePath(second.Path, first.Path) {
 		t.Errorf("second path = %q, want %q", second.Path, first.Path)
 	}
 	if !strings.Contains(second.Reason, "idempotent") {

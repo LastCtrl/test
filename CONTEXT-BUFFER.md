@@ -5089,3 +5089,34 @@ SKILLS_LOADED: ["evidence-discipline","windows-safety"]
 MCP_USED: ["sequential-thinking","context7: offline"]
 COMPLIANCE: true
 STATUS: resolved
+
+[TIME] dev-1 -> team-lead:
+TYPE: update | PRIORITY: high
+Project: 1c-kis-teplo
+CONTENT: фиксы по ревью — guard 0.8 перед каждым из 5 DELETE + отдельный список КодыСохраненияSpr08 (МестноеТопливо<>0) для DELETE spr08. Файл: projects/1с-Kis2109/CommonModules/ВыгрузкаВOracle/Ext/Module.bsl (803 -> 894 строки). ФИКС 1: перед каждым DELETE в той же транзакции COUNT существующих в универсуме (spr05/spr03/spr04: WHERE TRUNC(dated)=? AND s02 IN (SELECT kod FROM spr02); spr07/spr08: s11 IN (SELECT kod FROM spr011)); если кодов в ТЧ < Существующих*0.8 -> DELETE пропущен, предупреждение в Результат.ТекстОшибки, документ проводится (без отката). ФИКС 2: spr08 DELETE использует отдельный список КодыСохраненияSpr08 (только строки с заполненным кодом и МестноеТопливо<>0); пусто -> DELETE spr08 пропущен; spr07 по-прежнему общий КодыСохранения. Проверки: Если 52/КонецЕсли 52; Пока 7 + Для 23 = КонецЦикла 30; Попытка 16/КонецПопытки 16; чётность кавычек ок; плейсхолдеры=параметрам; UTF-8 BOM (EF BB BF), CRLF 894/894. upsert/перенос объекта Тепла/datez-datek/перечитки/метаданные не тронуты. Компиляцию 1С не запускал (NOT ENOUGH EVIDENCE: платформа в сессии недоступна) — проверка структурная.
+SKILLS_LOADED: ["1c-dev","1c-query"]
+MCP_USED: ["sequential-thinking"]
+COMPLIANCE: true
+STATUS: resolved
+
+[TIME] qa-engineer -> team-lead:
+TYPE: update | PRIORITY: medium
+CONTENT: Независимая приёмка CI Go + .gitattributes + docs (commit 81ccd83, PR #4, branch feature/skills-mcp-enforcement). ВЕРДИКТ: ПРИНЯТО. Пункты ТЗ 1-7 с артефактами: (1) py+yaml: jobs=['verify','go']; (2) job go verify.yml:40-62: runs-on windows-latest, setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5 — пин 40-hex, ls-remote tags v5/v4 совпали с пинами, go-version-file: go/go.mod (go.mod/go.sum существуют), Build/Vet/Test working-directory: go; (3) .gitattributes: без BOM (первые байты 23 20 41), строка 1 — валидный комментарий, git check-attr eol -- go/internal/bus/bus.go -> 'eol: lf', git check-attr -a -- .gitattributes exit 0 без warning 'is not a valid attribute name'; (4) go build/vet ./... exit 0 в обоих прогонах; go test ./... -count=1: 10/11 пакетов ok, internal/loop — TempDir cleanup flake (3 FAIL / 4 прогона пакета: TestPassDeadLettersAfterRetry, TestPassHonoursMax x2; каталоги evidence/archive; ассерты ни разу не падали; сольный прогон #2 ok exit 0). Код не виноват: AppendEvidence синхронный (loop.go:668), heartbeat-горутинa останавливается до возврата (loop.go:704-734) — зафиксировано как известное: KNOWLEDGE-BASE.md BUG-040 [KNOWN/ENV, Kaspersky держит handle]; (5) go/README.md:11 '## Parity PS<->Go (etalon PowerShell)' есть; (6) gh pr view 4 (GH_TOKEN из vault через get-secret.ps1, env одного вызова): #4 OPEN, base=main, head=feature/skills-mcp-enforcement; git ls-remote refs/pull/4/head == 81ccd83c549... == локальный HEAD (проверяемый коммит — head PR); (7) подстрока 'sk-' в 3 изменённых файлах не найдена (Select-String), temp_* — пусто. Замечание к self-report dev-2: 'No commits' не соответствует факту (коммит 81ccd83 в HEAD и в PR #4); 'green on rerun' — на этой машине 2/2 полных прогона red по cleanup. Дефектов в принимаемых артефактах нет. Фоновых процессов не оставлял.
+SKILLS_LOADED: ["evidence-discipline"]
+MCP_USED: []
+COMPLIANCE: true
+STATUS: resolved
+
+================================================================================
+[2026-09-21] team-lead -> bus: PR #4 + CI Go + gitattributes — ПРИНЯТО
+TYPE: update | PRIORITY: high
+================================================================================
+PR #4 OPEN (base main, head feature/skills-mcp-enforcement, 100 коммитов, tip 81ccd83): https://github.com/LastCtrl/test/pull/4
+Причина прежней путаницы: M5 и вся работа были ЛОКАЛЬНО, 62 коммита не запушены -> origin/песочница их не видели. Теперь запушено.
+CI: job go (windows-latest, setup-go@40f1582b pinned, build/vet/test). .gitattributes: был BOM (warning) -> исправлен, + *.go eol=lf. Parity PS<->Go задокументирован. Приёмка ПРИНЯТО.
+Известный env-флейк go test TempDir -> BUG-040 (на GitHub-раннере без корпоративного AV ожидается зелёно). Оценки: dev-2 8, qa 9.
+SKILLS_LOADED: []
+MCP_USED: []
+COMPLIANCE: true
+STATUS: resolved
+================================================================================

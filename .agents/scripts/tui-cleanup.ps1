@@ -1,4 +1,4 @@
-[CmdletBinding(SupportsShouldProcess = $true)]
+﻿[CmdletBinding(SupportsShouldProcess = $true)]
 param(
     [switch]$KillStale,
     [double]$ThresholdHours = 6,
@@ -60,7 +60,7 @@ function Write-LogLine {
         if (Test-Path -LiteralPath $logPath) {
             $fi = Get-Item -LiteralPath $logPath
             if ($fi.Length -gt 1MB) {
-                $tail = @(Get-Content -LiteralPath $logPath -Tail 500)
+                $tail = @(Get-Content -LiteralPath $logPath -Tail 500 -Encoding UTF8)
                 $enc0 = New-Object System.Text.UTF8Encoding($false)
                 [System.IO.File]::WriteAllLines($logPath, $tail, $enc0)
             }

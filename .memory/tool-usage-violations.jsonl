@@ -442,3 +442,63 @@
     "missing":  "MCP_USED empty",
     "severity":  "warning"
 }
+{
+    "date":  "2026-09-23T14:47:20",
+    "agent":  "qa-engineer",
+    "missing":  "SKILLS_LOADED empty",
+    "severity":  "warning"
+}
+{
+    "date":  "2026-09-23T14:47:20",
+    "agent":  "team-lead-1 (acting code-reviewer)",
+    "missing":  "SKILLS_LOADED empty",
+    "severity":  "warning"
+}
+{
+    "date":  "2026-09-23T14:47:20",
+    "agent":  "team-lead-1 (acting code-reviewer)",
+    "missing":  "SKILLS_LOADED empty",
+    "severity":  "warning"
+}
+{
+    "date":  "2026-09-23T14:47:20",
+    "agent":  "qa-engineer",
+    "missing":  "SKILLS_LOADED empty",
+    "severity":  "warning"
+}
+{
+    "date":  "2026-09-23T14:47:20",
+    "agent":  "code-reviewer",
+    "missing":  "SKILLS_LOADED empty",
+    "severity":  "warning"
+}
+{
+    "date":  "2026-09-23T14:47:20",
+    "agent":  "qa-engineer",
+    "missing":  "MCP_USED empty",
+    "severity":  "warning"
+}
+{
+    "date":  "2026-09-23T14:47:20",
+    "agent":  "qa-engineer-1",
+    "missing":  "MCP_USED empty",
+    "severity":  "warning"
+}
+{
+    "date":  "2026-09-23T14:47:20",
+    "agent":  "qa-engineer-1",
+    "missing":  "MCP_USED empty",
+    "severity":  "warning"
+}
+{
+    "date":  "2026-09-23T14:47:20",
+    "agent":  "qa-engineer",
+    "missing":  "MCP_USED empty",
+    "severity":  "warning"
+}
+{
+    "date":  "2026-09-23T14:47:20",
+    "agent":  "qa-engineer",
+    "missing":  "MCP_USED empty",
+    "severity":  "warning"
+}

@@ -251,7 +251,7 @@ function Test-ScriptSyntax {
     param([string]$Path)
     try {
         $errors = $null
-        $null = [System.Management.Automation.PSParser]::Tokenize((Get-Content -Raw -LiteralPath $Path), [ref]$errors)
+        $null = [System.Management.Automation.PSParser]::Tokenize((Get-Content -Raw -LiteralPath $Path -Encoding UTF8), [ref]$errors)
         if ($null -ne $errors -and $errors.Count -gt 0) {
             Write-Log "❌ Syntax check failed (PSParser): $($errors.Count) error(s) in $Path"
             return $false

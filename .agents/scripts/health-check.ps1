@@ -14,7 +14,7 @@ $tracesPath = Join-Path $tracesDir "traces.jsonl"
 if (Test-Path $tracesPath) {
     $cutoff = (Get-Date).ToUniversalTime().AddHours(-1)
     $errorCount = 0
-    $lines = Get-Content $tracesPath -ErrorAction SilentlyContinue
+    $lines = Get-Content $tracesPath -Encoding UTF8 -ErrorAction SilentlyContinue
     foreach ($line in $lines) {
         if ([string]::IsNullOrWhiteSpace($line)) { continue }
         try {
@@ -84,7 +84,7 @@ try {
 $perfPath = Join-Path $tracesDir "performance.jsonl"
 if (Test-Path $perfPath) {
     $durations = @()
-    $perfLines = Get-Content $perfPath -ErrorAction SilentlyContinue
+    $perfLines = Get-Content $perfPath -Encoding UTF8 -ErrorAction SilentlyContinue
     foreach ($line in $perfLines) {
         if ([string]::IsNullOrWhiteSpace($line)) { continue }
         try {

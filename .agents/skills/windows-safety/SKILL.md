@@ -48,7 +48,7 @@ $e=$null; [System.Management.Automation.PSParser]::Tokenize((Get-Content -Raw "�
 
 ## 6. Гигиена
 - Временные файлы: `$env:TEMP` или `C:\Users\<user>\AppData\Local\Temp\opencode`; после работы удалить.
-- Запись файлов: UTF-8 без BOM `[System.IO.File]::WriteAllText("путь",$c,[System.Text.UTF8Encoding]::new($false))`
+- Запись файлов (политика BOM): source `.ps1` с кириллицей/данными → UTF-8 **BOM** + CRLF; data-файлы (`.md`/`.json`/`.txt`) → UTF-8 (BOM опционально). Пример без BOM: `[System.IO.File]::WriteAllText("путь",$c,[System.Text.UTF8Encoding]::new($false))`
 - Чужие репозитории НЕ клонировать в корень проекта; если нужен исходник — во временную папку, поверхностно (`--depth 1`).
 
 ## 7. AMSI/Kaspersky: ложные срабатывания на .ps1 (обязательно знать)
@@ -69,5 +69,13 @@ $e=$null; [System.Management.Automation.PSParser]::Tokenize((Get-Content -Raw "�
 ## 8. ОБЯЗАТЕЛЬНО читать при помехах: `.agents/docs/ib-requests.md`
 
 Там актуальный список известных помех защиты и обходов: AMSI-ложняки на содержимое `.ps1`; `EPERM: ... uv_spawn 'powershell'|'git'` (Kaspersky/EDR блокирует создание дочерних процессов, особенно при длинной командной строке `-ExecutionPolicy Bypass`/`schtasks`/`Register-ScheduledTask` и при параллельных спавнах `git`); рецепты (короткая команда + логика в файле; меньше параллельных процессов; ретраи). **Сверяйся с ним ДО того как писать обходы, и дописывай новый инцидент.**
+
+## 9. Кодировки / кириллица
+
+PowerShell 5.1 читает/пишет в OEM-кодировке консоли (cp866), а файлы — в UTF-8: без настройки в выводе агентов появляется мусор (`????`, `Д:\????`).
+
+- **(a)** Перед любым выводом/чтением кириллицы поставь UTF-8 — подключи хелпер по АБСОЛЮТНОМУ пути из корня репо: `. "D:\Тест\agent-hq\.agents\scripts\set-console-utf8.ps1"` (для worktree относительный путь не сработает). Он ставит `[Console]::OutputEncoding`, `[Console]::InputEncoding`, `$OutputEncoding` (BOM-less UTF-8) и `chcp 65001`.
+- **(b)** Файлы с кириллицей читай через `[IO.File]::ReadAllText($p,[System.Text.Encoding]::UTF8)`.
+- **(c)** НЕ используй `Get-Content` без `-Encoding` для файлов с кириллицей — добавляй `-Encoding UTF8`.
 
 

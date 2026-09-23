@@ -1,4 +1,4 @@
-# capability-passport.ps1 - agent/model capability passport for the agent-hq fleet (P3).
+﻿# capability-passport.ps1 - agent/model capability passport for the agent-hq fleet (P3).
 #
 # Read-mostly. The single write path is Update-PassportFromMetrics, which refreshes
 # the reliability/speed metrics of .agents\config\capability-passport.json and swaps
@@ -335,7 +335,7 @@ function Get-PerfSessionDurations {
     $records = New-Object System.Collections.ArrayList
     $path = Join-Path $TracesDir "performance.jsonl"
     if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { return ,$records.ToArray() }
-    $lines = @(Get-Content -LiteralPath $path -ErrorAction SilentlyContinue)
+    $lines = @(Get-Content -LiteralPath $path -Encoding UTF8 -ErrorAction SilentlyContinue)
     if (($MaxLines -gt 0) -and ($lines.Count -gt $MaxLines)) { $lines = @($lines[($lines.Count - $MaxLines)..($lines.Count - 1)]) }
     foreach ($line in $lines) {
         $trimmed = ([string]$line).Trim()
@@ -360,7 +360,7 @@ function Get-TraceAgentMap {
     $scanned = 0
     $path = Join-Path $TracesDir "traces.jsonl"
     if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { return [pscustomobject]@{ map = $map; scanned = 0 } }
-    $lines = @(Get-Content -LiteralPath $path -Tail $MaxLines -ErrorAction SilentlyContinue)
+    $lines = @(Get-Content -LiteralPath $path -Tail $MaxLines -Encoding UTF8 -ErrorAction SilentlyContinue)
     $sessionPattern = [regex]'"session_id":"([^"]+)"'
     $agentPattern = [regex]'"agent":"([^"]+)"'
     foreach ($line in $lines) {

@@ -749,7 +749,7 @@ if (-not $reviewLoaded) {
 
 $violationsPath = Join-Path $doctorRoot '.memory\tool-usage-violations.jsonl'
 if (Test-Path -LiteralPath $violationsPath -PathType Leaf) {
-    $violationCount = @(Get-Content -LiteralPath $violationsPath -ErrorAction SilentlyContinue |
+    $violationCount = @(Get-Content -LiteralPath $violationsPath -Encoding UTF8 -ErrorAction SilentlyContinue |
         Where-Object { -not [string]::IsNullOrWhiteSpace($_) }).Count
     if ($violationCount -gt 0) {
         Add-DoctorCheck -Section $evidenceSection -Name 'compliance violations' -Status 'WARN' -Detail "$violationCount record(s) in tool-usage-violations.jsonl"

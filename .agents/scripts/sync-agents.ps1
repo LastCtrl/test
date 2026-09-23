@@ -479,6 +479,11 @@ $evidenceHeader = @'
 - Защита Kaspersky/AMSI/EDR может блокировать: содержимое `.ps1` (AMSI) и создание дочерних процессов (`EPERM ... uv_spawn 'powershell'|'git'`), особенно на длинных командных строках и при параллельных спавнах.
 - Актуальный список и обходы: **`.agents/docs/ib-requests.md`** — читать при любых блокировках/ошибках спавна; новый инцидент — дописывать туда.
 
+## CONSOLE ENCODING (кириллица)
+- Перед выводом/чтением кириллицы ставь UTF-8: `[Console]::OutputEncoding=[Console]::InputEncoding=$OutputEncoding=[System.Text.Encoding]::UTF8; chcp 65001`.
+- Файлы читай через `[IO.File]::ReadAllText($p,[System.Text.Encoding]::UTF8)`; не используй `Get-Content` без `-Encoding`.
+- Хелпер: `.agents/scripts/set-console-utf8.ps1`.
+
 ЗАПРЕЩЕНО писать `DONE` без артефакта — это ложный отчёт (REJECT).
 
 ---

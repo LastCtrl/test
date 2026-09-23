@@ -93,7 +93,7 @@ Test-Check "At least 1 skill folder" ($skills.Count -ge 1)
 # Phase 11: Commands
 Write-Host ""
 Write-Host "Phase 11: Commands" -ForegroundColor Yellow
-$config = Get-Content "opencode.json" -Raw | ConvertFrom-Json
+$config = Get-Content "opencode.json" -Raw -Encoding UTF8 | ConvertFrom-Json
 $hasSync = $null -ne $config.command.sync
 $hasStatus = $null -ne $config.command.status
 Test-Check "/sync command defined" $hasSync
@@ -102,7 +102,7 @@ Test-Check "/status command defined" $hasStatus
 # Phase B2: Agent Registration
 Write-Host ""
 Write-Host "Phase B2: Agent Registration" -ForegroundColor Yellow
-$ocRaw = Get-Content "opencode.json" -Raw -ErrorAction SilentlyContinue
+$ocRaw = Get-Content "opencode.json" -Raw -Encoding UTF8 -ErrorAction SilentlyContinue
 if ($ocRaw) {
     $oc = $ocRaw | ConvertFrom-Json
     Test-Check "opencode.json has agents section" ($null -ne $oc.agent)
@@ -206,7 +206,7 @@ Test-LocalCheck "F2: projects/ has >= 2 valid projects ($validProjects found)" (
 $createProjectPath = ".agents\scripts\create-project.ps1"
 $hasTemplatesKeyword = $false
 if (Test-Path $createProjectPath) {
-    $content = Get-Content $createProjectPath -Raw -ErrorAction SilentlyContinue
+    $content = Get-Content $createProjectPath -Raw -Encoding UTF8 -ErrorAction SilentlyContinue
     $hasTemplatesKeyword = $content -match "templates"
 }
 Test-Check "F3: create-project.ps1 contains 'templates' keyword" $hasTemplatesKeyword
@@ -287,7 +287,7 @@ if (-not $isCI -and (Test-Path $queueScript)) {
                     $finalList = & powershell -NoProfile -ExecutionPolicy Bypass -File $queueScript -List -Project $testProject 2>&1
                     $finalExit = $LASTEXITCODE
                     # Check that queue is effectively clean (no queued/assigned/in_progress)
-                    $queueContent = Get-Content (Join-Path "projects" "$testProject\queue.json") -Raw -ErrorAction SilentlyContinue
+                    $queueContent = Get-Content (Join-Path "projects" "$testProject\queue.json") -Raw -Encoding UTF8 -ErrorAction SilentlyContinue
                     $queueObj = $queueContent | ConvertFrom-Json -ErrorAction SilentlyContinue
                     $activeTasks = 0
                     if ($queueObj -and $queueObj.tasks) {
@@ -346,7 +346,7 @@ Test-Check "F8: agent-utilization.ps1 shows 'Utilization' and -Json valid" ($f8T
 # F9: opencode.json command.status.template mentions agent-utilization or "Agents & Utilization"
 $f9Pass = $false
 if (Test-Path "opencode.json") {
-    $ocContent = Get-Content "opencode.json" -Raw
+    $ocContent = Get-Content "opencode.json" -Raw -Encoding UTF8
     $oc = $ocContent | ConvertFrom-Json
     if ($oc.command.status.template) {
         $template = $oc.command.status.template
@@ -359,7 +359,7 @@ Test-Check "F9: opencode.json status command mentions agent-utilization or 'Agen
 $kiPath = "knowledge-index.md"
 $f10Pass = $false
 if (Test-Path $kiPath) {
-    $kiContent = Get-Content $kiPath -Raw
+    $kiContent = Get-Content $kiPath -Raw -Encoding UTF8
     $patCount = ($kiContent -split "### PAT-" | Measure-Object).Count - 1
     $f10Pass = ($patCount -ge 6)
 }
@@ -369,7 +369,7 @@ Test-Check "F10: knowledge-index.md has >= 6 '### PAT-' entries ($patCount found
 $tlPromptPath = ".opencode\agents\prompts\team-lead.txt"
 $f11Pass = $false
 if (Test-Path $tlPromptPath) {
-    $tlContent = Get-Content $tlPromptPath -Raw
+    $tlContent = Get-Content $tlPromptPath -Raw -Encoding UTF8
     $f11Pass = $tlContent -match "DUAL-AGENT DELEGATION"
 }
 Test-Check "F11: team-lead.txt contains 'DUAL-AGENT DELEGATION'" $f11Pass

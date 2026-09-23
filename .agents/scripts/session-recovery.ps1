@@ -34,7 +34,7 @@ function Test-LockConflict {
     if (-not (Test-Path $TracesPath)) { return $false }
 
     $cutoff = (Get-Date).ToUniversalTime().AddMinutes(-2)
-    $lines = Get-Content $TracesPath -Tail 20 -ErrorAction SilentlyContinue
+    $lines = Get-Content $TracesPath -Tail 20 -Encoding UTF8 -ErrorAction SilentlyContinue
     foreach ($line in $lines) {
         if ([string]::IsNullOrWhiteSpace($line)) { continue }
         try {
@@ -121,7 +121,7 @@ function Main-Loop {
                     # Читаем последнюю задачу из CONTEXT-BUFFER
                     $bufferPath = Join-Path $RepoRoot "CONTEXT-BUFFER.md"
                     if (Test-Path $bufferPath) {
-                        $content = Get-Content $bufferPath -Raw
+                        $content = Get-Content $bufferPath -Raw -Encoding UTF8
                         # Ищем последнюю задачу пользователя
                         $pattern = '\[(?<time>[\d\-T:]+)\]\s+(?<agent>\S+)\s+>>\s+team-lead:.*?CONTENT:\s*(?<content>.*?)(?=\[|\Z)'
                         $match = [regex]::Match($content, $pattern, [System.Text.RegularExpressions.RegexOptions]::Singleline)
@@ -154,7 +154,7 @@ function Main-Loop {
 
 # Singleton lock
 if (Test-Path $LockFile) {
-    $existingPid = Get-Content $LockFile -ErrorAction SilentlyContinue
+    $existingPid = Get-Content $LockFile -Encoding UTF8 -ErrorAction SilentlyContinue
     if ($existingPid -and (Get-Process -Id $existingPid -ErrorAction SilentlyContinue)) {
         Write-Host "Another recovery daemon already running (PID: $existingPid)" -ForegroundColor Yellow
         exit 0

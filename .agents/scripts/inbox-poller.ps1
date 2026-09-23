@@ -56,7 +56,7 @@ $tzCopyPath = (Join-Path $TasksDir "task-inbox-poller.txt")
 if (-not (Test-Path $tzCopyPath)) {
     Write-Log "📄 Saving TZ copy to: $tzCopyPath"
     try {
-        $scriptContent = Get-Content -Path $scriptPath -ErrorAction Stop
+        $scriptContent = Get-Content -Path $scriptPath -Encoding UTF8 -ErrorAction Stop
         [System.IO.File]::WriteAllText($tzCopyPath, ($scriptContent -join "`n"), $script:Utf8NoBom)
         Write-Log "✅ TZ copy saved successfully"
     } catch {

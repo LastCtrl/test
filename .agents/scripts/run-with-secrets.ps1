@@ -85,7 +85,7 @@ function Get-EnvName {
 function Test-EnvName {
     param([string]$EnvName, [string]$ForSecret)
     if ([string]::IsNullOrWhiteSpace($EnvName) -or $EnvName -notmatch '^[A-Za-z_][A-Za-z0-9_]*$') {
-        Write-Host ("[secrets] ОШИБКА: для секрета '{0}' получено недопустимое имя переменной '{1}'." -f $ForSecret, $EnvName)
+        [Console]::Error.WriteLine(("[secrets] ОШИБКА: для секрета '{0}' получено недопустимое имя переменной '{1}'." -f $ForSecret, $EnvName))
         return $false
     }
     return $true
@@ -100,7 +100,7 @@ function Get-VaultSecretNames {
 }
 
 if (-not (Test-Path -LiteralPath $getSecret -PathType Leaf)) {
-    Write-Host ("[secrets] ОШИБКА: не найден get-secret.ps1 рядом со скриптом: {0}" -f $getSecret)
+    [Console]::Error.WriteLine(("[secrets] ОШИБКА: не найден get-secret.ps1 рядом со скриптом: {0}" -f $getSecret))
     exit 2
 }
 
@@ -129,7 +129,7 @@ if ($VerifyOnly) {
         if ($LASTEXITCODE -ne 0) { $failed++ }
     }
     if ($failed -gt 0) {
-        Write-Host ("[secrets] Не проверено секретов: {0}. Сохранение: set-secret.ps1 -Name <имя>" -f $failed)
+        [Console]::Error.WriteLine(("[secrets] Не проверено секретов: {0}. Сохранение: set-secret.ps1 -Name <имя>" -f $failed))
         exit 1
     }
     exit 0
@@ -137,21 +137,21 @@ if ($VerifyOnly) {
 
 # --- mode: run --------------------------------------------------------------------
 if (-not $Secret -or @($Secret).Count -eq 0) {
-    Write-Host '[secrets] ОШИБКА: укажите -Secret <имя[,имя]> (либо режим -List / -VerifyOnly).'
+    [Console]::Error.WriteLine('[secrets] ОШИБКА: укажите -Secret <имя[,имя]> (либо режим -List / -VerifyOnly).')
     exit 2
 }
 $hasCommand = -not [string]::IsNullOrWhiteSpace($Command)
 $hasFile    = -not [string]::IsNullOrWhiteSpace($FilePath)
 if ($hasCommand -eq $hasFile) {
-    Write-Host '[secrets] ОШИБКА: укажите ровно один из -Command или -FilePath.'
+    [Console]::Error.WriteLine('[secrets] ОШИБКА: укажите ровно один из -Command или -FilePath.')
     exit 2
 }
 if ($hasFile -and -not (Test-Path -LiteralPath $FilePath -PathType Leaf)) {
-    Write-Host ("[secrets] ОШИБКА: файл не найден: {0}" -f $FilePath)
+    [Console]::Error.WriteLine(("[secrets] ОШИБКА: файл не найден: {0}" -f $FilePath))
     exit 2
 }
 if (-not [string]::IsNullOrWhiteSpace($WorkingDirectory) -and -not (Test-Path -LiteralPath $WorkingDirectory -PathType Container)) {
-    Write-Host ("[secrets] ОШИБКА: рабочий каталог не найден: {0}" -f $WorkingDirectory)
+    [Console]::Error.WriteLine(("[secrets] ОШИБКА: рабочий каталог не найден: {0}" -f $WorkingDirectory))
     exit 2
 }
 if ($null -eq $CommandArgs) { $CommandArgs = @() }
@@ -170,21 +170,21 @@ $failure = $false
 $childExit = $null
 foreach ($p in $plan) {
     if ($saved.ContainsKey($p.Env)) {
-        Write-Host ("[secrets] {0} -> env:{1} (уже задан этим же вызовом, пропуск)" -f $p.Name, $p.Env)
+        [Console]::Error.WriteLine(("[secrets] {0} -> env:{1} (уже задан этим же вызовом, пропуск)" -f $p.Name, $p.Env))
         continue
     }
     $saved[$p.Env] = [Environment]::GetEnvironmentVariable($p.Env, 'Process')
     $captured = & $getSecret -Name $p.Name -AsEnv $p.Env *>&1
     $injectExit = $LASTEXITCODE
     if ($injectExit -ne 0) {
-        Write-Host ("[secrets] ОШИБКА: секрет '{0}' недоступен (код {1}) — дочерний процесс НЕ запущен." -f $p.Name, $injectExit)
+        [Console]::Error.WriteLine(("[secrets] ОШИБКА: секрет '{0}' недоступен (код {1}) — дочерний процесс НЕ запущен." -f $p.Name, $injectExit))
         $msg = ($captured | Out-String).Trim()
-        if ($msg) { Write-Host $msg }
-        Write-Host ("[secrets] Сохранение секрета: set-secret.ps1 -Name {0}" -f $p.Name)
+        if ($msg) { [Console]::Error.WriteLine($msg) }
+        [Console]::Error.WriteLine(("[secrets] Сохранение секрета: set-secret.ps1 -Name {0}" -f $p.Name))
         $failure = $true
         break
     }
-    Write-Host ("[secrets] {0} -> env:{1} (инъекция на время вызова)" -f $p.Name, $p.Env)
+    [Console]::Error.WriteLine(("[secrets] {0} -> env:{1} (инъекция на время вызова)" -f $p.Name, $p.Env))
 }
 
 # Proxy mode for the child: mode=on injects HTTP(S)_PROXY, mode=off removes them.
@@ -201,7 +201,7 @@ if ((-not $failure) -and (Test-Path -LiteralPath $proxyModePath -PathType Leaf))
             if ($null -ne $value) { [Environment]::SetEnvironmentVariable($name, [string]$value, 'Process') }
             else { [Environment]::SetEnvironmentVariable($name, $null, 'Process') }
         }
-        Write-Host ("[secrets] proxy mode: {0}" -f [string]$proxyDelta['AGENT_HQ_PROXY_MODE'])
+        [Console]::Error.WriteLine(("[secrets] proxy mode: {0}" -f [string]$proxyDelta['AGENT_HQ_PROXY_MODE']))
     } catch { }
 }
 

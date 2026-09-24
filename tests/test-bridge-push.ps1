@@ -41,7 +41,7 @@ Assert-Check 'selftest exit 0' ($selfCode -eq 0) "exit=$selfCode"
 Assert-Check 'selftest failed=0' ($selfOut -match 'failed=0') 'есть падения'
 $countMatch = [regex]::Match($selfOut, 'checks passed=(\d+)')
 $passedCount = if ($countMatch.Success) { [int]$countMatch.Groups[1].Value } else { 0 }
-Assert-Check 'selftest >= 138 проверок' ($passedCount -ge 138) "проверок: $passedCount"
+Assert-Check 'selftest >= 300 проверок' ($passedCount -ge 300) "проверок: $passedCount"
 
 $required = @(
     'push parser: структурные поля извлечены',
@@ -50,7 +50,10 @@ $required = @(
     'push: dead-letter -> critical instant',
     'push: blocker PRIORITY:critical -> critical',
     'push: REJECT -> reject-тир',
-    'push: завершённая задача -> done-тир',
+    'push: завершённая задача (TYPE: result) -> done-тир',
+    'push: рутинный TYPE: update + STATUS: resolved НЕ даёт done',
+    'push classify: TYPE: update + STATUS: resolved -> None',
+    'push classify: TYPE: result + STATUS: resolved -> done',
     'push: фейковая blocker-строка не триггерит',
     'push: детектор read-only',
     'push plan: critical instant (sound), reject/done тихие',
@@ -66,7 +69,27 @@ $required = @(
     "ux: callback 'cmd:queue' -> queue",
     'answer: ответ run-задачи доставлен',
     'answer: анти-дубль (повторная доставка не идёт)',
+    'answer: [secrets]/[proxy] строки вырезаны',
+    'answer: полезный текст сохранён',
+    'v2 validate: ''ответил'' отклонён',
+    'v2 reply: ''ответил'' -> вежливая подсказка, не задача',
+    'v2 reply: ''ответил'' не пишет файл в inbox',
     'ux: setMyCommands покрывает команды',
+    'ux3: меню рендерится',
+    'ux3: 7 кнопок меню с menu: callback',
+    "ux3: route 'menu:sessions'",
+    'ux3: legacy callback_target сохранён',
+    'ux3: номер -> sessions 2 (фолбэк)',
+    'ux3: карточка сессии: делегации',
+    'ux3: кнопки карточки сессии (refresh/task/menu)',
+    'ux3: ForceReply prompt отправлен',
+    'ux3: prompt запомнен (chat->agent)',
+    'ux3: prompt-текст -> задача в inbox',
+    'ux3: неинформативный ответ -> подсказка',
+    'ux3: approval пишет OK в inbox',
+    'ux3: approval payload = OK, source=approval',
+    'ux3: устаревшее событие -> вежливо',
+    'ux3: вне .memory/inbox ничего не изменилось',
     'sqlite ro: запись отклонена',
     'doh: резолв вернул IP',
     'doh: кэш жив в пределах TTL',
@@ -88,6 +111,14 @@ Assert-Check 'demo: critical instant' ($demoOut -match 'tier=critical silent=Fal
 Assert-Check 'demo: тихие ярусы' ($demoOut -match 'tier=reject silent=True' -and $demoOut -match 'tier=done silent=True') 'нет тихих'
 Assert-Check 'demo: анти-дубль (tick2 sent=0)' ($demoOut -match 'tick2 sent=0') 'повтор отправил'
 Assert-Check 'demo: hard cap 5' ($demoOut -match 'hard cap 5') 'нет упоминания cap'
+
+$menuOut = & $py @pyArgs $bridge --demo-menu 2>&1 | Out-String
+$menuCode = $LASTEXITCODE
+Assert-Check 'demo-menu exit 0' ($menuCode -eq 0) "exit=$menuCode"
+Assert-Check 'demo-menu: главное меню' ($menuOut -match 'главное меню') 'нет меню'
+Assert-Check 'demo-menu: кнопки сессий' ($menuOut -match 'session:1') 'нет session-кнопки'
+Assert-Check 'demo-menu: кнопки задачи' ($menuOut -match 'task:dev-2') 'нет task-кнопки'
+Assert-Check 'demo-menu: approval-кнопки' ($menuOut -match 'approve:') 'нет approval-кнопки'
 
 # Network checks: only when the cntlm proxy is up. DoH must return an A-record
 # for api.telegram.org and the direct HTTPS connection (SNI) must succeed.

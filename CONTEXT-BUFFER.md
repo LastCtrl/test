@@ -5432,3 +5432,185 @@ MCP_USED: ["context7: not used (нет внешней библиотеки)", "h
 COMPLIANCE: true
 STATUS: resolved
 ================================================================================
+================================================================================
+
+[2026-09-23 15:58] dev-1 -> team-lead:
+TYPE: update | PRIORITY: medium
+Project: 1с-Kis2109
+CONTENT: spr07 — удаление «сирот» заменено на ОБНУЛЕНИЕ. Причина: триггер Oracle TOPLN.SPR07JOST обрабатывает INSERT/UPDATE, но не DELETE, поэтому удаление сирот оставляло их в SPROST и не пересчитывало последующие дни (дубли остатков при повторном добавлении объекта).
+Файл: projects\1с-Kis2109\CommonModules\ВыгрузкаВOracle\Ext\Module.bsl, функция ВыгрузитьТопливо.
+(1) SQL spr07, строки 477-480 (было 477-479):
+  БЫЛО:  "DELETE FROM spr07 WHERE TRUNC(dated)=? " + "AND s11 NOT IN (" + СписокПлейсхолдеров + ") " + "AND s11 IN (SELECT kod FROM spr011)";
+  СТАЛО: "UPDATE spr07 SET rashm=0, rashg=0, rashgr=0, datez=SYSDATE " + "WHERE TRUNC(dated)=? " + "AND s11 NOT IN (" + СписокПлейсхолдеров + ") " + "AND s11 IN (SELECT kod FROM spr011)";
+  Параметры не менялись, тот же порядок/типы: p_dated(135,1) + p_s11_N(5,1) для каждого кода (строки 481-487).
+(2) Комментарий 434-437: "удаляем «сироты» в spr07 и spr08" -> "в spr07 «сироты» обнуляем, в spr08 удаляем"; "Удаляем только строки" -> "Затрагиваем только строки" (spr08 по-прежнему удаляет). Новых комментариев не добавлял.
+GUARD НЕ ТРОНУТ: строки 453-467 (порог 0.5) и сообщение "синхронизация (удаление) пропущена" — без изменений.
+НЕ ТРОНУТО: spr08 (UPDATE 375/388, DELETE 515), spr05 (DELETE 154), spr03 (DELETE 746), spr04 (DELETE 938), spr07 upsert (UPDATE 290, INSERT 308), метаданные/формы/транзакции.
+ПРОВЕРКИ (grep по файлу, Select-String -Encoding UTF8):
+  "DELETE FROM spr07" = 0 совпадений.
+  DELETE остались: spr08=515, spr05=154, spr03=746, spr04=938.
+  "UPDATE spr07" = 2: строка 290 (upsert по объекту) и 477 (новое обнуление).
+BALANCE (весь файл; правка блоков не добавляла): Если 60 / КонецЕсли 60; Для 23 + Пока 10 = 33 = КонецЦикла 33; Попытка 16 / КонецПопытки 16; Функция 4 / КонецФункции 4; Процедура 1 / КонецПроцедуры 1.
+ФАЙЛ: 1003 строки (было 1002; +1 из-за разбивки SQL на 4 строки вместо 3), 64085 байт; BOM UTF-8 = True; CRLF=1003, loneLF=0, loneCR=0.
+NOT ENOUGH EVIDENCE: колонка spr07.rashgr в проекте (bsl/sql/txt/md) нигде не встречается — включена строго по ТЗ; существование колонки в Oracle-таблице TOPLN.spr07 из репозитория не проверяемо. Значение параметра из ТЗ менять не стал.
+ПРИМЕЧАНИЕ: файл лежит под /projects/ (gitignore .gitignore:71), git diff недоступен — доказательство = прочитанные строки файла (read 433-491).
+SKILLS_LOADED: ["1c-dev", "evidence-discipline"]
+MCP_USED: ["context7: not used (внешних библиотек/API нет)", "hermes-atlas: not used", "sequential-thinking: not used (правка 2 мест)"]
+COMPLIANCE: true
+STATUS: resolved
+================================================================================
+
+[2026-09-23 16:10] integration-specialist -> team-lead:
+TYPE: update | PRIORITY: medium
+Project: 1с-BuhTest2209
+CONTENT: АНАЛИЗ причины массового «Объект изменен» при загрузке XML-выгрузки в BuhTest (платформа 1С НЕ запускалась — только анализ). ВЫВОД: причина — РАССИНХРОН ConfigDumpInfo.xml с конфигурацией ИБ, а НЕ правки 5 файлов. Механизм: загрузка конфигурации из бинарного .cf перерегистрирует ВСЮ конфигурацию (каждому объекту присваивается новый configVersion); ConfigDumpInfo.xml в XML-выгрузке хранит СТАРЫЕ configVersion → при /LoadConfigFromFiles платформа видит несовпадение версий у всех объектов → массовые «Объект изменен»/«Регистрация изменена». ДОКАЗАТЕЛЬСТВА (на диске): (1) projects\1с-BuhTest2209\AccountingRegisters\Налоговый.xml и projects\резервные базы\1с-2BuhTest2309\AccountingRegisters\Налоговый.xml побайтово идентичны (SHA256 83DA61F04293F4EF2C1579A7E8B77593470D8C56A21584AFD33D6A57E1B4FC75), но configVersion: 890f99d06acae24a8ce75475f08a9e6800000000 (старая) vs 738a254b17b35b4bbddd7f6dd4c7190900000000 (свежая); (2) по всей конфигурации 15863 общих объекта → совпадающих configVersion=0, разных=15863 (только-в-старой 252, только-в-свежей 10); (3) загружаемая ConfigDumpInfo.xml (8117556 б, EE4EF39B33AC320F83AA6FDB75BCFD5F1550ABE5B0CDDABDC106CE37BF0F3698) НЕ содержит наших 3 объектов (0 совпадений) — файл версий устарел; свежая (9950A1FA76B98C1B8D7729641591FA21A99503846E4A3366B80E153671E21F33) содержит (ВидыКорреспонденции=4, ПочтоваяКорреспонденцияИсходящая=14, УчетПочтовойКорреспонденцииИсходящей=3); (4) Ext\ParentConfigurations.bin=16 б (поддержка пустая) — не блокер. ОТВЕТЫ: Q2 — ConfigDumpInfo.xml не обязателен для запуска команды, НО при отсутствии/устаревании платформа не может вычислить дельту и считает изменёнными ВСЕ объекты; удалять его НЕЛЬЗЯ (усугубит). Q3 — да, смешение .cf и файловой выгрузки и есть корень. Q4 — переносить только наши 3+3: частичной загрузкой /LoadConfigFromFiles <dir> -Files <наши файлы> (или -ListFiles) с -updateConfigDumpInfo, либо расширением .cfe; после .cf-загрузки сначала свежий /DumpConfigToFiles и править ЕГО. Q5 — эксперимент: свежая выгрузка D0 сразу после .cf → загрузить обратно БЕЗ правок; если массовые «изменён» повторятся — наши файлы не причина (естественный вариант уже получен: диф версий при идентичных файлах). NOT ENOUGH EVIDENCE: (a) точные числа ~150/~100 не воспроизводил (платформа не запускалась); (b) «Код справочника стал неуникальным» — лога загрузки/доступа к данным ИБ нет; файлов .cfp в репо НЕТ (бинарник BuhTest = 1Cv8.cf 136242551 б, т.е. .cf config-only, без данных) → дубли кодов из него прийти не могли; ведущая гипотеза — предсуществующие дубли в данных BuhTest, вскрытые UpdateDBCfg; точная причина не доказана.
+SKILLS_LOADED: ["1c-edt-configurator", "evidence-discipline"]
+MCP_USED: ["context7: not used (нет подходящей библиотеки; поведение платформы 1С проверялось websearch/webfetch)", "hermes-atlas: not used", "sequential-thinking: used (верификация причинной гипотезы, 4 шага)"]
+COMPLIANCE: true
+STATUS: resolved
+
+================================================================================
+[TIME] 2026-09-23 senior-reviewer → team-lead:
+TYPE: update | PRIORITY: medium
+Project: 1c-kis-teplo
+CONTENT: РЕ-РЕВЬЮ ПО ДИФФУ spr07-обнуление (CommonModules\ВыгрузкаВOracle\Ext\Module.bsl, 1003 строки) = ПРИНЯТО, блокеров нет. (1) UPDATE spr07 SET rashm=0,rashg=0,rashgr=0,datez=SYSDATE WHERE TRUNC(dated)=? AND s11 NOT IN(N) AND s11 IN (SELECT kod FROM spr011) — :477-480; ОчиститьПараметры :481; параметры p_dated(135) + N×p_s11(5) в порядке плейсхолдеров; guard 0.5 :453-466 не тронут. (2) grep DELETE FROM: только spr05:154/spr08:515/spr03:746/spr04:938; DELETE FROM spr07=0. (3) UPSERT spr07 :280/:290/:308 цел. (4) Балансы: Если60/60, Для23+Пока10=33/33, Попытка16/16, Функция4, Процедура1. (5) SPR07JOST=INSERT/UPDATE (СНИМОК-10.10.2019.md:73) → UPDATE дёргает пересчёт SPROST, DELETE не дёргал — обоснование верно; повторное добавление → UPDATE-ветка, без дублей; prihm/prihd/rashd/jost/prizk/s10 сохраняются (менее разрушительно, чем DELETE). MINOR-1 (косметика): :455/:466 текст «(удаление)» для обнуляющей ветки. MINOR-2 (наблюдение): rashgr модулем не пишется — при ре-аде останется 0 до пересчёта внешним процессом; разово подтвердить у DBA. Оценка dev-1: 8 (2 minor, без фикс-итераций).
+SKILLS_LOADED: ["evidence-discipline"]
+MCP_USED: ["context7: not used", "hermes-atlas: not used", "sequential-thinking: not used"]
+COMPLIANCE: true
+STATUS: resolved
+================================================================================
+
+### 09/23/2026 | team-lead | Project: 1c-kis-teplo | MINOR-2 RASHGR: убрано зануление
+Правка тимлида (1 строка): CommonModules\ВыгрузкаВOracle\Ext\Module.bsl L477 — "UPDATE spr07 SET rashm=0, rashg=0, datez=SYSDATE" (убран rashgr=0). Причина: RASHGR = «расход газа расчётный» (производное, комментарий БД), модуль его нигде не пишет; не затираем. BOM UTF-8 (239,187,191) и CRLF сохранены (loneLF=0/loneCR=0). Проверены все SET/INSERT модуля: производное поле было только RASHGR. НАЙДЕНО: spr05 (L77/L100) пишет datek=SYSDATE — уточняется у пользователя (он просил менять только datez).
+SKILLS_LOADED: ["evidence-discipline"]
+MCP_USED: ["context7: not used", "hermes-atlas: not used"]
+COMPLIANCE: true
+STATUS: resolved
+================================================================================
+================================================================================
+[TIME] 2026-09-23 dev-1 → team-lead:
+TYPE: update | PRIORITY: medium
+Project: 1с-Kis2109 (модуль ВыгрузкаВOracle). Файл-дубль есть также в копиях 1c-kis-teplo и 1с-TestОбновленнаяСосновной — НЕ трогал, правил только 1с-Kis2109.
+CONTENT: Задача — datek в spr05 брать из реквизита ТЧ Показатели «ВремяПередачиВКаскад», при пустом значении — литерал NULL.
+Файл: D:\Тест\agent-hq\projects\1с-Kis2109\CommonModules\ВыгрузкаВOracle\Ext\Module.bsl
+
+ПРОВЕРЕНО (evidence): атрибут существует — Document.Тепло.TabularSection.Показатели.Attribute.ВремяПередачиВКаскад (Documents\Тепло.xml:770, тип xs:dateTime/DateTime; ConfigDumpInfo.xml:5871).
+
+ИЗМЕНЕНИЯ:
+1) UPDATE spr05 (было L77; стало L79-101):
+   Было: "UPDATE spr05 SET tnv=?, tpsv=?, tosv=?, cr=?, pp=?, ogv=?, op=?, datez=SYSDATE, datek=SYSDATE " + "WHERE s02=? AND TRUNC(dated)=?"
+   Добавлена ветвь по ЕстьВремяПередачи (L77 = ЗначениеЗаполнено(СтрокаТЧ.ВремяПередачиВКаскад)):
+   - заполнено (L82-83): "UPDATE spr05 SET tnv=?, tpsv=?, tosv=?, cr=?, pp=?, ogv=?, op=?, datez=SYSDATE, datek=? " + "WHERE s02=? AND TRUNC(dated)=?"
+   - пусто    (L86-87): "UPDATE spr05 SET tnv=?, tpsv=?, tosv=?, cr=?, pp=?, ogv=?, op=?, datez=SYSDATE, datek=NULL " + "WHERE s02=? AND TRUNC(dated)=?"
+   p_datek (тип 135) добавляется L97-99 — после p_op и до p_s02/p_dated.
+2) INSERT spr05 (было L100-101; стало L112-133):
+   Было: "INSERT INTO spr05 (kod, s02, dated, tnv, tpsv, tosv, cr, pp, ogv, op, datez, datek) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, SYSDATE, SYSDATE)"
+   - заполнено (L114-115): "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, SYSDATE, ?)" + p_datek (L131-133, тип 135) после p_op
+   - пусто    (L118-119): "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, SYSDATE, NULL)"
+datez=SYSDATE оставлен везде. Для NULL — литерал в SQL, пустой ADODB-параметр даты не используется. Больше ничего не менялось (spr07/spr08/spr03/spr04, метаданные, формы).
+
+ПОДСЧЁТ ПЛЕЙСХОЛДЕРОВ/ПАРАМЕТРОВ (по тексту):
+- UPDATE заполнено: L82=8 "?" + L83=2 "?" = 10; параметров 10 (7 значений + p_datek + p_s02 + p_dated) ✓
+- UPDATE пусто:      L86=7 + L87=2 = 9;  параметров 9  ✓
+- INSERT заполнено:  L115=11; параметров 11 (10 + p_datek) ✓
+- INSERT пусто:      L119=10; параметров 10 ✓
+Порядок "?" совпадает с порядком Append (сверено построчно).
+
+БАЛАНС БЛОКОВ (файл целиком): Если 64/64, Для 23 + Пока 10 = 33 = КонецЦикла 33, Попытка 16/16, Функция 4/4, Процедура 1/1.
+BOM: EF BB BF (UTF-8 BOM) сохранён. CRLF 1025 / LF 1025 (lone LF=0) — CRLF сохранён. Строк: 1003 → 1025 (+22).
+
+ОГРАНИЧЕНИЕ: проект 1с-Kis2109 НЕ под git (Test-Path .git=False; git ls-files — pathspec не найден) → git diff недоступен; артефакт — содержимое файла (Read L66-140). Платформа 1С не запускалась, синтаксис проверен чтением + балансом блоков, НЕ выполнением. NOT ENOUGH EVIDENCE: runtime-проверка SQL на живой Oracle (нет доступа к БД).
+SKILLS_LOADED: ["1c-dev", "evidence-discipline"]
+MCP_USED: ["context7: not used (BSL/ADODB, новая внешняя библиотека не подключалась)", "hermes-atlas: not used", "sequential-thinking: not used"]
+COMPLIANCE: true
+STATUS: resolved
+================================================================================
+
+[TIME] 2026-09-23 senior-reviewer → team-lead:
+TYPE: update | PRIORITY: medium
+Project: 1c-kis-teplo (1с-Kis2109)
+CONTENT: Ре-ревью по диффу CommonModules\ВыгрузкаВOracle\Ext\Module.bsl (1025 строк), datek в spr05 из ВремяПередачиВКаскад. ВЕРДИКТ: ПРИНЯТО, 0 блокеров. UPDATE L79-104 два варианта (10/10 и 9/9 плейсхолдеров/параметров, p_datek L98 строго между p_op и p_s02); INSERT L112-133 (11/11 и 10/10); datez=SYSDATE во всех ветках; пустой ADODB date-параметр = 0 вхождений (NULL только литералом); spr03/04/07/08 инварианты прежние; реквизит xs:dateTime (Тепло.xml:768-783); блоки 64/64, 16/16, 33/33, 4/4, 1/1; CRLF чистый. Находки: minor — ЧТО-ИЗМЕНЕНО.md устарел (исправлено team-lead 23.09: добавлена актуальная шапка — 1025 строк, datek пишется, 5 реквизитов Топлива, spr07 обнуление, guard 0.5); BOM проверен team-lead байтово = 239,187,191 (OK).
+SKILLS_LOADED: ["evidence-discipline"]
+MCP_USED: ["sequential-thinking: не вызывался"]
+COMPLIANCE: true
+STATUS: resolved
+================================================================================
+[TIME] 2026-09-24 dev-1 -> team-lead:
+TYPE: update | PRIORITY: medium
+Project: agent-hq
+CONTENT: Fix run-with-secrets.ps1 stream separation. 13x Write-Host -> [Console]::Error.WriteLine in .agents/scripts/run-with-secrets.ps1 (L88,103,132 usage/validation errors; L140,146,150,154 usage errors; L173 skip; L180,182,183 injection failure; L187 injection success; L204 proxy mode). Kept Write-Host (stdout) for -List mapping (L110,112) and -VerifyOnly informational (L123). Public API and inject/restore logic untouched. Verified: Parser::ParseFile -> 0 errors; BOM 239,187,191 and CRLF 230/loneLF 0 preserved; git diff = 13 ins/13 del. Demo via .NET Process raw capture (child powershell.exe): RUN mode stdout=["ANSWER_OK"] only, stderr=["[secrets] opencode-api-key -> env:OPENCODE_API_KEY (инъекция...)","[secrets] proxy mode: on"]; LIST mode stdout=mapping, stderr=empty; no-args and bad-secret -> stderr only, exit=2, child not run. NOTE: task said "ASCII-only" but file already contains Cyrillic user-facing strings; preserved them (minimal diff, BOM/CRLF intact). Temp demo files deleted.
+SKILLS_LOADED: ["windows-safety", "evidence-discipline"]
+MCP_USED: ["context7: not used (pure PowerShell built-ins, no external lib)", "hermes-atlas: not used", "sequential-thinking: not used (task <3 steps)"]
+COMPLIANCE: true
+STATUS: resolved
+================================================================================
+
+================================================================================
+[TIME] dev-2 -> team-lead:
+TYPE: update | PRIORITY: medium
+Project: telegram-bridge
+CONTENT: Fix 3 bridge bugs (bridge.py, not in git). (1) Push DONE spam: classify_buffer_entry (bridge.py:1911) now requires STATUS: resolved AND TYPE: result; routine TYPE: update self-report no longer raises DONE. plan_push_messages uses new format_done_event (bridge.py:1978) - short line (header + agent/project), no full body. critical/reject untouched. (2) Reply//run junk task: new is_meaningful_task (bridge.py:1744) + TASK_MIN_CHARS=3/TASK_STOPLIST (bridge.py:134-135); wired into handle_incoming for ENQUEUE_SOURCE_REPLY and /run; refusal via render_task_too_short (bridge.py:2283), no inbox file. (3) Service lines: new strip_service_lines (bridge.py:2362) drops lines starting with [secrets]/[proxy in render_task_answer (ok + failure paths); mid-line mentions preserved. Tests: +18 selftest checks (_test_push_done_classification bridge.py:4302, _test_strip_service_lines bridge.py:5009, v2 validation cases); fixtures updated (push fixture TYPE: result + routine update; v2 fixture TYPE: result). VERIFICATION: ast.parse OK; --selftest checks passed=271 failed=0 exit 0 (baseline was 253); --demo-push shows 1 done event (dev-3 TYPE: result), routine dev-4 update NOT done, short digest; --demo-tasks shows reply 'ответил' and /run 'ок' rejected with hint, inbox count unchanged; strip_service_lines unit call removes [secrets]/[proxy] lines, keeps useful text; tests\test-bridge-push.ps1 checks=53 failed=0 exit 0 (updated required-check names + new checks). README updated (tiers table, v2 validation, strip_service_lines, baselines 271/53).
+SKILLS_LOADED: ["evidence-discipline"]
+MCP_USED: ["context7: offline (fetch failed, verified aiogram 3.29.1 API via local introspection)", "sequential-thinking: not used (task <3 steps per fix, linear)"]
+COMPLIANCE: true
+STATUS: resolved
+================================================================================
+
+================================================================================
+[TIME] 2026-09-24 qa-engineer -> team-lead:
+TYPE: update | PRIORITY: medium
+Project: agent-hq
+CONTENT: QA-приёмка 2 фиксов. ВЕРДИКТ: ОБА PASS (критических/мажор дефектов нет). FIX-1 run-with-secrets.ps1: PARSE_ERRORS=0; BOM=239,187,191; CR=230 LF=230 LONE_LF=0; git diff = ровно 13x Write-Host->[Console]::Error.WriteLine, логика не тронута; raw-захват .NET Process: LIST stdout=маппинг/stderr пуст exit0; RUN (opencode-api-key) stdout=только ANSWER_OK+ENV_PRESENT, '[secrets] инъекция'+'proxy mode' только в stderr, exit0; без -Secret exit2 stdout пуст; отсутствующий секрет exit2 дочерний НЕ запущен; exit-код ребёнка 7 проброшен; VerifyOnly exit0 отпечатки в stdout. OPENCODE_API_KEY в родительском env — от harness-сессии opencode (проверено до запусков), не утечка скрипта. FIX-2 bridge.py (untracked в git, как заявлено): ast.parse OK (5550 строк); --selftest passed=271 failed=0 exit0; --demo-push: 5 событий, done ровно 1 (dev-3 TYPE: result), рутинный dev-4 TYPE: update+STATUS: resolved исключён (фикстура bridge.py:4231-4234), дайджест короткий; reject (VERDICT: REJECT) и blocker critical живы; --demo-tasks: 'ответил' и '/run dev-2 ок' отклонены с подсказкой, inbox 3->3 (мусора нет), осмысленные приняты, регрессии unknown-agent/traversal/usage OK; tests\test-bridge-push.ps1 checks=53 failed=0 exit0; независимые edge-проверки 32/32: стоп-лист регистронезависим (ОТВЕТИЛ/Ответил/Ок/OK/ДА/Спасибо/с пробелами), граница 'ab'=False 'abc'=True 'дай 5'=True, strip_service_lines режет только целые строки-префиксы ([secrets]/[proxy, в т.ч. с отступом), середина строки сохранена, render_task_answer чистит ok- и fail-пути. README-заявки (271/53, таблица тиров) подтверждены на диске. MINOR-наблюдения (не блокеры): (1) '...' (3 пунктуации) проходит is_meaningful_task — по ТЗ корректно (<3 или стоп-лист), но стоит в будущем добавить требование хотя бы одной алфавитно-цифровой; (2) self-report dev-2 цитирует classify_buffer_entry как bridge.py:1911 — def на 1885 (1911 — строка проверки); (3) projects\telegram-bridge\__pycache__\bridge.cpython-313.pyc остался от прогонов dev-2 (12:50) — удалить за собой. ГИГИЕНА: фоновых процессов проекта нет (единственный 'bridge' — vpnkit Docker Desktop, не трогать); %TEMP%\bridge-selftest-*/bridge-tasks-demo-* авто-чистятся; удалён устаревший %TEMP%\qa-bridge-344n1h5g (21.09, прошлая QA-сессия) и все мои temp-артефакты. Запись bridge-state.json в 13:04:08 — тик запланированной задачи agent-hq-telegram-bridge (прод-демон), не следствие фиксов/моих прогонов (selftest/demo в temp).
+SKILLS_LOADED: ["evidence-discipline"]
+MCP_USED: ["context7: not used (stdlib-only python + PowerShell, внешних библиотек не добавлялось)", "hermes-atlas: not used", "sequential-thinking: not used (линейный чек-лист приёмки)"]
+COMPLIANCE: true
+STATUS: resolved
+================================================================================
+================================================================================
+[TIME] 2026-09-24 dev-2 -> team-lead:
+TYPE: update | PRIORITY: medium
+Project: telegram-bridge
+CONTENT: v3 interactive UX (bridge.py, NOT in git). Main menu /menu (+ /start), namespaced callbacks menu:/session:/agent:/task:/approve:/reject: (legacy cmd:/refresh:status kept for compat). Screens: menu, sessions list + session card (project/agent/model/status/created/duration/last-activity/TZ/delegation chain), agents list + mini-card, queue, bus, summary, alerts+approvals, task picker. Number fallback: bare "2" opens the session card via the same session_detail_text. Task flow: menu:task -> task:<agent> -> ForceReply prompt, pending_prompts[chat]=agent persisted in bridge-state.json; the answer (reply to the prompt OR the next free text) writes .memory/inbox/<agent>/<id>.json with source=prompt; is_meaningful_task still rejects junk. Approvals: alerts_rows adds OK/Reject only for critical events bound to one agent; approve:<id>/reject:<id> re-resolve the event from a fresh snapshot, write OK/Reject source=approval, refresh the screen. setMyCommands +menu (9 commands). render_command alerts now uses render_alerts_screen. New flag --demo-menu. BridgeState: pending_prompts load/save + take_prompt/clear_prompt/remember_prompt; broken JSON still tolerated. SessionRow/SessionNode gained created_ms (SELECT time_created). VERIFICATION: ast.parse OK; py_compile OK; --selftest passed=316 failed=0 exit 0 (baseline was 271); --demo-push exit 0; --demo-tasks exit 0; --demo-menu renders all screens (menu/sessions list/card/agents/queue/bus/summary/alerts+approve/reject/task) and shows callback routing; tests\test-bridge-push.ps1 checks=73 failed=0 exit 0 (was 53). README updated (Commands table, UX v3 section, What's-not/what's-now-in, verification numbers 316/73, state file description). New selftest _test_interactive_ux (fixture _ux_fixture_root) covers menu render+buttons, callback routing incl. rejection of malformed data, legacy callback_target, number fallback, session card delegations+timing, agent card, task rows, ForceReply prompt binding (pending_prompts + message_id), prompt-text -> inbox, junk refusal, approval OK -> inbox + stale-event handling, and read-only outside .memory/inbox. Tests use temp workdirs (project bridge-state.json untouched); __pycache__ removed.
+SKILLS_LOADED: ["clean-code", "evidence-discipline"]
+MCP_USED: ["context7: offline (fetch failed; verified aiogram 3.29.1 API via local introspection)", "hermes-atlas: not used", "sequential-thinking: tool error (invalid input), planned inline"]
+COMPLIANCE: true
+STATUS: resolved
+================================================================================
+[TIME] 2026-09-24 qa-engineer -> team-lead:
+TYPE: update | PRIORITY: medium
+Project: telegram-bridge
+CONTENT: QA-приёмка v3 интерактивного UX (bridge.py, 6439 строк, не в git) — ВЕРДИКТ: PASS (1 minor carryover). (1) ast.parse OK, py_compile OK. (2) --selftest checks passed=316 failed=0 exit 0 (baseline совпал); tests\test-bridge-push.ps1 checks=73 failed=0 exit 0. (3) --demo-menu exit 0: все экраны (меню 7×menu:, список сессий с деревом делегаций, карточка сессии Создана/Длительность/Последняя активность + Делегации (1), агенты, очередь, шина, сводка, тревоги с ✅ОК approve:<id>/❌Отклон reject:<id>, task-подсказка + task:<agent> кнопки, демо номер-фолбэка); leak-scan 0 срабатываний (InlineKeyboardMarkup/KeyboardButton/D:\|C:\/sk-/ghp_/xoxb-/bot-token), HTML экранирован &lt;script&gt;, секреты [REDACTED:kv]/[REDACTED:key]. (4) Независимый харнесс (temp-фикстура, реальная sqlite session-таблица, 52/52 PASS): (a) сообщение «2» через handle_incoming == callback session:2 (тот же текст + те же callback_data клавиатуры), карточка с делегацией и таймингами; (b) «99»/«0» → «Нет сессии с номером N. Доступно: 1..2», «abc» → «не распознана», без падений; (c) task:ghost → отказ «не найден», без ForceReply, pending_prompts пуст; task:../evil и task: → route_callback=None; (d) approve → ровно 1 файл в inbox/dev-2 (payload=OK, source=approval, from=telegram, type=task), reject → payload=Reject, устаревший id → «неактуально» без файла; sha256-дерево вне .memory/inbox не изменилось за весь прогон; (e) ForceReply→привязка chat->agent→текст→inbox source=prompt; prompt снят после первого ответа; повторный текст без prompt → unknown-отказ без файла; протухший (700с > TTL 600с, bridge.py:2017) не съедает текст; повторный prompt перезаписывает привязку; pending_prompts переживает рестарт; reply на сообщение prompt маршрутизируется агенту; (f) prompt+«ок»/«ответил»/«да»/«спасибо» → «не похоже» без файла; whitespace-only → empty-ветка, prompt не расходуется. (5) Регрессии: /run пишет source=run; reply «ответил» отклоняется; strip_service_lines режет [secrets]/[proxy, середина строки сохранена; DONE только при TYPE: result (bridge.py:2315), TYPE: update+resolved не поднимает; 6 синонимов корректны; legacy cmd:queue→menu/queue, callback_target(refresh:status)=status; /start→menu; --demo-push/--demo-tasks exit 0. (6) Гигиена: фоновых python-процессов нет; projects\telegram-bridge\bridge-state.json SHA256=23c16a92…4ef0a до и после прогона идентичен, JSON валиден; __pycache__ и временные харнессы удалены. ДЕФЕКТЫ: MINOR (carryover v2, не регрессия v3): reply-ветка принимает «...» (3 символа, вне TASK_STOPLIST bridge.py:136-149) как задачу — probe: REPLY_DOTS_enqueued=1 payload='...'; prompt-ветка защищена парсером (normalize_text rstrip "?!." → empty). Рекомендация фиксу: срезать пунктуацию в is_meaningful_task. Известен с предыдущей QA-записи 13:04.
+SKILLS_LOADED: ["evidence-discipline"]
+MCP_USED: ["sequential-thinking (1 шаг планирования)", "context7: not used (QA на stdlib + функциях модуля, внешней документации не касались)", "hermes-atlas: not used"]
+COMPLIANCE: true
+STATUS: resolved
+================================================================================
+[TIME] 2026-09-24 dev-2 -> team-lead:
+TYPE: update | PRIORITY: medium
+Project: telegram-bridge
+CONTENT: Мини-фикс по ревью v3 (bridge.py NOT in git + README.md). 7 правок:
+(1) legacy `cmd:tasks` -> экран bus: добавлен SECTION_SCREENS {"agents":"agents","queue":"queue","tasks":"bus","status":"summary"} (bridge.py:164-170), route_callback берёт экран из него (bridge.py:1587); раньше cmd:tasks попадал в screen_rows("tasks") -> фолбэк на главное меню.
+(2) handle_callback: `await callback.answer()` перенесён в начало, ДО любых return, в try/except TelegramAPIError (bridge.py:3757,3766-3772) — у чужого/неизвестного callback больше не «зависают часики».
+(3) _edit_screen: except (TelegramAPIError, AttributeError) + fallback _send_screen — при неудаче шлёт НОВОЕ сообщение (bridge.py:3614,3629,3647). Проверено: InaccessibleMessage — pydantic-модель (fields chat/message_id/date), НЕ BaseException (issubclass False), и у неё нет edit_text -> обращение даёт AttributeError, который и перехватывается.
+(4) approval-дедуп: task_enqueue_key(agent,payload,context) + enqueue_task(..., dedup_context=event.event_id) (bridge.py:2643-2684); _handle_approval передаёт event_id (bridge.py:3698) — ключ дедупа = (agent, event_id, verdict), два разных critical одного агента подтверждаются раздельно.
+(5) is_meaningful_task: требование >=1 буквенно-цифрового символа (bridge.py:2190-2204) — «...»/«????»/«... !!! ...» отклоняются, «...проверь...» принимается.
+(6) take_prompt: handle_incoming сначала peek_prompt (не расходует), consume только после принятой задачи (bridge.py:3530-3547); BridgeState.peek_prompt + _prompt_is_fresh (bridge.py:1783,2040-2062); save() вычищает просроченные pending_prompts (bridge.py:1905-1910).
+(7) README синхронизирован: 9->10 команд, 37->36 фраз (ALIASES=36), 316->323 проверки, список setMyCommands (10), note legacy cmd:tasks->bus, pending_prompts purge/retention.
+Не тронуты: push DONE только TYPE: result, strip_service_lines, отклонение мусора, флаги/рабочие часы/read-only гарантии.
+VERIFICATION: ast.parse OK; --selftest checks passed=323 failed=0 exit 0 (baseline 316, +7 проверок); tests\test-bridge-push.ps1 checks=73 failed=0 exit 0; --demo-menu/--demo-tasks/--demo-push exit 0. Юнит-проверки в selftest (все PASS): «ux3: route 'cmd:tasks'» -> menu/bus; «v2 validate: пунктуация без букв/цифр отклонена»; «ux3: разные event_id одного агента подтверждаются раздельно» (ok_a+ok_b=True, повтор того же event -> duplicate); плюс «неинформативный ответ -> подсказка, промпт сохранён», «промпт переиспользован без повторного нажатия», «недоступное сообщение -> новое сообщение, без падения», «state: просроченный prompt вычищен при save».
+SKILLS_LOADED: ["clean-code", "evidence-discipline"]
+MCP_USED: ["sequential-thinking (1 шаг планирования)", "context7: not used (stdlib-only Python, внешних библиотек не добавлялось; aiogram 3.29.1 проверен локально introспекцией)", "hermes-atlas: not used"]
+COMPLIANCE: true
+STATUS: resolved
+================================================================================
+[TIME] 2026-09-24 qa-engineer -> team-lead:
+TYPE: update | PRIORITY: medium
+Project: telegram-bridge
+CONTENT: РЕ-ПРИЁМКА v4 по дифу (7 минор-фиксов, bridge.py 6613 строк, NOT in git) — вердикт PASS, новых дефектов нет, carryover-minor v3 закрыт (BUG-042 [FIXED] записан в KNOWLEDGE-BASE.md). Факты: (1) ast.parse OK (Python 3.13.14; PATH-первый python — заглушка WindowsApps, использован реальный интерпретатор). (2) --selftest checks passed=323 failed=0 exit 0 (baseline v3=316, +7) — совпадает с заявкой. (3) tests\test-bridge-push.ps1 (лежит в tests\ КОРНЯ репо, не в projects\telegram-bridge — формулировка ТЗ неоднозначна, не дефект; вложенный powershell -File с кириллицей ломает кодировку аргументов, вызван & в сессии) checks=73 failed=0 exit 0. (4) --demo-menu/--demo-tasks/--demo-push exit 0. (5) Импорт-пробник (-temp-песочница, 37 проверок, failed=0): фикс1 route_callback('cmd:tasks')→menu/bus (bridge.py:167,1585-1589), legacy cmd:queue→queue/cmd:status→summary, callback_target('cmd:tasks')=='tasks' сохранён, cmd:bogus→None; фикс2 callback.answer() ДО всех ранних return, try/except TelegramAPIError (bridge.py:3765-3773); фикс3 _edit_screen except (TelegramAPIError, AttributeError)+фолбэк _send_screen (bridge.py:3645-3650), рантайм-тест selftest «inaccessible message -> новое сообщение, без падения» PASS; фикс4 task_enqueue_key(agent,payload,context) (bridge.py:2643-2654)+dedup_context=event.event_id (bridge.py:3698) — evtA OK→enqueued, повтор evtA→duplicate, evtB OK→отдельно, evtA Reject→отдельно, prompt-дедуп без контекста не тронут; фикс5 is_meaningful_task требует isalnum (bridge.py:2204): '...'/'???'/ '!!! !!!'→False, 'проверь'/'123'/'...проверь...'→True, 'ok'/'ответил'→False; фикс6 peek_prompt не удаляет запись (bridge.py:2040-2051), просроченный→None но запись ждёт save(), save() чистит просроченные и сохраняет свежие (bridge.py:1877,1907-1911), take_prompt consumes; фикс7 README: «323 проверки» (строки 123,408) == факт selftest, «36 фраз ALIASES» (152) == len(ALIASES)=36, «10 команд» (154-156,327) == len(BOT_COMMANDS)=10, note cmd:tasks→bus (351-353), retention pending_prompts (28,366-369). (6) Регрессии: синонимы целы («кто занят»→agents bridge.py:2109; /start→menu — намеренный v3-алиас, selftest:4280), strip_service_lines режет [secrets]/[proxy], classify: update+resolved→None / result→done (BUG-042-скоуп DONE-only). (7) Гигиена: фоновых процессов проекта нет (Telegram.exe — клиент пользователя с 21.09, не трогал); bridge-state.json валидный JSON v2, pending_prompts={}, SHA256=23c16a92eb0d…4ef0a — побайтово == baseline v3-приёмки (не испорчен прогонами); temp_* файлов нет, .tmp в .memory/inbox нет; __pycache__ и песочница пробника удалены за собой. Informational (не дефект, вне объёма фиксов): prompt расходуется до результата enqueue (bridge.py:3547-3549) — при write-failed кнопку нажать заново; редкий I/O-кейс, принятый trade-off. Итого: ПРИНЯТО.
+SKILLS_LOADED: ["evidence-discipline"]
+MCP_USED: ["sequential-thinking (2 шага: консолидация доказательств + разбор контрпримеров перед вердиктом)", "context7: not used (QA-приёмка stdlib Python без внешних библиотек, документация не требовалась)", "hermes-atlas: not used"]
+COMPLIANCE: true
+STATUS: resolved
+================================================================================
+
+

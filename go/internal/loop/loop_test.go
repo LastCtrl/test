@@ -14,10 +14,41 @@ import (
 	"agent-hq/internal/executor"
 )
 
+// removeAllRetry deletes path the way t.TempDir does, but tolerates the transient
+// Windows failure corporate AV produces: Kaspersky scans a just-written file and
+// its directory entry outlives the unlink by a few milliseconds, so a single
+// os.RemoveAll reports ERROR_DIR_NOT_EMPTY ("The directory is not empty", the
+// flake of BUG-040). Retrying with a short backoff lets the scanner release the
+// handle. On a clean machine the first attempt always succeeds.
+func removeAllRetry(t *testing.T, path string) {
+	t.Helper()
+	const (
+		attempts = 40
+		backoff  = 50 * time.Millisecond
+	)
+	var err error
+	for attempt := 0; attempt < attempts; attempt++ {
+		err = os.RemoveAll(path)
+		if err == nil {
+			if attempt > 0 {
+				t.Logf("cleanup: %s removed after %d retries", filepath.Base(path), attempt)
+			}
+			return
+		}
+		time.Sleep(backoff)
+	}
+	t.Errorf("cleanup: %s is still present after %d attempts: %v", path, attempts, err)
+}
+
 // newLoopRoot builds a minimal agent-hq root the runner accepts.
 func newLoopRoot(t *testing.T) string {
 	t.Helper()
 	root := t.TempDir()
+	// BUG-040: t.Cleanup runs LIFO, so this cleanup runs before the one t.TempDir
+	// registered above (which only calls a plain os.RemoveAll and would report the
+	// AV-induced ENOTEMPTY as a test failure). Removing the tree here with retries
+	// leaves t.TempDir's own RemoveAll a no-op.
+	t.Cleanup(func() { removeAllRetry(t, root) })
 	for _, dir := range []string{
 		filepath.Join(root, ".memory", "inbox", "dev-2"),
 		filepath.Join(root, ".memory", "outbox"),

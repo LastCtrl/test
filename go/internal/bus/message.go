@@ -166,7 +166,7 @@ func ArchiveInbox(root, filePath, agent string) (string, error) {
 		return "", err
 	}
 	target := filepath.Join(ArchiveDir(root), agent+"-"+FileName(filePath))
-	if err := os.Rename(filePath, target); err != nil {
+	if err := renameWithRetry(filePath, target); err != nil {
 		return "", err
 	}
 	return target, nil
@@ -199,7 +199,7 @@ func MoveToDeadLetterUnparsed(root, filePath string) (string, error) {
 		return "", err
 	}
 	target := filepath.Join(DeadLetterDir(root), BaseName(filePath)+".json")
-	if err := os.Rename(filePath, target); err != nil {
+	if err := renameWithRetry(filePath, target); err != nil {
 		return "", err
 	}
 	return target, nil

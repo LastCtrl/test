@@ -136,22 +136,58 @@ func BaseName(path string) string {
 	return strings.TrimSuffix(name, filepath.Ext(name))
 }
 
+// fsRetryAttempts and fsRetryBackoff bound the wait for a transient Windows
+// sharing violation. A corporate AV scanner opens a just-written file to inspect
+// it, and for a few milliseconds an otherwise legal write or rename fails
+// instead of replacing the target. The bounds cap the wait at 200 ms and keep a
+// genuinely broken path failing loudly instead of retrying forever.
+const (
+	fsRetryAttempts = 8
+	fsRetryBackoff  = 25 * time.Millisecond
+)
+
+// renameWithRetry renames oldpath to newpath, tolerating the transient Windows
+// sharing violation described above. os.Rename replaces an existing target on
+// Windows, which mirrors Move-Item -Force; a permanent error is returned after
+// the bounded retries.
+func renameWithRetry(oldpath, newpath string) error {
+	var err error
+	for attempt := 0; attempt < fsRetryAttempts; attempt++ {
+		if err = os.Rename(oldpath, newpath); err == nil {
+			return nil
+		}
+		time.Sleep(fsRetryBackoff)
+	}
+	return err
+}
+
 // WriteFileAtomic writes data to path through a temporary sibling and a rename,
 // so a reader never observes a half-written document. The rename replaces an
 // existing file on Windows, which mirrors Move-Item -Force.
+//
+// Both the write and the rename are retried: without the retry a transient AV
+// scan of the previous revision fails the rename, and the caller would silently
+// lose the new durable document (an audit gap in evidence/queue, the flake of
+// BUG-040). The retry only turns a transient failure into the success the caller
+// expects; the happy path is unchanged.
 func WriteFileAtomic(path string, data []byte) error {
 	if err := EnsureDir(filepath.Dir(path)); err != nil {
 		return err
 	}
 	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, data, 0o644); err != nil {
-		return err
+	var err error
+	for attempt := 0; attempt < fsRetryAttempts; attempt++ {
+		if err = os.WriteFile(tmp, data, 0o644); err != nil {
+			time.Sleep(fsRetryBackoff)
+			continue
+		}
+		if err = os.Rename(tmp, path); err == nil {
+			return nil
+		}
+		time.Sleep(fsRetryBackoff)
 	}
-	if err := os.Rename(tmp, path); err != nil {
-		_ = os.Remove(tmp)
-		return err
-	}
-	return nil
+	_ = os.Remove(tmp)
+	return err
 }
 
 // ReadTextFile reads a file as UTF-8 and strips a byte order mark, mirroring

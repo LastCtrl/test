@@ -28,7 +28,7 @@ func newGitRepo(t *testing.T) string {
 	if _, err := exec.LookPath("git"); err != nil {
 		t.Skip("git is not available; skipping the worktree CLI test")
 	}
-	root := t.TempDir()
+	root := tempRoot(t)
 	runGitCommand(t, root, "init")
 	if err := os.WriteFile(filepath.Join(root, "README.md"), []byte("agent-hq CLI test\n"), 0o644); err != nil {
 		t.Fatalf("write README: %v", err)
@@ -106,7 +106,7 @@ func TestWorktreeCommandLifecycle(t *testing.T) {
 
 func TestWorktreeCommandRejectsInvalidName(t *testing.T) {
 	var stdout, stderr bytes.Buffer
-	code := runWorktree(globalOptions{root: t.TempDir()}, []string{"add", "../evil"}, &stdout, &stderr)
+	code := runWorktree(globalOptions{root: tempRoot(t)}, []string{"add", "../evil"}, &stdout, &stderr)
 	if code != 2 {
 		t.Errorf("worktree add traversal exit = %d, want 2 (stderr = %s)", code, stderr.String())
 	}
@@ -128,7 +128,7 @@ func TestWorktreeCommandUsage(t *testing.T) {
 }
 
 func TestProjectBufferCommandRoundTrip(t *testing.T) {
-	root := t.TempDir()
+	root := tempRoot(t)
 	globals := globalOptions{root: root, json: true}
 
 	var stdout, stderr bytes.Buffer

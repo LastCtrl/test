@@ -16,6 +16,7 @@ $ProxyRootCfg = Join-Path $ProxyRoot '.agents\config\proxy.json'
 
 $script:Pass = 0
 $script:Fail = 0
+$script:Skip = 0
 $script:CntlmPid = 0
 
 function Write-Check {
@@ -28,6 +29,15 @@ function Write-Check {
         Write-Host ('    FAIL: ' + $Label + $suffix)
         $script:Fail++
     }
+}
+
+# Environment-dependent check whose precondition is absent on this machine.
+# A skip is counted separately and never affects pass/fail (and thus the exit code).
+function Write-Skip {
+    param([string]$Label, [string]$Detail = '')
+    $suffix = if ([string]::IsNullOrEmpty($Detail)) { '' } else { ' (' + $Detail + ')' }
+    Write-Host ('    SKIP: ' + $Label + $suffix)
+    $script:Skip++
 }
 
 function Invoke-Cli {
@@ -221,8 +231,17 @@ try {
     # default cntlm scope with mode=on: no cntlm process -> guard must refuse to act
     $safe = Invoke-Cli -Script $CntlmGuard -ArgsList @('-Restart', '-DryRun', '-ProxyConfig', $ProxyOnCfg, '-ProxyPort', ([string]$closedPort), '-LogFile', $logFile, '-StateFile', (Join-Path $TempBase 'safe.state.json'))
     Write-Check 'i7) default scope never mentions the test process' (-not ($safe.Out -match ('would stop PID ' + $PID)))
-    Write-Check 'i7b) default scope, no cntlm process -> exit 5' ($safe.Code -eq 5)
-    Write-Check 'i7c) default scope, no cntlm process -> STATUS: no-process' ($safe.Out -match 'STATUS: no-process')
+    # i7b/i7c assert the "no owned process" refusal in the DEFAULT scope (C:\tools\cntlm).
+    # That holds only on machines without a real cntlm; a real owned cntlm makes the
+    # guard plan a restart (exit 0), so the check would be environment-dependent. The
+    # very same refusal is asserted deterministically in an isolated scope by i10/i11.
+    if ($realOwned.Count -gt 0) {
+        Write-Skip 'i7b) default scope, no cntlm process -> exit 5' 'real cntlm present in default scope; isolated equivalent in i10/i11'
+        Write-Skip 'i7c) default scope, no cntlm process -> STATUS: no-process' 'real cntlm present in default scope; isolated equivalent in i10/i11'
+    } else {
+        Write-Check 'i7b) default scope, no cntlm process -> exit 5' ($safe.Code -eq 5)
+        Write-Check 'i7c) default scope, no cntlm process -> STATUS: no-process' ($safe.Out -match 'STATUS: no-process')
+    }
 
     # dry-run plumbing on an owned stand-in scope (powershell.exe, -DryRun never acts)
     $psDir = ''
@@ -391,7 +410,7 @@ try {
 
 Write-Host ''
 Write-Host '=================================================='
-Write-Host ('SUMMARY: passed=' + $script:Pass + ' failed=' + $script:Fail + ' total=' + ($script:Pass + $script:Fail))
+Write-Host ('SUMMARY: passed=' + $script:Pass + ' failed=' + $script:Fail + ' skipped=' + $script:Skip + ' total=' + ($script:Pass + $script:Fail))
 Write-Host '=================================================='
 
 if ($script:Fail -gt 0) { exit 1 } else { exit 0 }

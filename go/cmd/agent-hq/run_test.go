@@ -15,7 +15,7 @@ import (
 
 func newCmdRoot(t *testing.T) string {
 	t.Helper()
-	root := t.TempDir()
+	root := tempRoot(t)
 	if err := os.MkdirAll(filepath.Join(root, ".memory"), 0o755); err != nil {
 		t.Fatalf("mkdir .memory: %v", err)
 	}

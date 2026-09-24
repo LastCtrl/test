@@ -62,6 +62,8 @@ COMPLIANCE: true
 STATUS: resolved
 ```
 
+**Важно:** `[TIME]` в шаблоне — **плейсхолдер**: замени его реальным временем, напр. `[2026-09-24 14:35]` — не копируй буквально.
+
 Поля `SKILLS_LOADED` и `MCP_USED` — **ОБЯЗАТЕЛЬНЫ**.
 - Пустой массив = violation → qa-engineer ставит REJECT
 - Формат строгий: парсер ищет именно `SKILLS_LOADED:` и `MCP_USED:`

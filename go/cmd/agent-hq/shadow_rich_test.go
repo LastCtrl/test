@@ -23,7 +23,7 @@ import (
 
 func richShadowFixture(t *testing.T) string {
 	t.Helper()
-	root := t.TempDir()
+	root := tempRoot(t)
 	files := map[string]string{
 		"opencode.json":                        `{"agent":{"dev-2":{"model":"opencode-go/deepseek-v4.1-flash"},"qa-engineer":{"model":"opencode-go/qwen3.8-flash"}}}`,
 		"CONTEXT-BUFFER.md":                    "context\n",
@@ -162,7 +162,7 @@ func TestRunShadowPlanMatchesEngineFacts(t *testing.T) {
 
 	// FACT 1: the PowerShell engine on a copy of the same fixture archives exactly
 	// the messages the plan called would-run - nothing more, nothing less.
-	psRoot := filepath.Join(t.TempDir(), "ps-copy")
+	psRoot := filepath.Join(tempRoot(t), "ps-copy")
 	copyTree(t, root, psRoot)
 	runPowerShellEngineOnRoot(t, psRoot, "success")
 	archived := archivedMessageIDs(t, psRoot)
@@ -180,7 +180,7 @@ func TestRunShadowPlanMatchesEngineFacts(t *testing.T) {
 
 	// FACT 2: the Go run-loop on another copy performs exactly the planned queue
 	// transitions (the queue has no PowerShell executor to compare against).
-	goRoot := filepath.Join(t.TempDir(), "go-copy")
+	goRoot := filepath.Join(tempRoot(t), "go-copy")
 	copyTree(t, root, goRoot)
 	t.Setenv("AGENT_HQ_ROOT", "")
 	t.Setenv("AGENT_HQ_DRIVER", "")

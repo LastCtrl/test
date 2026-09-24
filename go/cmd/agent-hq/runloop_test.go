@@ -16,9 +16,45 @@ import (
 // a single pass can still be requested explicitly (tests, verification) and the
 // driver command is what flips the mode.
 
-func loopFixture(t *testing.T) string {
+// removeAllRetry deletes path the way t.TempDir does, but tolerates the transient
+// Windows failure corporate AV produces: Kaspersky scans a just-written file and
+// its directory entry outlives the unlink by a few milliseconds, so a single
+// os.RemoveAll reports ERROR_DIR_NOT_EMPTY ("The directory is not empty", the
+// flake of BUG-040). Retrying with a short backoff lets the scanner release the
+// handle. On a clean machine the first attempt always succeeds.
+func removeAllRetry(t *testing.T, path string) {
+	t.Helper()
+	const (
+		attempts = 40
+		backoff  = 50 * time.Millisecond
+	)
+	var err error
+	for attempt := 0; attempt < attempts; attempt++ {
+		err = os.RemoveAll(path)
+		if err == nil {
+			if attempt > 0 {
+				t.Logf("cleanup: %s removed after %d retries", filepath.Base(path), attempt)
+			}
+			return
+		}
+		time.Sleep(backoff)
+	}
+	t.Errorf("cleanup: %s is still present after %d attempts: %v", path, attempts, err)
+}
+
+// tempRoot is t.TempDir with the BUG-040 tolerant cleanup: the returned tree may
+// be written to heavily and is removed by a retrying RemoveAll that runs before
+// the testing package's own single-attempt RemoveAll (cleanups are LIFO).
+func tempRoot(t *testing.T) string {
 	t.Helper()
 	root := t.TempDir()
+	t.Cleanup(func() { removeAllRetry(t, root) })
+	return root
+}
+
+func loopFixture(t *testing.T) string {
+	t.Helper()
+	root := tempRoot(t)
 	for _, dir := range []string{
 		filepath.Join(".memory", "inbox", "dev-2"),
 		filepath.Join(".memory", "outbox"),
@@ -104,7 +140,7 @@ func TestRunLoopRejectsUnknownExecutor(t *testing.T) {
 }
 
 func TestRunLoopRejectsNonAgentHQRoot(t *testing.T) {
-	empty := t.TempDir()
+	empty := tempRoot(t)
 	code, _, stderr := runLoopCLI(t, empty, "-once")
 	if code == 0 {
 		t.Fatalf("exit = 0, want a failure for a root without .memory")

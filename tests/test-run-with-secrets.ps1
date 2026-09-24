@@ -26,8 +26,19 @@ function Add-Result($id, $pass, $note) {
     Write-Host ("[{0}] {1} — {2}" -f $(if ($pass) { 'PASS' } else { 'FAIL' }), $id, $note)
 }
 function Invoke-Capture($scriptBlock) {
-    # capture every stream (Write-Host/error included) to a single string
-    return (& $scriptBlock *>&1 | Out-String)
+    # Capture every PowerShell stream (Write-Host/error included) to a single string.
+    # run-with-secrets.ps1 writes diagnostics and the set-secret hint via
+    # [Console]::Error, which is a raw console stream that *>&1 does NOT capture;
+    # temporarily redirect Console.Error to a StringWriter so hints reach the test.
+    $errWriter = New-Object System.IO.StringWriter
+    $prevErr = [Console]::Error
+    try {
+        [Console]::SetError($errWriter)
+        $stdout = (& $scriptBlock *>&1 | Out-String)
+    } finally {
+        [Console]::SetError($prevErr)
+    }
+    return ($stdout + $errWriter.ToString())
 }
 function Read-Probe($path) {
     if (Test-Path -LiteralPath $path -PathType Leaf) { return (Get-Content -LiteralPath $path -Raw -Encoding UTF8) }

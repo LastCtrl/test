@@ -11,6 +11,7 @@ $pass = 0
 $fail = 0
 $total = 0
 $ciSkipped = 0
+$skipped = 0
 
 function Test-Check {
     param([string]$Name, [bool]$Condition)
@@ -22,6 +23,16 @@ function Test-Check {
         Write-Host "  [FAIL] $Name" -ForegroundColor Red
         $script:fail++
     }
+}
+
+# Explicit local skip: the check is meaningful only when its precondition exists
+# (e.g. agent-hq project scaffolding under projects/). Not counted in pass/fail;
+# reported separately in the summary so a skip is never mistaken for a pass.
+function Test-Skip {
+    param([string]$Name, [string]$Reason = '')
+    $suffix = if ([string]::IsNullOrEmpty($Reason)) { '' } else { " ($Reason)" }
+    Write-Host "  [SKIP] $Name$suffix" -ForegroundColor DarkYellow
+    $script:skipped++
 }
 
 # Local-only check: runtime artifact of a working machine, absent on CI runners.
@@ -185,22 +196,40 @@ Test-Check "F1: .agents/templates/project/ exists with 5 required files" ($templ
 $templateMemoryDir = Join-Path $templateDir "memory"
 Test-Check "F1b: .agents/templates/project/memory/ exists" (Test-Path $templateMemoryDir)
 
-# F2: projects/ - at least 2 directories, each with CONTEXT-BUFFER.md + project.json + queue.json
+# F2: projects/ - at least 2 directories, each with CONTEXT-BUFFER.md + project.json + queue.json.
+# Real user projects (e.g. 1C sources) may live under projects/ without the agent-hq
+# scaffolding; that is a valid user layout -> SKIP only when NOTHING is scaffolded.
+# Once at least one project.json exists, the scaffolding is in use: fewer than 2 valid
+# projects is then a real regression (e.g. one project was lost) and must FAIL, not SKIP.
 $projectsDir = "projects"
 $projectsExist = Test-Path $projectsDir
 $validProjects = 0
+$scaffolded = 0
+$projectDirCount = 0
 if ($projectsExist) {
-    $projectDirs = Get-ChildItem $projectsDir -Directory -ErrorAction SilentlyContinue
+    $projectDirs = @(Get-ChildItem $projectsDir -Directory -ErrorAction SilentlyContinue)
+    $projectDirCount = $projectDirs.Count
     foreach ($pd in $projectDirs) {
         $hasCtx = Test-Path (Join-Path $pd.FullName "CONTEXT-BUFFER.md")
         $hasProj = Test-Path (Join-Path $pd.FullName "project.json")
         $hasQueue = Test-Path (Join-Path $pd.FullName "queue.json")
+        if ($hasProj) {
+            $scaffolded++
+        }
         if ($hasCtx -and $hasProj -and $hasQueue) {
             $validProjects++
         }
     }
 }
-Test-LocalCheck "F2: projects/ has >= 2 valid projects ($validProjects found)" ($validProjects -ge 2)
+if ($validProjects -ge 2) {
+    Test-LocalCheck "F2: projects/ has >= 2 valid projects ($validProjects found)" $true
+} elseif ($projectsExist -and $scaffolded -gt 0) {
+    Test-LocalCheck "F2: projects/ has >= 2 valid projects ($validProjects found; $scaffolded scaffolded)" $false
+} elseif ($projectsExist -and $projectDirCount -gt 0) {
+    Test-Skip "F2: projects/ has >= 2 valid projects ($validProjects found)" "user project layout without agent-hq scaffolding ($projectDirCount dir(s), 0 scaffolded)"
+} else {
+    Test-LocalCheck "F2: projects/ has >= 2 valid projects ($validProjects found)" ($validProjects -ge 2)
+}
 
 # F3: create-project.ps1 contains "templates"
 $createProjectPath = ".agents\scripts\create-project.ps1"
@@ -260,7 +289,9 @@ Test-Check "F6: agent-registry.ps1 -Acquire nonexistent spec exits 2" $f6Pass
 $queueScript = ".agents\scripts\project-queue.ps1"
 $f7Pass = $false
 $testProject = "1c-buh"
-if (-not $isCI -and (Test-Path $queueScript)) {
+$testQueuePath = Join-Path (Join-Path "projects" $testProject) "queue.json"
+$testProjectReady = Test-Path $testQueuePath -PathType Leaf
+if (-not $isCI -and (Test-Path $queueScript) -and $testProjectReady) {
     # Add a critical task
     $addResult = & powershell -NoProfile -ExecutionPolicy Bypass -File $queueScript -Add -Project $testProject -Title "Test critical task" -Priority critical 2>&1
     $addExit = $LASTEXITCODE
@@ -299,11 +330,17 @@ if (-not $isCI -and (Test-Path $queueScript)) {
         }
     }
 }
-Test-LocalCheck "F7: project-queue.ps1 full cycle (Add->Next->Complete->cleanup) on 1c-buh" $f7Pass
+if ($isCI) {
+    Test-LocalCheck "F7: project-queue.ps1 full cycle (Add->Next->Complete->cleanup) on 1c-buh" $f7Pass
+} elseif ((Test-Path $queueScript) -and -not $testProjectReady) {
+    Test-Skip "F7: project-queue.ps1 full cycle (Add->Next->Complete->cleanup) on 1c-buh" "project '$testProject' with queue.json not present in projects/ (local-only)"
+} else {
+    Test-LocalCheck "F7: project-queue.ps1 full cycle (Add->Next->Complete->cleanup) on 1c-buh" $f7Pass
+}
 
-# F7-cleanup: убрать тестовый мусор из queue.json (задачи с тестовым title),
-# чтобы прогоны F7 не накапливали done/dead задачи. Идемпотентно: повторные
-# прогоны дают стабильный tasks count.
+# F7-cleanup: drop test debris from queue.json (tasks with the test title),
+# so repeated F7 runs do not accumulate done/dead tasks. Idempotent: repeated
+# runs yield a stable tasks count.
 if ($f7Pass -or (Test-Path (Join-Path "projects" "$testProject\queue.json"))) {
     $cleanupQueuePath = Join-Path "projects" "$testProject\queue.json"
     $cleanupRaw = [System.IO.File]::ReadAllText($cleanupQueuePath, [System.Text.UTF8Encoding]::new($false))
@@ -382,6 +419,9 @@ if ($ciSkipped -gt 0) {
     $summaryLine += " ($ciSkipped skipped: CI-only artifacts)"
 }
 Write-Host $summaryLine -ForegroundColor Green
+if ($skipped -gt 0) {
+    Write-Host "Skipped: $skipped (environment-dependent; not counted)" -ForegroundColor DarkYellow
+}
 if ($fail -gt 0) {
     Write-Host "Failed: $fail / $total" -ForegroundColor Red
 } else {

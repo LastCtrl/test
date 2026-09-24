@@ -29,7 +29,7 @@ func writeShadowFile(t *testing.T, path, content string) {
 // newShadowFixture builds a minimal read-only state tree for the CLI tests.
 func newShadowFixture(t *testing.T) string {
 	t.Helper()
-	root := t.TempDir()
+	root := tempRoot(t)
 	writeShadowFile(t, filepath.Join(root, "opencode.json"),
 		`{"agent":{"dev-2":{"model":"opencode-go/deepseek-v4.1-flash"}}}`)
 	writeShadowFile(t, filepath.Join(root, ".memory", "inbox", "dev-2", "m-100.json"),
@@ -175,7 +175,7 @@ func TestRunShadowHelp(t *testing.T) {
 func TestRunShadowRejectsMissingRoot(t *testing.T) {
 	// A typo in -root must fail loudly and must not create a stray
 	// <root>/.memory/shadow tree.
-	missing := filepath.Join(t.TempDir(), "does-not-exist")
+	missing := filepath.Join(tempRoot(t), "does-not-exist")
 
 	code, _, stderr := runShadowCLI(t, missing, "-json")
 	if code == 0 {
@@ -192,7 +192,7 @@ func TestRunShadowRejectsMissingRoot(t *testing.T) {
 func TestRunShadowRejectsRootWithoutMemory(t *testing.T) {
 	// An existing directory that is not an agent-hq checkout (no .memory) is
 	// rejected and .memory must not be created by the shadow pass.
-	root := t.TempDir()
+	root := tempRoot(t)
 
 	code, _, stderr := runShadowCLI(t, root)
 	if code == 0 {

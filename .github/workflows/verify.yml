@@ -59,4 +59,4 @@ jobs:
 
       - name: Test
         working-directory: go
-        run: go test ./...
+        run: go test ./... -count=1

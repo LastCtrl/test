@@ -66,7 +66,7 @@ func parityRepoRoot(t *testing.T) string {
 // parityRoot builds an isolated agent-hq root with one inbox message.
 func parityRoot(t *testing.T, message string) string {
 	t.Helper()
-	root := t.TempDir()
+	root := tempRoot(t)
 	writeShadowFile(t, filepath.Join(root, "CONTEXT-BUFFER.md"), "context buffer")
 	writeShadowFile(t, filepath.Join(root, ".memory", "inbox", "dev-2", "m-1.json"), message)
 	writeShadowFile(t, filepath.Join(root, "projects", "alpha", "queue.json"),

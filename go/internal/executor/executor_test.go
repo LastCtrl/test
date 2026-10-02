@@ -10,12 +10,12 @@ import (
 )
 
 func TestClassifySuccess(t *testing.T) {
-	status, reason := Classify(0, "all good\nSTATUS: resolved", "")
+	status, reason := Classify(0, "all good\nSTATUS: resolved", "", true)
 	if status != StatusSuccess || reason != "" {
 		t.Fatalf("Classify success = %q, %q; want success, empty", status, reason)
 	}
 	for _, marker := range []string{"STATUS: done", "status: COMPLETED", "STATUS:resolved"} {
-		if status, _ := Classify(0, marker, ""); status != StatusSuccess {
+		if status, _ := Classify(0, marker, "", true); status != StatusSuccess {
 			t.Errorf("Classify(%q) = %q, want success", marker, status)
 		}
 	}
@@ -31,12 +31,12 @@ func TestClassifyFailures(t *testing.T) {
 		{"nonzero exit", 1, "STATUS: resolved", ""},
 		{"empty stdout", 0, "   ", ""},
 		{"missing marker", 0, "did some work", ""},
-		{"error marker stdout", 0, "Error: boom\nSTATUS: resolved", ""},
-		{"error marker stderr", 0, "STATUS: resolved", "permission denied"},
+		{"strong error marker stdout", 0, "permission denied\nSTATUS: resolved", ""},
+		{"strong error marker stderr", 0, "STATUS: resolved", "permission denied"},
 	}
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {
-			status, reason := Classify(testCase.exitCode, testCase.stdout, testCase.stderr)
+			status, reason := Classify(testCase.exitCode, testCase.stdout, testCase.stderr, true)
 			if status != StatusFailed {
 				t.Errorf("Classify = %q, want failed", status)
 			}
@@ -44,6 +44,19 @@ func TestClassifyFailures(t *testing.T) {
 				t.Error("Classify returned an empty reason for a failure")
 			}
 		})
+	}
+}
+
+// TestClassifyInteractive mirrors the PowerShell interactive path: stdout is the
+// answer, so a broad "Error:" there is not a failure and the STATUS marker is
+// optional, while a strong marker on stderr still fails the run.
+func TestClassifyInteractive(t *testing.T) {
+	if status, reason := Classify(0, "Error: content the worker read", "", false); status != StatusSuccess || reason != "" {
+		t.Errorf("interactive broad Error: = %q, %q; want success, empty", status, reason)
+	}
+	status, reason := Classify(0, "answer", "permission denied", false)
+	if status != StatusFailed || !strings.Contains(reason, "error marker in stderr") {
+		t.Errorf("interactive strong stderr error = %q, %q; want failed with a stderr reason", status, reason)
 	}
 }
 

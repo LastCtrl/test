@@ -73,10 +73,13 @@ func TestClassificationMirrorsInboxEngine(t *testing.T) {
 		{"non-zero exit", 1, "STATUS: resolved", "", true, false, "exit code 1"},
 		{"empty stdout", 0, "  \n ", "", true, false, "empty stdout"},
 		{"missing marker", 0, "all good", "", true, false, "missing success marker"},
-		{"error marker", 0, "Error: boom\nSTATUS: resolved", "", true, false, "error marker in output"},
+		{"strong error marker", 0, "work\nSTATUS: resolved\npermission denied", "", true, false, "error marker in output"},
+		{"broad Error: text ignored", 0, "Error: content the worker read\nSTATUS: resolved", "", true, true, ""},
 		{"benign warning ignored", 0, "answer", "agent \"dev-1\" not found. Falling back to default agent", false, true, ""},
 		{"benign warning with marker", 0, "answer\nSTATUS: done", "agent \"x\" not found. Falling back to default agent", true, true, ""},
 		{"interactive without marker", 0, "answer", "", false, true, ""},
+		{"interactive broad Error: ignored", 0, "Error: content the worker read", "", false, true, ""},
+		{"interactive strong error on stderr", 0, "answer", "permission denied", false, false, "error marker in stderr"},
 	}
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {

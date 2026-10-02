@@ -120,7 +120,7 @@ func (e *OpenCodeExecutor) Execute(ctx context.Context, spec TaskSpec) (Result, 
 	}
 
 	exitCode := cmd.ProcessState.ExitCode()
-	status, reason := Classify(exitCode, out, errOut)
+	status, reason := Classify(exitCode, out, errOut, !spec.Interactive)
 	return Result{Status: status, ExitCode: exitCode, Stdout: out, Stderr: errOut,
 		Duration: duration, Error: reason}, nil
 }

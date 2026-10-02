@@ -629,10 +629,11 @@ type attemptResult struct {
 // executor one, so a benign subagent warning can never fail a good run.
 func (r *Runner) runAttempt(ctx context.Context, taskID, agent, prompt string, index int, requireMarker bool, claimsDir string) attemptResult {
 	spec := executor.TaskSpec{
-		ID:        taskID,
-		Agent:     agent,
-		Payload:   prompt,
-		AttemptID: fmt.Sprintf("attempt-%d", index),
+		ID:          taskID,
+		Agent:       agent,
+		Payload:     prompt,
+		AttemptID:   fmt.Sprintf("attempt-%d", index),
+		Interactive: !requireMarker,
 	}
 	startedAt := r.options.Now()
 	stop := r.startHeartbeat(taskID, agent, claimsDir)

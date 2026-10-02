@@ -92,7 +92,7 @@ func (f *FakeExecutor) Execute(ctx context.Context, spec TaskSpec) (Result, erro
 		stderr = f.Stderr
 	}
 
-	status, reason := Classify(exitCode, stdout, stderr)
+	status, reason := Classify(exitCode, stdout, stderr, !spec.Interactive)
 	return Result{Status: status, ExitCode: exitCode, Stdout: stdout, Stderr: stderr,
 		Duration: time.Since(started), Error: reason}, nil
 }

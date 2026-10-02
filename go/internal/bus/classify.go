@@ -16,16 +16,19 @@ import (
 //   - the benign opencode subagent notice ("agent \"X\" not found. Falling back
 //     to default agent") is removed BEFORE the error marker is matched, so it can
 //     never turn a good run into a failure;
-//   - the error marker list does not contain a bare "not found";
+//   - the error marker list is the STRONG set only: a bare "Error:" (or a bare
+//     "not found") is far too common in content an agent merely READS and must
+//     never fail a good run;
 //   - a task whose message came from the interactive path (source=run|reply or
-//     from=telegram) does not need a STATUS marker: exit 0 plus non-empty stdout
-//     is the result.
+//     from=telegram) does not need a STATUS marker and its stdout is the answer,
+//     so its error marker is matched against stderr only; structured bus tasks
+//     keep the strict scan over stdout+stderr.
 
 var (
 	// SuccessMarker matches the explicit success line of the prompt contract.
 	SuccessMarker = regexp.MustCompile(`(?i)STATUS:\s*(resolved|done|completed)`)
-	// ErrorMarker matches output that always means failure.
-	ErrorMarker = regexp.MustCompile(`(?i)(permission denied|auto-rejecting|rejected permission|Error:|command not found|not recognized|no such file|cannot find path)`)
+	// ErrorMarker matches output that always means failure (the PS strong set).
+	ErrorMarker = regexp.MustCompile(`(?i)(permission denied|auto-rejecting|rejected permission|command not found|not recognized|no such file|cannot find path)`)
 	// benignPatterns are removed before the error marker is evaluated.
 	benignPatterns = []*regexp.Regexp{
 		regexp.MustCompile(`(?i)agent\s+"[^"]*"\s+not found\.\s*Falling back to default agent`),
@@ -47,8 +50,20 @@ func RemoveBenign(text string) string {
 	return cleaned
 }
 
+// errorScanText returns the text the error marker is matched against, mirroring
+// Get-ErrorScanText in inbox-engine.ps1. Interactive tasks (requireMarker=false)
+// scan stderr only: their stdout IS the answer, so a benign line the agent merely
+// read must not fail a resolved run. Structured bus tasks scan stdout+stderr.
+// Benign opencode warnings are stripped before the marker is matched.
+func errorScanText(stdout, stderr string, requireMarker bool) string {
+	if requireMarker {
+		return RemoveBenign(stdout + "\n" + stderr)
+	}
+	return RemoveBenign(stderr)
+}
+
 // AttemptSucceeded applies the shared success rule: exit 0, non-empty stdout, no
-// error marker in either stream and, when requireMarker is set, the success
+// error marker in the scanned text and, when requireMarker is set, the success
 // marker on stdout.
 func AttemptSucceeded(exitCode int, stdout, stderr string, requireMarker bool) bool {
 	if exitCode != 0 {
@@ -57,8 +72,7 @@ func AttemptSucceeded(exitCode int, stdout, stderr string, requireMarker bool) b
 	if strings.TrimSpace(stdout) == "" {
 		return false
 	}
-	combined := RemoveBenign(stdout + "\n" + stderr)
-	if ErrorMarker.MatchString(combined) {
+	if ErrorMarker.MatchString(errorScanText(stdout, stderr, requireMarker)) {
 		return false
 	}
 	if requireMarker && !SuccessMarker.MatchString(stdout) {
@@ -76,9 +90,11 @@ func FailureReason(exitCode int, stdout, stderr string, requireMarker bool) stri
 	if strings.TrimSpace(stdout) == "" {
 		return "empty stdout"
 	}
-	combined := RemoveBenign(stdout + "\n" + stderr)
-	if marker := ErrorMarker.FindString(combined); marker != "" {
-		return "error marker in output: '" + marker + "'"
+	if marker := ErrorMarker.FindString(errorScanText(stdout, stderr, requireMarker)); marker != "" {
+		if requireMarker {
+			return "error marker in output: '" + marker + "'"
+		}
+		return "error marker in stderr: '" + marker + "'"
 	}
 	if requireMarker && !SuccessMarker.MatchString(stdout) {
 		return "missing success marker '" + SuccessMarker.String() + "'"

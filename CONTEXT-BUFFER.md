@@ -6124,3 +6124,21 @@ MCP_USED: ["sequential-thinking"]
 COMPLIANCE: true
 STATUS: resolved
 ================================================================================
+[2026-10-02 13:27] dev-3 -> team-lead:
+TYPE: update | PRIORITY: medium
+Project: agent-hq
+CONTENT: CI red fix (go job, parity error_marker_in_output) - DONE. Синхронизация Go-классификации с inbox-engine.ps1 v3.1 (1:1):
+  1) internal/bus/classify.go: ErrorMarker приведён к сильному набору PS (убраны bare 'Error:' и 'not found'): permission denied|auto-rejecting|rejected permission|command not found|not recognized|no such file|cannot find path. Добавлена errorScanText(): requireMarker=true -> stdout+stderr, false -> stderr only (как Get-ErrorScanText). AttemptSucceeded/FailureReason используют его; FailureReason для interactive даёт 'error marker in stderr: ...', для structural 'error marker in output: ...'.
+  2) internal/executor/executor.go: тот же сильный ErrorMarker + removeBenign (subagent fallback); Classify(...,requireMarker bool) сканирует stdout+stderr либо stderr-only; добавлено поле TaskSpec.Interactive.
+  3) internal/executor/{opencode,fake}.go: Classify вызывается с !spec.Interactive. internal/loop/loop.go: runAttempt кладёт Interactive: !requireMarker (requireMarker берётся из parsed.IsInteractive()).
+  4) Тесты: bus_test case 'Error: boom' заменён на strong-marker + добавлены interactive-кейсы; executor_test Classify-вызовы обновлены, добавлен TestClassifyInteractive; parity cases: errormarker->succeeds (structured+interactive) + новые strongerror (stdout, dead-letter) и strongstderr (interactive, stderr marker, dead-letter; stderrDivergence=true). Итого parity 12 кейсов PASS.
+АРТЕФАКТЫ/ПРОВЕРКИ (фактический вывод):
+  - go build ./... = 0; go vet ./... = 0; gofmt -l = пусто; non-ASCII в 8 изменённых .go = 0.
+  - go test ./cmd/agent-hq/ -run TestRunLoopParityWithPowerShellEngine -count=1 -v -> PASS (12/12).
+  - go test ./... -count=1 -> ok все 11 пакетов, EXIT=0.
+  - Реальный permission denied: parity 'strong_error_marker_in_stdout_dead-letters' и 'strong_error_marker_on_stderr_fails_interactive' -> dead-letter; unit TestClassificationMirrorsInboxEngine/interactive_strong_error_on_stderr = error marker in stderr; TestClassifyFailures/strong_error_marker_stdout|stderr = failed. PS-движок не менялся.
+SKILLS_LOADED: ["evidence-discipline", "windows-safety"]
+MCP_USED: ["sequential-thinking (post-implementation edge-case review)", "context7: not-used (no external library)", "hermes-atlas: not-needed"]
+COMPLIANCE: true
+STATUS: resolved
+================================================================================

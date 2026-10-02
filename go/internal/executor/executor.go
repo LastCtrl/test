@@ -35,14 +35,17 @@ const (
 // and is recorded only; it is not forwarded to the CLI (no verified flag).
 // Proxy is the optional http(s) proxy URL the M3 self-healing retry runs
 // through; it carries no credentials and is applied as HTTPS_PROXY/HTTP_PROXY
-// for this attempt only.
+// for this attempt only. Interactive marks a conversational run (source=run|reply
+// or from=telegram in inbox-engine.ps1): its stdout is the answer, so the error
+// marker is matched against stderr only and the STATUS marker is optional.
 type TaskSpec struct {
-	ID        string
-	Agent     string
-	Payload   string
-	Model     string
-	AttemptID string
-	Proxy     string
+	ID          string
+	Agent       string
+	Payload     string
+	Model       string
+	AttemptID   string
+	Proxy       string
+	Interactive bool
 }
 
 // Result is the outcome of one execution attempt. Stdout and Stderr are kept
@@ -63,27 +66,54 @@ type Executor interface {
 	Execute(ctx context.Context, spec TaskSpec) (Result, error)
 }
 
-// SuccessMarker and ErrorMarker mirror inbox-engine.ps1 exactly: a run is a
-// success only when the exit code is 0, stdout is non-empty, stdout carries an
-// explicit success marker and neither stream carries an error marker.
+// SuccessMarker and ErrorMarker mirror inbox-engine.ps1: a run is a success only
+// when the exit code is 0, stdout is non-empty, the scanned text carries no
+// STRONG error marker and a structured run additionally carries the explicit
+// success marker. A bare "Error:" and a bare "not found" are NOT failures: they
+// are common in content a worker merely reads.
 var (
 	SuccessMarker = regexp.MustCompile(`(?i)STATUS:\s*(resolved|done|completed)`)
-	ErrorMarker   = regexp.MustCompile(`(?i)(not found|permission denied|auto-rejecting|rejected permission|Error:)`)
+	ErrorMarker   = regexp.MustCompile(`(?i)(permission denied|auto-rejecting|rejected permission|command not found|not recognized|no such file|cannot find path)`)
+	// benignPatterns are stripped before the error marker is matched, exactly
+	// like Remove-BenignOutput in inbox-engine.ps1.
+	benignPatterns = []*regexp.Regexp{
+		regexp.MustCompile(`(?i)agent\s+"[^"]*"\s+not found\.\s*Falling back to default agent`),
+	}
 )
 
+// removeBenign strips the benign opencode warnings from text so they cannot trip
+// the error marker. Real errors are never in this list.
+func removeBenign(text string) string {
+	cleaned := text
+	for _, pattern := range benignPatterns {
+		cleaned = pattern.ReplaceAllString(cleaned, "")
+	}
+	return cleaned
+}
+
 // Classify applies the shared success rule to a finished process. The returned
-// string is a human-readable failure reason, empty on success.
-func Classify(exitCode int, stdout, stderr string) (Status, string) {
+// string is a human-readable failure reason, empty on success. requireMarker
+// mirrors the PowerShell flag: structured tasks set it (stdout+stderr scanned,
+// STATUS line required), interactive tasks clear it (stderr only scanned, STATUS
+// line optional).
+func Classify(exitCode int, stdout, stderr string, requireMarker bool) (Status, string) {
 	if exitCode != 0 {
 		return StatusFailed, fmt.Sprintf("exit code %d", exitCode)
 	}
 	if strings.TrimSpace(stdout) == "" {
 		return StatusFailed, "empty stdout"
 	}
-	if marker := ErrorMarker.FindString(stdout + "\n" + stderr); marker != "" {
-		return StatusFailed, "error marker in output: " + marker
+	scanned := stdout + "\n" + stderr
+	if !requireMarker {
+		scanned = stderr
 	}
-	if !SuccessMarker.MatchString(stdout) {
+	if marker := ErrorMarker.FindString(removeBenign(scanned)); marker != "" {
+		if requireMarker {
+			return StatusFailed, "error marker in output: " + marker
+		}
+		return StatusFailed, "error marker in stderr: " + marker
+	}
+	if requireMarker && !SuccessMarker.MatchString(stdout) {
 		return StatusFailed, "missing success marker " + SuccessMarker.String()
 	}
 	return StatusSuccess, ""

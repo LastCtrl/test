@@ -352,24 +352,47 @@ function Test-BenignTaskModeCase {
     return $all
 }
 
-# Narrowing the error marker must not hide REAL errors: an explicit Error: line
-# still fails an interactive run task.
+# A STRONG error (permission denied / command not found) on stderr must still
+# fail an interactive run task: narrowing the marker must not hide real errors.
 function Test-RunErrorCase {
+    param([string]$Root)
+    Set-CaseEnv -Root $Root -Mode "strongstderr"
+    $id = New-InboxMessage -Root $Root -From "telegram" -Source "run"
+    Invoke-PollerOnce
+
+    $all = $true
+    $outboxCount = Get-JsonFileCount (Join-Path $Root ".memory\outbox")
+    $all = (Write-Check "run+strong error: no outbox result" ($outboxCount -eq 0)) -and $all
+    $dlFile = Join-Path $Root (".memory\dead-letter\" + $id + ".json")
+    $dlExists = Test-PathLeaf $dlFile
+    $all = (Write-Check "run+strong error: dead-letter created" $dlExists) -and $all
+    if ($dlExists) {
+        $msg = Read-JsonFile $dlFile
+        $all = (Write-Check "run+strong error: reason is stderr error marker" ((([string]$msg.response) -match "error marker in stderr"))) -and $all
+    }
+    return $all
+}
+
+# FIX 1 regression: a successful interactive task whose STDOUT merely echoes
+# content containing "Error:" (e.g. read from CONTEXT-BUFFER.md) must SUCCEED.
+# The old broad marker sent such runs to dead-letter, so the owner never got the
+# answer. stdout content is the answer, never error diagnostics.
+function Test-RunErrorContentCase {
     param([string]$Root)
     Set-CaseEnv -Root $Root -Mode "errormarker"
     $id = New-InboxMessage -Root $Root -From "telegram" -Source "run"
     Invoke-PollerOnce
 
     $all = $true
-    $outboxCount = Get-JsonFileCount (Join-Path $Root ".memory\outbox")
-    $all = (Write-Check "run+error: no outbox result" ($outboxCount -eq 0)) -and $all
-    $dlFile = Join-Path $Root (".memory\dead-letter\" + $id + ".json")
-    $dlExists = Test-PathLeaf $dlFile
-    $all = (Write-Check "run+error: dead-letter created" $dlExists) -and $all
-    if ($dlExists) {
-        $msg = Read-JsonFile $dlFile
-        $all = (Write-Check "run+error: real error marker kept" ((([string]$msg.response) -match "error marker"))) -and $all
+    $outboxFile = Join-Path $Root (".memory\outbox\" + $id + ".json")
+    $outboxExists = Test-PathLeaf $outboxFile
+    $all = (Write-Check "run+Error: in stdout content -> outbox done" $outboxExists) -and $all
+    if ($outboxExists) {
+        $msg = Read-JsonFile $outboxFile
+        $all = (Write-Check "run+Error: in stdout content -> status = done" ($msg.status -eq "done")) -and $all
     }
+    $dlCount = Get-JsonFileCount (Join-Path $Root ".memory\dead-letter")
+    $all = (Write-Check "run+Error: in stdout content -> dead-letter empty" ($dlCount -eq 0)) -and $all
     return $all
 }
 
@@ -425,14 +448,15 @@ Invoke-Case "b) nomarker -> dead-letter (missing success marker)"    { param($r)
 Invoke-Case "c) exit1 -> dead-letter (exit code)"                    { param($r) Test-FailureCase -Root $r -Mode "exit1"       -ReasonPattern "exit code 1(?![0-9])" }
 Invoke-Case "d) empty -> dead-letter (empty stdout)"                 { param($r) Test-FailureCase -Root $r -Mode "empty"       -ReasonPattern "empty stdout" }
 Invoke-Case "e) stderr-only -> dead-letter (empty stdout)"           { param($r) Test-FailureCase -Root $r -Mode "stderr-only" -ReasonPattern "empty stdout" }
-Invoke-Case "f) errormarker -> dead-letter (error marker)"           { param($r) Test-FailureCase -Root $r -Mode "errormarker" -ReasonPattern "error marker" }
+Invoke-Case "f) strong error marker -> dead-letter (error marker)"    { param($r) Test-FailureCase -Root $r -Mode "strongerror" -ReasonPattern "error marker" }
 Invoke-Case "g) timeout -> dead-letter (timeout/124)"                { param($r) Test-FailureCase -Root $r -Mode "timeout"     -ReasonPattern "124|TIMEOUT" -JobTimeout "3" }
 Invoke-Case "h) leak -> redacted in dead-letter"                     { param($r) Test-RedactionCase -Root $r }
 Invoke-Case "i) redaction regex -> go-to code kept, secrets masked"  { Test-RedactionRegexCase }
 Invoke-Case "j) env correlation -> task/attempt ids exported to worker" { param($r) Test-EnvCorrelationCase -Root $r }
 Invoke-Case "k) benign opencode warning + /run -> outbox done"          { param($r) Test-BenignRunCase -Root $r }
 Invoke-Case "l) benign stdout w/o marker in task mode -> dead-letter"   { param($r) Test-BenignTaskModeCase -Root $r }
-Invoke-Case "m) Error: in /run mode -> dead-letter (real error kept)"   { param($r) Test-RunErrorCase -Root $r }
+Invoke-Case "m) permission denied on /run stderr -> dead-letter (real error kept)" { param($r) Test-RunErrorCase -Root $r }
+Invoke-Case "n) Error: in /run stdout content -> outbox done (FIX 1)"  { param($r) Test-RunErrorContentCase -Root $r }
 
 $total = $script:CasePass + $script:CaseFail
 Write-Host ""

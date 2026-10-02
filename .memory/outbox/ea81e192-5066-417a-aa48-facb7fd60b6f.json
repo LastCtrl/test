@@ -1,0 +1,13 @@
+{
+  "id": "ea81e192-5066-417a-aa48-facb7fd60b6f",
+  "from": "telegram",
+  "to": "backend",
+  "type": "result",
+  "priority": "normal",
+  "payload": "жду ответ",
+  "status": "done",
+  "startedAt": "2026-09-25T11:31:00",
+  "finishedAt": "2026-09-25T11:31:18",
+  "response": "Ответ: я на связи. Задача «жду ответ» (id ea81e192) принята и обработана. Время сервера: 2026-09-25 11:31:18 (local). Все шаги пайплайна отработаны.\n\nSTATUS: resolved",
+  "evidence": ".memory/evidence/ea81e192-5066-417a-aa48-facb7fd60b6f.json"
+}

@@ -10,7 +10,12 @@
 #   stderr-only  -> stderr only, no stdout, exit 0
 #   nomarker     -> stdout without a success marker, exit 0
 #   benign-run   -> benign opencode warning on stderr + stdout answer, no marker, exit 0
-#   errormarker  -> stdout with an error marker, exit 0
+#   errormarker  -> stdout with a BROAD 'Error:' line (e.g. content the agent read),
+#                   exit 0. For an interactive run this must SUCCEED (FIX 1).
+#   strongerror  -> stdout with a STRONG marker ('permission denied'), exit 0
+#                   (structured bus task must still go to dead-letter).
+#   strongstderr -> stderr with a STRONG marker, stdout answer, exit 0
+#                   (interactive run must still go to dead-letter).
 #   leak         -> stdout with fake secrets but no success marker, exit 0 (must be redacted in dead-letter)
 #   slow         -> sleeps FAKE_OPENCODE_DELAY_MS (default 1500) then success, exit 0.
 #                   When FAKE_OPENCODE_TRACK_DIR is set, every invocation drops one
@@ -57,6 +62,18 @@ switch ($mode) {
     }
     "errormarker" {
         Write-Output "STATUS: resolved`nError: something broke"
+        exit 0
+    }
+    "strongerror" {
+        Write-Output "STATUS: resolved`npermission denied: C:\secret"
+        exit 0
+    }
+    "strongstderr" {
+        # Write-Error lands on the PowerShell error stream, which the poller's
+        # `2>$errFile` redirect captures for an in-process fake CLI (a raw
+        # [Console]::Error write would bypass it; the real opencode.exe cannot).
+        Write-Error "permission denied: C:\secret"
+        Write-Output "STATUS: resolved"
         exit 0
     }
     "leak" {

@@ -106,9 +106,9 @@ STATUS: resolved
 
 | Инструмент | Когда ОБЯЗАТЕЛЬНО |
 |------------|-------------------|
-| `context7_resolve-library-id` + `context7_query-docs` | Любая внешняя библиотека/фреймворк (exceljs, fastapi, react, 1c-bsl, postgres, docker и т.д.) |
-| `hermes-atlas-mcp_search_projects` + `hermes-atlas-mcp_get_project` | Нужен новый скилл/тул, которого нет в `.agents/skills/` |
-| `sequential-thinking_sequentialthinking` | Задача > 3 шагов, архитектура, дебаг непонятного, планирование |
+| `context7_resolve-library-id` + `context7_query-docs` | Любая внешняя библиотека/фреймворк (exceljs, fastapi, react, 1c-bsl, postgres, docker и т.д.). Если вернёт `fetch failed` — см. `.agents/docs/mcp-status.md` (глобальный proxy-env ломает undici; фикс — env-override в записи MCP) |
+| `sequential-thinking_sequentialthinking` | Задача > 3 шагов, архитектура, дебаг непонятного, планирование. По делу, НЕ «для галочки» |
+| `hermes-atlas-mcp_*` | ТОЛЬКО если ищем решение в экосистеме **Hermes Agent (Nous Research)**. Для задач 1С/agent-hq бесполезен — НЕ обязателен |
 
 **Superpowers (obra) — 4 скилла SDLC фаз:**
 - `superpowers-spec` — фаза specification (requirements, user stories, acceptance criteria)
@@ -178,10 +178,12 @@ STATUS: resolved
 
 ## 8. MCP
 
-- context7 — актуальная документация библиотек (вместо памяти модели).
-- hermes-atlas-mcp — каталог скиллов/тулов Hermes Atlas.
-- sequential-thinking — структурированное планирование сложных задач.
-- Конфигурация: секция "mcp" в opencode.json.
+- context7 — актуальная документация библиотек (вместо памяти модели). Сетевой; при `fetch failed` — см. `.agents/docs/mcp-status.md`.
+- hermes-atlas-mcp — каталог экосистемы Hermes Agent (Nous Research); для нас опционален.
+- sequential-thinking — локальный, структурированное планирование; по делу, не «для галочки».
+- 1С-MCP (`bsl-platform-help`, `1c-naparnik`) — НЕ развёрнуты; 1С обслуживается офлайн-скиллами (`1c-config-index`, `1c-query-validate`, `1c-bsl-validate`, `1c-bsp-api`, …).
+- Конфигурация: секция "mcp" в opencode.json. Диагностика и статус: `.agents/docs/mcp-status.md`.
+- Health: `mcp-health.ps1` (проба обёрток и backend-доступности), встроен в `health-check.ps1`.
 
 ## 9. Команды
 

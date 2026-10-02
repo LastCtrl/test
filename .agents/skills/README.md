@@ -56,7 +56,6 @@
 | hermes-atlas-mcp_search_projects | Поиск готовых скиллов/тулов в Hermes Atlas |
 | hermes-atlas-mcp_get_project | Детали проекта из Atlas |
 | sequential-thinking_sequentialthinking | Структурированное планирование сложных задач |
-| serena_* | Serena инструменты (code navigation, edit, search) |
 
 ---
 

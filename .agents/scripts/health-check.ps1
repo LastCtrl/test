@@ -3,6 +3,7 @@
 $ErrorActionPreference = "Continue"
 $root = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
 $hasFail = $false
+$McpFail = 0
 
 Write-Host "=== agent-hq Health Check ===" -ForegroundColor Cyan
 Write-Host "Root: $root" -ForegroundColor Gray
@@ -137,8 +138,42 @@ if (Test-Path $complianceScript) {
     Write-Host "[WARN] Compliance: compliance-gate.ps1 not found" -ForegroundColor Yellow
 }
 
+# --- 8. MCP health (wrappers + backends, non-fatal infrastructure) ---
+Write-Host "" -ForegroundColor Gray
+Write-Host "--- MCP Health ---" -ForegroundColor Cyan
+$mcpHealthScript = Join-Path $PSScriptRoot "mcp-health.ps1"
+if (Test-Path $mcpHealthScript) {
+    try {
+        $mcpRaw = & $mcpHealthScript -Json 2>$null
+        $mcp = $null
+        try { $mcp = ($mcpRaw | Out-String) | ConvertFrom-Json } catch { $mcp = $null }
+        if ($null -ne $mcp -and $null -ne $mcp.summary) {
+            $mcpFail = [int]$mcp.summary.fail
+            $mcpWarn = [int]$mcp.summary.warn
+            $mcpPass = [int]$mcp.summary.pass
+            if ($mcpFail -gt 0) {
+                $McpFail = $mcpFail
+                Write-Host "[WARN] MCP: $mcpFail failing, $mcpWarn warn, $mcpPass pass (non-fatal, see mcp-health.ps1)" -ForegroundColor Yellow
+            } elseif ($mcpWarn -gt 0) {
+                Write-Host "[WARN] MCP: $mcpWarn warn, $mcpPass pass" -ForegroundColor Yellow
+            } else {
+                Write-Host "[OK] MCP: $mcpPass pass" -ForegroundColor Green
+            }
+        } else {
+            Write-Host "[WARN] MCP: cannot parse mcp-health output" -ForegroundColor Yellow
+        }
+    } catch {
+        Write-Host "[WARN] MCP: script error - $($_.Exception.Message)" -ForegroundColor Yellow
+    }
+} else {
+    Write-Host "[WARN] MCP: mcp-health.ps1 not found" -ForegroundColor Yellow
+}
+
 # --- Итог ---
 Write-Host "" -ForegroundColor Gray
+if ($McpFail -gt 0) {
+    Write-Host "[WARN] MCP: $McpFail failing (see mcp-health)" -ForegroundColor Yellow
+}
 if ($hasFail) {
     Write-Host "HEALTH: FAIL" -ForegroundColor Red
     exit 1

@@ -266,9 +266,13 @@ function Test-ScriptSyntax {
 # --- Result definition (DRY). Structured bus tasks: exit 0 + success marker +
 # clean output. Interactive Telegram tasks (source=run/reply or from=telegram):
 # exit 0 + non-empty stdout, marker optional because the answer is the result.
+# Error markers are STRONG only: a bare 'Error:' is far too common in content an
+# agent merely READS (e.g. 'Error:' inside CONTEXT-BUFFER.md) and must not fail a
+# good run. Interactive tasks scan STDERR only - their stdout IS the answer;
+# structured bus tasks keep the strict scan over stdout+stderr.
 # Benign opencode warnings are stripped before the error marker is matched.
 $script:SuccessMarker = '(?i)STATUS:\s*(resolved|done|completed)'
-$script:ErrorMarker = '(?i)(permission denied|auto-rejecting|rejected permission|Error:|command not found|not recognized|no such file|cannot find path)'
+$script:ErrorMarker = '(?i)(permission denied|auto-rejecting|rejected permission|command not found|not recognized|no such file|cannot find path)'
 $script:BenignOutputPatterns = @(
     '(?i)agent\s+"[^"]*"\s+not found\.\s*Falling back to default agent'
 )
@@ -525,16 +529,27 @@ function Remove-BenignOutput {
     return $clean
 }
 
-# Success ONLY when: exit code == 0 AND stdout has the explicit success marker AND stderr has no error markers.
-# A non-empty error text (stderr) or unmatched stdout is NOT success.
+# Text the error marker is matched against. Interactive Telegram tasks scan
+# stderr only (their stdout is the answer itself, not diagnostics); structured
+# bus tasks scan the whole captured output. Benign warnings are stripped.
+function Get-ErrorScanText {
+    param($attempt, [switch]$RequireMarker)
+    if ($RequireMarker) {
+        return (Remove-BenignOutput "$($attempt.stdout)`n$($attempt.stderr)")
+    }
+    return (Remove-BenignOutput "$($attempt.stderr)")
+}
+
+# Success ONLY when: exit code == 0 AND stdout is non-empty AND the scanned text
+# carries no STRONG error marker. Structured bus tasks additionally require the
+# explicit success marker. Interactive tasks never treat stdout CONTENT as an
+# error: a benign line the agent merely read must not fail a resolved run.
 function Test-OpencodeSuccess {
     param($attempt, [switch]$RequireMarker)
     if ($null -eq $attempt) { return $false }
     if ($attempt.exitCode -ne 0) { return $false }
     if ([string]::IsNullOrWhiteSpace($attempt.stdout)) { return $false }
-    # Error markers anywhere in the captured output (stdout or stderr) mean failure.
-    $combined = Remove-BenignOutput "$($attempt.stdout)`n$($attempt.stderr)"
-    if ($combined -match $script:ErrorMarker) { return $false }
+    if ((Get-ErrorScanText -attempt $attempt -RequireMarker:$RequireMarker) -match $script:ErrorMarker) { return $false }
     if ($RequireMarker -and $attempt.stdout -notmatch $script:SuccessMarker) { return $false }
     return $true
 }
@@ -544,8 +559,11 @@ function Get-AttemptFailureReason {
     if ($null -eq $attempt) { return "no result object" }
     if ($attempt.exitCode -ne 0) { return "exit code $($attempt.exitCode)" }
     if ([string]::IsNullOrWhiteSpace($attempt.stdout)) { return "empty stdout" }
-    $combined = Remove-BenignOutput "$($attempt.stdout)`n$($attempt.stderr)"
-    if ($combined -match $script:ErrorMarker) { return "error marker in output: '$($matches[0])'" }
+    $scanned = Get-ErrorScanText -attempt $attempt -RequireMarker:$RequireMarker
+    if ($scanned -match $script:ErrorMarker) {
+        $where = if ($RequireMarker) { "output" } else { "stderr" }
+        return "error marker in ${where}: '$($matches[0])'"
+    }
     if ($RequireMarker -and $attempt.stdout -notmatch $script:SuccessMarker) { return "missing success marker '$($script:SuccessMarker)'" }
     return "unknown reason"
 }

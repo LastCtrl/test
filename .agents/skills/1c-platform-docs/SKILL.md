@@ -3,6 +3,8 @@ name: 1c-platform-docs
 description: "MCP-сервер bsl-platform-help для доступа к документации API платформы 1С (keyword/semantic/hybrid поиск). Применять для проверки существования встроенных методов/свойств, получения сигнатур и членов типов."
 ---
 
+> ⚠️ **MCP-сервер не развёрнут в этом окружении.** Используйте офлайн-скиллы: `1c-config-index`, `1c-query-validate`, `1c-bsl-validate`, `1c-bsp-api`. См. `.agents/docs/mcp-status.md`.
+
 # 1C:Enterprise — Документация платформы 1С (MCP)
 
 ## Описание

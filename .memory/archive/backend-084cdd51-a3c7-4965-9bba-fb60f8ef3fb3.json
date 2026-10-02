@@ -1,0 +1,11 @@
+{
+  "id": "084cdd51-a3c7-4965-9bba-fb60f8ef3fb3",
+  "from": "telegram",
+  "to": "backend",
+  "type": "task",
+  "priority": "normal",
+  "source": "reply",
+  "payload": "напиши сколько сейчас времени",
+  "created": "2026-09-25T11:20:08",
+  "created_at": "2026-09-25T11:20:08"
+}

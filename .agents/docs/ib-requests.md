@@ -45,3 +45,27 @@
   [Environment]::SetEnvironmentVariable('HTTPS_PROXY','http://127.0.0.1:3128','User')
   [Environment]::SetEnvironmentVariable('NO_PROXY','localhost,127.0.0.1,10.*,192.168.*,*.minsk.energo.net','User')
   ```
+
+## IB-5b. Диагностика opencode (read-only)
+- **Назначение:** автономный read-only скрипт для ПК без репозитория agent-hq — понять, почему opencode не имеет доступа к провайдеру через корпоративный NTLM-прокси cntlm (127.0.0.1:3128).
+- **Файл:** `.agents/scripts/opencode-netcheck.ps1` (self-contained, PowerShell 5.1). Тесты: `tests/test-opencode-netcheck.ps1` (offline, без интернета и без живого cntlm).
+- **Что проверяет (ничего не меняет, не запускает, не устанавливает):**
+  1. owned-процессы cntlm (Name=cntlm.exe, путь под `-CntlmDir`) через `Get-CimInstance Win32_Process` — PID/путь.
+  2. TCP-probe прокси-порта `-ProxyHost`:`-ProxyPort` (UP/DOWN).
+  3. Файлы краша `*.stackdump` в `-CntlmDir` (признак падения cntlm).
+  4. Env `HTTP_PROXY`/`HTTPS_PROXY`/`NO_PROXY` из процесса И из пользовательской среды (`GetEnvironmentVariable(...,'User')`, read-only) + отметка расхождения.
+  5. Наличие `opencode` в PATH (`Get-Command`) и `opencode --version` (без сети); отсутствие — отдельный статус, не фатально.
+  6. HTTP-запрос на `-ProviderUrl` (default `https://api.openai.com/v1/models`) ЧЕРЕЗ прокси `http://127.0.0.1:3128` с заведомо неверным Bearer-токеном (собирается в рантайме). Классификация: 401/403 → сеть работает; тело содержит `unsupported_country_region_territory` → геоблок; timeout/refused/cannot connect → сеть через прокси не работает.
+  7. DNS-резолв хоста из `-ProviderUrl` (`[System.Net.Dns]::GetHostAddresses`).
+- **Параметры:** `-ProviderUrl`, `-ProxyHost` (127.0.0.1), `-ProxyPort` (3128), `-CntlmDir` (C:\tools\cntlm), `-TimeoutSec` (15), `-Json` (строгий JSON).
+- **Коды возврата:**
+  - `0` — всё ок (сеть через прокси работает);
+  - `2` — прокси DOWN (сетевая проверка не выполняется);
+  - `3` — порт жив, но сеть через прокси не работает (timeout/refused);
+  - `4` — геоблок (`unsupported_country_region_territory`; прокси бессилен);
+  - `5` — opencode не найден в PATH;
+  - `1` — ошибка использования (невалидные `-ProviderUrl`/`-ProxyPort`/`-TimeoutSec`).
+- **Приоритет кодов:** 2 > 3 > 4 > 5 > 0.
+- **JSON-поля:** `status`, `verdict`, `exit_code`, `proxy` (host/port/up/owned_processes/crash_dumps), `https` (proxy_url/reachable/status_code), `env` (process/user/mismatch), `opencode` (found/path/version), `provider` (url/host/status_code/outcome/message), `dns` (host/addresses/error).
+- **Вызов на чужом ПК:** `powershell -ExecutionPolicy Bypass -File opencode-netcheck.ps1` (человекочитаемый отчёт) или `... -Json` (машинный разбор).
+- **Безопасность:** только чтение; никаких записей в реестр/env, никаких Start-Process/Stop-Process, никаких установок, реальные токены не используются.

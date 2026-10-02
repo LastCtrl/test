@@ -5,16 +5,32 @@
     "context7": {
       "type": "local",
       "command": [
-        "context7-mcp.cmd"
+        "D:\\Тест\\agent-hq\\.agents\\scripts\\mcp-context7.cmd"
       ],
-      "enabled": true
+      "enabled": true,
+      "environment": {
+        "HTTP_PROXY": "",
+        "HTTPS_PROXY": "",
+        "NODE_USE_ENV_PROXY": "",
+        "GLOBAL_AGENT_HTTP_PROXY": "",
+        "GLOBAL_AGENT_HTTPS_PROXY": "",
+        "NO_PROXY": "*"
+      }
     },
     "hermes-atlas-mcp": {
       "type": "local",
       "command": [
-        "hermes-atlas-mcp.cmd"
+        "D:\\Тест\\agent-hq\\.agents\\scripts\\mcp-hermes-atlas.cmd"
       ],
-      "enabled": true
+      "enabled": true,
+      "environment": {
+        "HTTP_PROXY": "",
+        "HTTPS_PROXY": "",
+        "NODE_USE_ENV_PROXY": "",
+        "GLOBAL_AGENT_HTTP_PROXY": "",
+        "GLOBAL_AGENT_HTTPS_PROXY": "",
+        "NO_PROXY": "*"
+      }
     },
     "sequential-thinking": {
       "type": "local",
@@ -22,25 +38,6 @@
         "mcp-server-sequential-thinking.cmd"
       ],
       "enabled": true
-    },
-    "serena": {
-      "type": "local",
-      "command": [
-        "uvx",
-        "--from",
-        "git+https://github.com/oraios/serena",
-        "serena",
-        "start-mcp-server",
-        "--project-from-cwd"
-      ],
-      "enabled": false,
-      "timeout": 30000,
-      "cwd": ".",
-      "environment": {
-        "HTTP_PROXY": "http://127.0.0.1:3128",
-        "HTTPS_PROXY": "http://127.0.0.1:3128",
-        "NO_PROXY": "localhost,127.0.0.1,10.*,192.168.*,*.minsk.energo.net"
-      }
     }
   },
   "command": {

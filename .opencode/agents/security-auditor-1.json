@@ -1,7 +1,8 @@
 {
     "name":  "security-auditor-1",
     "description":  "Security Auditor (copy 1) — OWASP, уязвимости, поиск secrets для параллельной работы.",
-    "model":  "opencode/nemotron-3.5-lightning-free",
+    "model":  "openrouter/cohere/north-mini-code:free",
+    "reasoningEffort":  "high",
     "mode":  "subagent",
     "temperature":  0.0,
     "permissions":  [

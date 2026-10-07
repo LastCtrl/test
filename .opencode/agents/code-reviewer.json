@@ -1,7 +1,8 @@
 {
     "name":  "code-reviewer",
     "description":  "Code Reviewer — code review, best practices, clean code, антипаттерны. Только чтение.",
-    "model":  "opencode/big-pickle",
+    "model":  "openrouter/thinkingmachines/inkling:free",
+    "reasoningEffort":  "high",
     "mode":  "subagent",
     "temperature":  0.1,
     "permissions":  [

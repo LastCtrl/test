@@ -2,6 +2,7 @@
     "name":  "dev-2",
     "description":  "Developer #2 — альтернативный разработчик. Предлагает другие подходы к решению.",
     "model":  "opencode-go/deepseek-v4.1-flash",
+    "reasoningEffort":  "low",
     "mode":  "subagent",
     "temperature":  0.3,
     "permissions":  [

@@ -1,7 +1,8 @@
 {
     "name":  "code-reviewer-1",
     "description":  "Code Reviewer (copy 1) — code review, best practices, clean code для параллельной работы.",
-    "model":  "opencode/big-pickle",
+    "model":  "openrouter/nvidia/nemotron-3-super-120b-a12b:free",
+    "reasoningEffort":  "high",
     "mode":  "subagent",
     "temperature":  0.1,
     "permissions":  [

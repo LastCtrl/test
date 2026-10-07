@@ -2,6 +2,7 @@
     "name":  "data-engineer",
     "description":  "Data Engineer — ETL, data pipelines, аналитика, DWH, Big Data.",
     "model":  "opencode-go/deepseek-v4.1-flash",
+    "reasoningEffort":  "low",
     "mode":  "subagent",
     "temperature":  0.2,
     "permissions":  [

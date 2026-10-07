@@ -2,6 +2,7 @@
     "name":  "team-lead-2",
     "description":  "Team Lead (copy 2) — оркестратор для параллельной оркестрации.",
     "model":  "opencode-go/deepseek-v4.1-flash",
+    "reasoningEffort":  "high",
     "mode":  "subagent",
     "temperature":  0.1,
     "permissions":  [

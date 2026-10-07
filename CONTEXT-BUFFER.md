@@ -6174,3 +6174,27 @@ MCP_USED: ["context7: not used", "hermes-atlas: not used"]
 COMPLIANCE: true
 STATUS: resolved
 ================================================================================
+================================================================================
+[2026-10-07 15:16] dev-3 -> team-lead:
+TYPE: update | PRIORITY: medium
+Project: agent-hq
+CONTENT: R1 фичи "Live Supervision + Model Registry" - DONE. Создан .agents/scripts/model-registry.ps1 (731 строка, ASCII-only, CRLF+UTF-8 BOM, Parser::ParseFile = 0 ошибок).
+  Функционал: -Refresh (discovery free-моделей openrouter /api/v1/models через curl.exe с env-прокси, фильтр pricing.prompt==0 && completion==0, probe POST /chat/completions с PONG, классификация OK/RATE_LIMIT/DEAD/TIMEOUT, TTL-кеш 60мин для OK, cap 15 проб/прогон, пауза 1-2с, атомарная запись .memory/model-registry.json); -List [-Sort score|speed|availability|quality] [-FreeOnly] [-Json] [-Top N]; -Score -TaskType code|review|qa|analysis (композит availability+speed+quality+task_fit-instability, веса-константы в шапке: 0.30/0.25/0.25/0.20/0.40).
+  Поля quality берётся из .memory/ratings.jsonl (средний grade по модели, если встречается); speed/task_fit - заготовки (null), task_fit считается live по эвристике id.
+  Безопасность: ключ только из env OPENROUTER_API_KEY; для curl НЕ в argv, а через временный --config-файл (header Authorization), удаляется в finally (соблюдён §11 AGENTS.md). Все temp-файлы удаляются. Секрет нигде не напечатан/не залогирован.
+  Реальный прогон (get-secret openrouter-api-key -AsEnv OPENROUTER_API_KEY; model-registry.ps1 -Refresh): free models=20, probed=15, OK=10, RATE_LIMIT=2, TIMEOUT=0, DEAD=3. Повторный -Refresh: probed=10 (fresh-cached OK=10, deferred=0), т.е. TTL работает. -List -Sort speed / -Json / -Score -TaskType review - вывод корректный. Edge-cases: нет ключа exit=2, нет реестра exit=4, -Score без TaskType exit=1, неверный -Sort exit=1. Temp-файлов не осталось. model-router.ps1 НЕ изменён (git diff пуст).
+SKILLS_LOADED: ["windows-safety", "evidence-discipline"]
+MCP_USED: ["sequential-thinking", "context7: not-needed (no external library)", "hermes-atlas: not-needed"]
+COMPLIANCE: true
+STATUS: resolved
+================================================================================
+================================================================================
+[2026-10-07 15:45] qa-engineer -> team-lead:
+TYPE: update | PRIORITY: medium
+Project: agent-hq
+CONTENT: ПРИЁМКА R1 model-registry.ps1 — ВЕРДИКТ: PASS (с minor-замечаниями, заведены в KNOWLEDGE-BASE.md как BUG-054). Проверено фактами: (1) Parser::ParseFile=0 ошибок; BOM=True, non-ASCII bytes=0, CR=LF=735, lone-LF=0 (CRLF+BOM+ASCII подтверждён). (2) Реальный -Refresh (get-secret openrouter-api-key -AsEnv в одном вызове): free=20, probed=7, fresh-cached=13, deferred=0, OK=0→RATE_LIMIT=3, DEAD=4; повторный прогон: OK=1, RATE_LIMIT=2, DEAD=4; реестр валиден (ConvertFrom-Json OK, generated_at обновляется, 20 моделей × 12 полей, MISSING_FIELDS=0). (3) TTL подтверждён дважды: 13 OK-моделей не перепробовались (probed_at остался 15:12–15:14 после прогонов 15:18/15:20). (4) -Sort speed|score|availability|quality работают; -Json парсится ConvertFrom-Json (count=3, инвариантные числа); -Score -TaskType review: task_fit=0.8 по ключевым словам, композит сходится (0.30·1+0.25·0.98+0.25·0.5+0.20·0.8=0.83 ✓). (5) Edge: без ключа exit=2 (сообщение ясное, sk-or в выводе нет); пустой -Root → exit=4 «model-registry.json is empty or missing»; -Sort bogus → exit=1 (ValidateSet); -Score без TaskType → exit=1; -TaskType bogus → exit=1. (6) Безопасность: ключ только через --config-файл (model-registry.ps1:281,284), не в argv; temp чистятся в finally (:246,:303,:162); в %TEMP% остатков скрипта нет (v8*.tmp — node-хост сессии, залочены другим процессом, JS-содержимое, секрет-маркеров нет); curl-процессов 0; Start-Process/Start-Job в коде 0; скан sk-or/Bearer: скрипт=0, реестр=0. get-secret.ps1:65 — только Process-скоуп (User/Machine чисто). (7) model-router.ps1 diff пуст; git status: только CONTEXT-BUFFER.md (M) + model-registry.ps1 + model-registry.json (??). Дефекты (все minor): quality-join мёртв (ratings.jsonl имена не пересекаются с openrouter-id, overlap=0); -Sort speed ставит DEAD (fast-fail 154ms) выше живых; таблица с культурной запятой (косметика); гетеврики 429/"error" теоретически misclassify; probed_at без TZ; fresh_cached при дублях id. NOT ENOUGH EVIDENCE: -Force (обход TTL) — код проверен (:473), не запускался (экономия квоты). Замечание среды: хост bash-инструмента переживает tool-вызовы → Process-env с ключем наследуется новыми вызовами от долгоживущего предка; удаление Remove-Item Env в дочернем процессе НЕ расшатывает предка (проверено: STILL_SET=True в PID 17508 после очистки в 7056). Ключ живёт в дереве процессов сессии до её завершения (User/Machine — чисто, проверено). Не дефект скрипта; таймбокс §11 «env живёт до конца вызова» фактически = «до конца сессии хоста». Самоотчёт dev-3 сверен с диском — соответствует (плюс 1 восстановившаяся модель: OK 13→14).
+SKILLS_LOADED: ["evidence-discipline (обязательный, прочитан по ТЗ)"]
+MCP_USED: ["context7: not-used (нет внешних библиотек — PowerShell/curl только)", "sequential-thinking: not-used (линейный чек-лист приёмки)", "hermes-atlas: not-needed"]
+COMPLIANCE: true
+STATUS: resolved
+================================================================================

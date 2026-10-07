@@ -2,6 +2,7 @@
     "name":  "skill-surgeon",
     "description":  "Skill Surgeon — ищет, скачивает и создаёт скиллы для любых технологий.",
     "model":  "opencode-go/deepseek-v4.1-flash",
+    "reasoningEffort":  "low",
     "mode":  "subagent",
     "temperature":  0.2,
     "permissions":  [

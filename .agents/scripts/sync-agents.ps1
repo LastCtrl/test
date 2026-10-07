@@ -155,6 +155,7 @@ function ConvertTo-AgentJson {
         [string]$mode,
         [string]$model,
         $temperature,
+        [string]$reasoningEffort,
         [hashtable]$permission,
         [string]$prompt
     )
@@ -173,6 +174,10 @@ function ConvertTo-AgentJson {
 
     if ($null -ne $temperature) {
         [void]$sb.AppendLine('        ' + '"temperature": ' + ([double]$temperature).ToString('G', [System.Globalization.CultureInfo]::InvariantCulture) + ',')
+    }
+
+    if (-not [string]::IsNullOrWhiteSpace($reasoningEffort)) {
+        [void]$sb.AppendLine('        ' + '"reasoningEffort": ' + (ConvertTo-JsonString $reasoningEffort) + ',')
     }
 
     # permission
@@ -587,6 +592,7 @@ foreach ($file in $jsonFiles) {
         mode        = if ($data.mode) { [string]$data.mode } else { "subagent" }
         model       = if ($data.model) { [string]$data.model } else { "" }
         temperature = if ($null -ne $data.temperature) { [double]$data.temperature } else { $null }
+        reasoningEffort = if ($data.reasoningEffort) { [string]$data.reasoningEffort } else { $null }
         permission  = $perm
         prompt      = "{file:.opencode/agents/prompts/$name.txt}"
     }
@@ -607,7 +613,7 @@ if ($DryRun) {
     Write-Host '  "agent": {'
     for ($i = 0; $i -lt $agentEntries.Count; $i++) {
         $e = $agentEntries[$i]
-        $jsonBlock = ConvertTo-AgentJson -name $e.name -description $e.description -mode $e.mode -model $e.model -temperature $e.temperature -permission $e.permission -prompt $e.prompt
+        $jsonBlock = ConvertTo-AgentJson -name $e.name -description $e.description -mode $e.mode -model $e.model -temperature $e.temperature -reasoningEffort $e.reasoningEffort -permission $e.permission -prompt $e.prompt
         $comma = if ($i -lt $agentEntries.Count - 1) { ',' } else { '' }
         Write-Host ($jsonBlock + $comma)
     }
@@ -653,7 +659,7 @@ $agentLines = [System.Collections.ArrayList]::new()
 [void]$agentLines.Add('  "agent": {')
 for ($i = 0; $i -lt $agentEntries.Count; $i++) {
     $e = $agentEntries[$i]
-    $jsonBlock = ConvertTo-AgentJson -name $e.name -description $e.description -mode $e.mode -model $e.model -temperature $e.temperature -permission $e.permission -prompt $e.prompt
+    $jsonBlock = ConvertTo-AgentJson -name $e.name -description $e.description -mode $e.mode -model $e.model -temperature $e.temperature -reasoningEffort $e.reasoningEffort -permission $e.permission -prompt $e.prompt
     $comma = if ($i -lt $agentEntries.Count - 1) { ',' } else { '' }
     [void]$agentLines.Add($jsonBlock + $comma)
 }

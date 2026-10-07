@@ -2,6 +2,7 @@
     "name":  "integration-specialist",
     "description":  "Integration Specialist — REST/SOAP/gRPC, Kafka/RabbitMQ, webhooks, API Gateway.",
     "model":  "opencode-go/deepseek-v4.1-flash",
+    "reasoningEffort":  "low",
     "mode":  "subagent",
     "temperature":  0.2,
     "permissions":  [

@@ -2,6 +2,7 @@
     "name":  "dev-1",
     "description":  "Developer #1 — универсальный разработчик. Пишет код на любых языках.",
     "model":  "opencode-go/deepseek-v4.1-flash",
+    "reasoningEffort":  "low",
     "mode":  "subagent",
     "temperature":  0.2,
     "permissions":  [

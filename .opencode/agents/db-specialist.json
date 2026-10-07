@@ -2,6 +2,7 @@
     "name":  "db-specialist",
     "description":  "DB Specialist — SQL/NoSQL, ORM, миграции, оптимизация запросов, проектирование схем.",
     "model":  "opencode-go/deepseek-v4.1-flash",
+    "reasoningEffort":  "low",
     "mode":  "subagent",
     "temperature":  0.2,
     "permissions":  [

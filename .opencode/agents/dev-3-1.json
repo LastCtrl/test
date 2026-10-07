@@ -2,6 +2,7 @@
     "name":  "dev-3-1",
     "description":  "Developer #3 (copy 1) — надёжный разработчик для параллельной работы.",
     "model":  "opencode-go/deepseek-v4.1-flash",
+    "reasoningEffort":  "low",
     "mode":  "subagent",
     "temperature":  0.2,
     "permissions":  [

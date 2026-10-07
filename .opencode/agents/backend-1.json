@@ -2,6 +2,7 @@
     "name":  "backend-1",
     "description":  "Backend Specialist (copy 1) — REST/GraphQL API, бизнес-логика, middleware, авторизация для параллельной работы.",
     "model":  "opencode-go/deepseek-v4.1-flash",
+    "reasoningEffort":  "low",
     "mode":  "subagent",
     "temperature":  0.2,
     "permissions":  [

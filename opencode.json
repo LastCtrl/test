@@ -68,6 +68,7 @@
         "mode": "subagent",
         "model": "opencode-go/deepseek-v4.1-flash",
         "temperature": 0.2,
+        "reasoningEffort": "low",
         "permission": {
             "bash": {
                 "*": "allow",
@@ -128,6 +129,7 @@
         "mode": "subagent",
         "model": "opencode-go/deepseek-v4.1-flash",
         "temperature": 0.2,
+        "reasoningEffort": "low",
         "permission": {
             "bash": {
                 "*": "allow",
@@ -186,8 +188,9 @@
     "code-reviewer-1": {
         "description": "Code Reviewer (copy 1) — code review, best practices, clean code для параллельной работы.",
         "mode": "subagent",
-        "model": "opencode/big-pickle",
+        "model": "openrouter/nvidia/nemotron-3-super-120b-a12b:free",
         "temperature": 0.1,
+        "reasoningEffort": "high",
         "permission": {
             "bash": "deny",
             "edit": "deny",
@@ -206,8 +209,9 @@
     "code-reviewer": {
         "description": "Code Reviewer — code review, best practices, clean code, антипаттерны. Только чтение.",
         "mode": "subagent",
-        "model": "opencode/big-pickle",
+        "model": "openrouter/thinkingmachines/inkling:free",
         "temperature": 0.1,
+        "reasoningEffort": "high",
         "permission": {
             "bash": "deny",
             "edit": "deny",
@@ -228,6 +232,7 @@
         "mode": "subagent",
         "model": "opencode-go/deepseek-v4.1-flash",
         "temperature": 0.2,
+        "reasoningEffort": "low",
         "permission": {
             "bash": {
                 "*": "allow",
@@ -288,6 +293,7 @@
         "mode": "subagent",
         "model": "opencode-go/deepseek-v4.1-flash",
         "temperature": 0.2,
+        "reasoningEffort": "low",
         "permission": {
             "bash": {
                 "*": "allow",
@@ -348,6 +354,7 @@
         "mode": "subagent",
         "model": "opencode-go/deepseek-v4.1-flash",
         "temperature": 0.2,
+        "reasoningEffort": "low",
         "permission": {
             "bash": {
                 "*": "allow",
@@ -408,6 +415,7 @@
         "mode": "subagent",
         "model": "opencode-go/deepseek-v4.1-flash",
         "temperature": 0.2,
+        "reasoningEffort": "low",
         "permission": {
             "bash": {
                 "*": "allow",
@@ -468,6 +476,7 @@
         "mode": "subagent",
         "model": "opencode-go/deepseek-v4.1-flash",
         "temperature": 0.3,
+        "reasoningEffort": "low",
         "permission": {
             "bash": {
                 "*": "allow",
@@ -528,6 +537,7 @@
         "mode": "subagent",
         "model": "opencode-go/deepseek-v4.1-flash",
         "temperature": 0.3,
+        "reasoningEffort": "low",
         "permission": {
             "bash": {
                 "*": "allow",
@@ -588,6 +598,7 @@
         "mode": "subagent",
         "model": "opencode-go/deepseek-v4.1-flash",
         "temperature": 0.2,
+        "reasoningEffort": "low",
         "permission": {
             "bash": {
                 "*": "allow",
@@ -648,6 +659,7 @@
         "mode": "subagent",
         "model": "opencode-go/deepseek-v4.1-flash",
         "temperature": 0.2,
+        "reasoningEffort": "low",
         "permission": {
             "bash": {
                 "*": "allow",
@@ -708,6 +720,7 @@
         "mode": "subagent",
         "model": "opencode-go/deepseek-v4.1-flash",
         "temperature": 0.2,
+        "reasoningEffort": "low",
         "permission": {
             "bash": {
                 "*": "allow",
@@ -768,6 +781,7 @@
         "mode": "subagent",
         "model": "opencode-go/deepseek-v4.1-flash",
         "temperature": 0.2,
+        "reasoningEffort": "low",
         "permission": {
             "bash": {
                 "*": "allow",
@@ -828,6 +842,7 @@
         "mode": "subagent",
         "model": "opencode-go/deepseek-v4.1-flash",
         "temperature": 0.2,
+        "reasoningEffort": "low",
         "permission": {
             "bash": {
                 "*": "allow",
@@ -908,6 +923,7 @@
         "mode": "subagent",
         "model": "opencode-go/deepseek-v4.1-flash",
         "temperature": 0.2,
+        "reasoningEffort": "low",
         "permission": {
             "bash": {
                 "*": "allow",
@@ -984,8 +1000,9 @@
     "qa-engineer-1": {
         "description": "QA Engineer (copy 1) — тесты, edge cases, баг-репорты, регрессия для параллельной работы.",
         "mode": "subagent",
-        "model": "opencode/mimo-v2.5-free",
+        "model": "openrouter/inclusionai/ling-3.1-flash",
         "temperature": 0.2,
+        "reasoningEffort": "high",
         "permission": {
             "bash": {
                 "*": "allow",
@@ -1046,6 +1063,7 @@
         "mode": "subagent",
         "model": "opencode-go/qwen3.8-flash",
         "temperature": 0.2,
+        "reasoningEffort": "high",
         "permission": {
             "bash": {
                 "*": "allow",
@@ -1104,8 +1122,9 @@
     "security-auditor-1": {
         "description": "Security Auditor (copy 1) — OWASP, уязвимости, поиск secrets для параллельной работы.",
         "mode": "subagent",
-        "model": "opencode/nemotron-3.5-lightning-free",
+        "model": "openrouter/cohere/north-mini-code:free",
         "temperature": 0,
+        "reasoningEffort": "high",
         "permission": {
             "bash": "deny",
             "edit": "deny",
@@ -1123,8 +1142,9 @@
     "security-auditor": {
         "description": "Security Auditor — OWASP, уязвимости, поиск secrets и утечек. Только чтение.",
         "mode": "subagent",
-        "model": "opencode/ling-3.0-flash-fin-free",
+        "model": "openrouter/nvidia/nemotron-3-ultra-550b-a55b:free",
         "temperature": 0,
+        "reasoningEffort": "high",
         "permission": {
             "bash": "deny",
             "edit": "deny",
@@ -1184,6 +1204,7 @@
         "mode": "subagent",
         "model": "opencode-go/deepseek-v4.1-flash",
         "temperature": 0.2,
+        "reasoningEffort": "low",
         "permission": {
             "bash": {
                 "*": "allow",
@@ -1305,6 +1326,7 @@
         "mode": "subagent",
         "model": "opencode-go/deepseek-v4.1-flash",
         "temperature": 0.1,
+        "reasoningEffort": "high",
         "permission": {
             "bash": {
                 "*": "allow",
@@ -1396,6 +1418,7 @@
         "mode": "subagent",
         "model": "opencode-go/deepseek-v4.1-flash",
         "temperature": 0.1,
+        "reasoningEffort": "high",
         "permission": {
             "bash": {
                 "*": "allow",
@@ -1487,6 +1510,7 @@
         "mode": "subagent",
         "model": "opencode-go/deepseek-v4.1-flash",
         "temperature": 0.1,
+        "reasoningEffort": "high",
         "permission": {
             "bash": {
                 "*": "allow",
@@ -1578,6 +1602,7 @@
         "mode": "subagent",
         "model": "opencode-go/deepseek-v4.1-flash",
         "temperature": 0.1,
+        "reasoningEffort": "high",
         "permission": {
             "bash": {
                 "*": "allow",

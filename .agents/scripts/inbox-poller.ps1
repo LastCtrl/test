@@ -64,6 +64,26 @@ if (-not (Test-Path $tzCopyPath)) {
     }
 }
 
+# --- Live supervision (R3/R4): reassign STALLED tasks to a peer agent.
+# Kill-switch: set AGENT_HQ_WATCHDOG_DISABLE=1 to skip. When nothing is stalled
+# the sweep is read-only; it never kills processes.
+if ($env:AGENT_HQ_WATCHDOG_DISABLE -ne '1') {
+    $watchdogPath = Join-Path $PSScriptRoot 'agent-watchdog.ps1'
+    if (Test-Path -LiteralPath $watchdogPath -PathType Leaf) {
+        try {
+            if ($DryRun) {
+                Write-Log "watchdog: dry-run sweep (read-only)"
+                & $watchdogPath -DryRun | Out-Null
+            } else {
+                Write-Log "watchdog: enforce sweep"
+                & $watchdogPath -Enforce | Out-Null
+            }
+        } catch {
+            Write-Log "watchdog: sweep failed: $($_.Exception.Message)"
+        }
+    }
+}
+
 # Dry run mode — show plan, nothing executes
 if ($DryRun) {
     Write-Log "🔍 Dry run mode — showing plan only"

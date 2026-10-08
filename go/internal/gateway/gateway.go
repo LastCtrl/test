@@ -207,6 +207,11 @@ func (s *Server) forwardChat(w http.ResponseWriter, r *http.Request, payload map
 			lastErr = fmt.Errorf("candidate %s/%s: %v", candidate.Provider, candidate.Model, err)
 			continue
 		}
+		// Apply per-candidate headers first so the gateway's own required
+		// headers (below) always win on a name conflict.
+		for name, value := range candidate.Headers {
+			req.Header.Set(name, value)
+		}
 		req.Header.Set("Content-Type", "application/json")
 		req.Header.Set("Authorization", "Bearer "+key)
 		req.Header.Set("Accept", "application/json")

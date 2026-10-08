@@ -170,3 +170,28 @@ func TestLoadConfigMissingFile(t *testing.T) {
 		t.Fatal("expected error for missing file")
 	}
 }
+
+func TestNormalizeRejectsEmptyHeaderName(t *testing.T) {
+	cand := candidate("https://example.com/v1", "m")
+	cand.Headers = map[string]string{"": "v"}
+	cfg := Config{Listen: "127.0.0.1:8899", Aliases: map[string]Alias{"a": {Candidates: []Candidate{cand}}}}
+	if err := cfg.normalize(); err == nil {
+		t.Fatal("expected error for empty header name")
+	}
+}
+
+func TestLoadConfigAcceptsHeaders(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "gateway.json")
+	content := `{"listen":"127.0.0.1:8899","aliases":{"strong":{"candidates":[{"provider":"p","baseURL":"https://x/v1","model":"m","apiKeyEnv":"K","headers":{"x-opencode-session":"sess-1"}}]}}}`
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := LoadConfig(path)
+	if err != nil {
+		t.Fatalf("LoadConfig: %v", err)
+	}
+	got := cfg.Aliases["strong"].Candidates[0].Headers
+	if got["x-opencode-session"] != "sess-1" {
+		t.Fatalf("headers not loaded: %v", got)
+	}
+}

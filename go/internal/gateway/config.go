@@ -37,6 +37,10 @@ type Candidate struct {
 	BaseURL   string `json:"baseURL"`
 	Model     string `json:"model"`
 	APIKeyEnv string `json:"apiKeyEnv"`
+	// Headers are extra request headers sent to this upstream (for example
+	// x-opencode-session required by the opencode-go endpoint). They never
+	// override the gateway's own Content-Type/Accept/Authorization headers.
+	Headers map[string]string `json:"headers"`
 }
 
 // Alias maps an opencode model id to an ordered list of upstream candidates.
@@ -129,6 +133,11 @@ func (c *Candidate) normalize() error {
 	}
 	if strings.TrimSpace(c.APIKeyEnv) == "" {
 		return errors.New("apiKeyEnv is empty")
+	}
+	for name := range c.Headers {
+		if strings.TrimSpace(name) == "" {
+			return errors.New("header name is empty")
+		}
 	}
 	if c.Provider == "" {
 		c.Provider = "unknown"

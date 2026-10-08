@@ -6465,3 +6465,14 @@ MCP_USED: ["sequential-thinking: used (план проверок 6 пункто�
 COMPLIANCE: true
 STATUS: resolved
 ================================================================================
+[2026-10-08 14:20] backend-1 -> team-lead:
+TYPE: update | PRIORITY: medium
+Project: agent-hq
+CONTENT: gateway: per-candidate upstream headers (fix for opencode-go MissingSessionID). (1) Candidate.Headers map[string]string (config.go:35-44) + validation rejecting empty/whitespace header names (config.go:137-141); DisallowUnknownFields now accepts "headers". (2) forwardChat applies candidate headers BEFORE the service headers (gateway.go:210-214), so Content-Type/Accept/Authorization always win on conflict (documented in code + config comment). (3) Tests: TestChatForwardsCandidateHeaders (x-opencode-session reaches fake upstream), TestChatCandidateHeadersDoNotOverrideReserved, TestChatWithoutHeadersSendsNoCustomHeader, TestNormalizeRejectsEmptyHeaderName, TestLoadConfigAcceptsHeaders.
+FILES: go/internal/gateway/config.go, go/internal/gateway/gateway.go, go/internal/gateway/config_test.go, go/internal/gateway/gateway_test.go (4 files, minimal diffs; tree go/ tracked).
+ARTIFACTS: gofmt -l . -> empty; go build ./... = 0; go vet ./... = 0; go test ./internal/gateway/ -count=1 -> ok 0.430s, top-level 31 PASS / 0 FAIL (baseline 26 -> +5), all 38 PASS/0 FAIL; go build -o bin\agent-hq-gateway.exe ./cmd/agent-hq-gateway -> exit=0, bin\agent-hq-gateway.exe exists; nonascii=0 on all 4 .go files. To use: add "headers":{"x-opencode-session":"..."} to the opencode-go candidate in gateway.json (config data, not code - user action).
+SKILLS_LOADED: ["evidence-discipline", "superpowers-implement"]
+MCP_USED: ["context7: not-needed (Go stdlib net/http)", "sequential-thinking: not-needed (small scoped change)", "hermes-atlas: not-needed"]
+COMPLIANCE: true
+STATUS: resolved
+================================================================================

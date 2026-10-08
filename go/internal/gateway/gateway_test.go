@@ -555,3 +555,83 @@ func TestChatStreamIdleTimeoutAborts(t *testing.T) {
 		t.Fatalf("second candidate body leaked to the client: %q", string(body))
 	}
 }
+
+// (m) Per-candidate headers from the config are sent to the upstream, so an
+// endpoint that requires x-opencode-session gets it.
+func TestChatForwardsCandidateHeaders(t *testing.T) {
+	var gotSession string
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotSession = r.Header.Get("x-opencode-session")
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"choices":[]}`)
+	}))
+	defer upstream.Close()
+
+	cand := candidate(upstream.URL, "real-model-1")
+	cand.Headers = map[string]string{"x-opencode-session": "sess-abc123"}
+	server := newTestServer(t, Config{Listen: "127.0.0.1:0", Aliases: map[string]Alias{
+		"strong": {Candidates: []Candidate{cand}},
+	}})
+
+	rec := doChat(t, server.Handler(), `{"model":"strong","messages":[]}`)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body=%s", rec.Code, rec.Body.String())
+	}
+	if gotSession != "sess-abc123" {
+		t.Fatalf("upstream x-opencode-session = %q, want sess-abc123", gotSession)
+	}
+}
+
+// (n) Candidate headers never override the gateway's own Content-Type or
+// Authorization headers.
+func TestChatCandidateHeadersDoNotOverrideReserved(t *testing.T) {
+	var gotCT, gotAuth string
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotCT = r.Header.Get("Content-Type")
+		gotAuth = r.Header.Get("Authorization")
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"choices":[]}`)
+	}))
+	defer upstream.Close()
+
+	cand := candidate(upstream.URL, "real-model-1")
+	cand.Headers = map[string]string{
+		"Content-Type":  "text/plain",
+		"Authorization": "Bearer evil",
+	}
+	server := newTestServer(t, Config{Listen: "127.0.0.1:0", Aliases: map[string]Alias{
+		"strong": {Candidates: []Candidate{cand}},
+	}})
+
+	rec := doChat(t, server.Handler(), `{"model":"strong","messages":[]}`)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body=%s", rec.Code, rec.Body.String())
+	}
+	if gotCT != "application/json" {
+		t.Fatalf("upstream Content-Type = %q, want application/json", gotCT)
+	}
+	if gotAuth != "Bearer "+testAPIKey {
+		t.Fatalf("upstream Authorization = %q, want the gateway key", gotAuth)
+	}
+}
+
+// (o) Without headers the upstream request is unchanged: no stray custom header
+// is introduced.
+func TestChatWithoutHeadersSendsNoCustomHeader(t *testing.T) {
+	var gotSession string
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotSession = r.Header.Get("x-opencode-session")
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"choices":[]}`)
+	}))
+	defer upstream.Close()
+
+	server := newTestServer(t, singleAlias(upstream.URL, "real-model-1"))
+	rec := doChat(t, server.Handler(), `{"model":"strong","messages":[]}`)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body=%s", rec.Code, rec.Body.String())
+	}
+	if gotSession != "" {
+		t.Fatalf("unexpected x-opencode-session header sent: %q", gotSession)
+	}
+}

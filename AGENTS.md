@@ -2,14 +2,15 @@
 
 ## 1. Модели
 
-- opencode-go/deepseek-v4.1-flash — основная для разработчиков (dev-*, backend*, frontend, devops и пр.)
-- opencode-go/qwen3.8-flash — senior-reviewer (крупные/значимые приёмки) — ПЛАТНАЯ, согласована
-- opencode-go/deepseek-v4.1-flash — senior-reviewer-1 (запасной senior, чтобы не подменять модели вручную)
-- opencode/big-pickle — code-reviewer (крупные ревью; free-лимит 100 req/сут, 1M ток/сут)
-- opencode/ling-3.0-flash-fin-free, opencode/mimo-v2.5-free, opencode/big-pickle, opencode/nemotron-3.5-lightning-free — остальные проверяющие (free)
-- aihubmix/coding-glm-5.1-free — security-auditor (free)
-- Платные модели запрещены, КРОМЕ opencode-go/qwen3.8-flash и opencode-go/deepseek-v4.1-flash для senior-reviewer/-1 (согласовано с пользователем 2026-09-15).
-- glm-5.3-free: больше не бесплатна/недоступна (tokenrouter distributor); баланс tokenrouter $0. model-router/sync сверять с этим списком.
+- **Разработчики** (dev-*, backend*, frontend, devops и пр.): `opencode-go/deepseek-v4.1-flash`, `reasoningEffort: low`.
+- **Проверяющие/QA** (code-reviewer(-1), qa-engineer(-1), security-auditor(-1)): `router/free` — локальный шлюз (`127.0.0.1:8899`), авто-фолбэк: opencode-go free (longcat/space-bunny) → openrouter free; `reasoningEffort: high`.
+- **Senior-ревьюеры** (senior-reviewer, senior-reviewer-1): `opencode-go/qwen3.8-flash` / `opencode-go/deepseek-v4.1-flash` — ПЛАТНЫЕ, согласованы (крупные/значимые приёмки); `reasoningEffort: high`.
+- **team-lead** (+копии): `opencode-go/deepseek-v4.1-flash`, `reasoningEffort: high`; модель интерактивной сессии меняется на лету через `/models` и `variant_cycle`.
+- Платные модели запрещены, КРОМЕ `opencode-go/*` для senior/team-lead (согласовано) и алиасов `router/strong|fast` (платные через шлюз — НЕ назначать дешёвым агентам).
+- Алиасы шлюза: `router/free` (free-цепочка), `router/strong` (opencode-go/deepseek), `router/fast` (opencode-go/qwen3.8-flash).
+- Шлюз: задача `agent-hq-gateway` + `gateway-guard.ps1` (в тике поллера). При падении шлюза проверяющие недоступны ≤1 тик; разработчики — нет (идут напрямую).
+- Реестр моделей: `model-registry.ps1` → `.memory/model-registry.json`; роутинг `model-router.ps1` (registry-first только для доказанно сломанных; здоровый/непроверенный configured сохраняется — инвариант §1).
+- Диагностика: `.agents/docs/mcp-status.md`, `.agents/docs/live-supervision-and-model-registry.md`.
 
 ## 2. Роли
 

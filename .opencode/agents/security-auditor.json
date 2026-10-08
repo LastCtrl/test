@@ -1,7 +1,7 @@
 {
     "name":  "security-auditor",
     "description":  "Security Auditor — OWASP, уязвимости, поиск secrets и утечек. Только чтение.",
-    "model":  "openrouter/nvidia/nemotron-3-ultra-550b-a55b:free",
+    "model":  "router/free",
     "reasoningEffort":  "high",
     "mode":  "subagent",
     "temperature":  0.0,

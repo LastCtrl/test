@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Model router for the agent-hq fleet: health probe, circuit breaker, fallback ladder.
 .DESCRIPTION
@@ -72,6 +72,52 @@
     .\model-router.ps1 -Route -Agent qa-engineer -Apply
 #>
 
+# R2: model-registry.ps1 is dot-sourced here so its scoring function and weights
+# are reused as-is (the composite formula is never copied). The registry file has
+# a param() block, and dot-sourcing such a file overwrites the caller's variables
+# of the same name (PS 5.1 gotcha), so those variables are saved and restored.
+# The dot-source stays at the top level: inside a function its definitions would
+# land in the function scope and vanish on return.
+$script:RegistryModuleFile   = "model-registry.ps1"
+$script:RegistryModuleLoaded = $false
+$script:LastRegistryRouteReason = ""
+
+if (-not [string]::IsNullOrWhiteSpace($PSScriptRoot)) {
+    $script:RegistryModulePath = Join-Path $PSScriptRoot $script:RegistryModuleFile
+    if (Test-Path -LiteralPath $script:RegistryModulePath -PathType Leaf) {
+        $script:RegParamNames = New-Object System.Collections.ArrayList
+        $script:RegSavedVars = @{}
+        try {
+            $script:RegAst = [System.Management.Automation.Language.Parser]::ParseFile($script:RegistryModulePath, [ref]$null, [ref]$null)
+            if (($null -ne $script:RegAst) -and ($null -ne $script:RegAst.ParamBlock)) {
+                foreach ($script:RegParam in $script:RegAst.ParamBlock.Parameters) {
+                    $script:RegName = $script:RegParam.Name.VariablePath.UserPath
+                    [void]$script:RegParamNames.Add($script:RegName)
+                    $script:RegExisting = Get-Variable -Name $script:RegName -Scope 0 -ErrorAction SilentlyContinue
+                    if ($null -ne $script:RegExisting) { $script:RegSavedVars[$script:RegName] = @{ Exists = $true; Value = $script:RegExisting.Value } }
+                    else { $script:RegSavedVars[$script:RegName] = @{ Exists = $false; Value = $null } }
+                }
+            }
+            . $script:RegistryModulePath
+        } catch {
+            Write-Warning "model-registry.ps1 could not be loaded: $($_.Exception.Message)"
+        } finally {
+            foreach ($script:RegName in $script:RegParamNames) {
+                if ($script:RegSavedVars[$script:RegName].Exists) {
+                    Set-Variable -Name $script:RegName -Value $script:RegSavedVars[$script:RegName].Value -Scope 0
+                } else {
+                    Remove-Variable -Name $script:RegName -Scope 0 -ErrorAction SilentlyContinue
+                }
+            }
+        }
+        if ((Get-Command Read-RegistryDocument -ErrorAction SilentlyContinue) -and
+            (Get-Command Get-ModelScore -ErrorAction SilentlyContinue) -and
+            (Get-Command Get-RegistryPath -ErrorAction SilentlyContinue)) {
+            $script:RegistryModuleLoaded = $true
+        }
+    }
+}
+
 $script:ModelHealthFileName   = "model-health.json"
 $script:DefaultFailThreshold  = 2
 $script:DefaultCooldownMinutes = 15
@@ -109,6 +155,13 @@ $script:RouterPassportModuleFile = "capability-passport.ps1"
 $script:RouterCostTierRank = @{ "free" = 0; "medium" = 1; "paid" = 2; "unknown" = 2 }
 $script:RouterSpeedReferenceMs = 600000.0
 $script:RouterWeights = @{ reliability = 0.5; speed = 0.2; cost = 0.3 }
+
+# MAJOR-1 (BUG-059): providers whose ids are already routable as written. Any
+# other registry id is a bare openrouter model and must be written with the
+# openrouter/ provider prefix so opencode can resolve it (the provider keys in
+# opencode.json are openrouter/aihubmix/tokenrouter; opencode/ + opencode-go/
+# are the built-in opencode namespaces).
+$script:RouterProviderPrefixes = @("opencode/", "opencode-go/", "openrouter/", "aihubmix/", "tokenrouter/")
 
 # ===========================================================================
 # Path / CLI resolution
@@ -435,7 +488,7 @@ function Invoke-CliProbe {
     return $probe
 }
 
-function Get-ProbeStatus {
+function Get-RouterProbeStatus {
     param([string]$Stdout, [string]$Stderr, [int]$ExitCode, [bool]$TimedOut)
     if ($TimedOut) { return "TIMEOUT" }
     $text = ([string]$Stdout + "`n" + [string]$Stderr)
@@ -455,7 +508,7 @@ function Test-ModelHealth {
         [string]$Cli
     )
     $probe = Invoke-CliProbe -Model $Model -TimeoutSec $TimeoutSec -Cli $Cli
-    $status = Get-ProbeStatus -Stdout $probe.stdout -Stderr $probe.stderr -ExitCode ([int]$probe.exitCode) -TimedOut ([bool]$probe.timedOut)
+    $status = Get-RouterProbeStatus -Stdout $probe.stdout -Stderr $probe.stderr -ExitCode ([int]$probe.exitCode) -TimedOut ([bool]$probe.timedOut)
     $record = Set-ModelHealthResult -Model $Model -Status $status -FailThreshold $FailThreshold -CooldownMinutes $CooldownMinutes -Root $Root
 
     return [pscustomobject]@{
@@ -561,6 +614,140 @@ function Get-FallbackLadder {
         if (-not $ladder.Contains($candidate)) { [void]$ladder.Add($candidate) }
     }
     return $ladder.ToArray()
+}
+
+# ===========================================================================
+# Registry routing (R2): best free model by model-registry score
+# ===========================================================================
+
+# Picks the best free registry model for a task type. Filters: status=OK,
+# free tier, no active cooldown (unstable_until) and a CLOSED breaker in
+# model-health.json. The score comes from the reused registry function, so
+# the weights live only in model-registry.ps1. Returns $null (with a warning
+# and $script:LastRegistryRouteReason set) when the registry is unusable, so
+# the caller can fall back to the ladder.
+function Resolve-RouterModelId {
+    # MAJOR-1 (BUG-059): registry ids are bare openrouter ids; the agent config
+    # needs a provider prefix. A known-provider id is returned untouched, so the
+    # transform is idempotent; anything else gets the default openrouter/.
+    param([string]$Model)
+    if ([string]::IsNullOrWhiteSpace($Model)) { return "" }
+    foreach ($prefix in $script:RouterProviderPrefixes) {
+        if ($Model.StartsWith($prefix, [System.StringComparison]::OrdinalIgnoreCase)) { return $Model }
+    }
+    return ("openrouter/" + $Model)
+}
+
+function Get-RegistryRoute {
+    param(
+        [string]$TaskType = "",
+        [string]$MaxCostTier = "free",
+        [string]$Root
+    )
+    $script:LastRegistryRouteReason = ""
+    if (@("free", "any", "medium", "paid") -notcontains $MaxCostTier) {
+        Write-Warning ("unknown -MaxCostTier '" + $MaxCostTier + "' - treating as free")
+        $MaxCostTier = "free"
+    }
+    if (-not $script:RegistryModuleLoaded) {
+        if ((Get-Command Read-RegistryDocument -ErrorAction SilentlyContinue) -and
+            (Get-Command Get-ModelScore -ErrorAction SilentlyContinue) -and
+            (Get-Command Get-RegistryPath -ErrorAction SilentlyContinue)) {
+            $script:RegistryModuleLoaded = $true
+        } else {
+            $script:LastRegistryRouteReason = "no-registry-fallback"
+            Write-Warning "model-registry.ps1 is not loaded - registry routing unavailable, using the ladder"
+            return $null
+        }
+    }
+    if ([string]::IsNullOrWhiteSpace($Root)) { $Root = Get-RouterRoot -Root $Root }
+
+    $path = Get-RegistryPath -Root $Root
+    if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
+        $script:LastRegistryRouteReason = "no-registry-fallback"
+        Write-Warning ("model-registry.json not found ($path) - using the ladder")
+        return $null
+    }
+
+    $doc = $null
+    try {
+        $doc = Read-RegistryDocument -Root $Root
+    } catch {
+        $script:LastRegistryRouteReason = "no-registry-fallback"
+        Write-Warning ("model-registry.json could not be read ($path): " + $_.Exception.Message)
+        return $null
+    }
+    if (($null -eq $doc) -or ($null -eq $doc.models) -or ($doc.models.Count -eq 0)) {
+        $script:LastRegistryRouteReason = "no-registry-fallback"
+        Write-Warning ("model-registry.json is empty or unreadable ($path) - using the ladder")
+        return $null
+    }
+
+    # MINOR-4 (BUG-059): the registry is free-tier by construction - only
+    # entries with free=true are routable, regardless of -MaxCostTier (free is
+    # always within any cost ceiling). Non-free entries carry no cost-tier data,
+    # so an explicit paid/medium request cannot use them; surface that instead
+    # of silently ignoring the policy.
+    $candidates = New-Object System.Collections.ArrayList
+    $skippedPaid = $false
+    foreach ($key in @($doc.models.Keys)) {
+        $entry = $doc.models[$key]
+        if ($null -eq $entry) { continue }
+        if (-not [bool]$entry.free) {
+            if ((([string]$entry.status) -eq "OK") -and (@("medium", "paid") -contains $MaxCostTier)) { $skippedPaid = $true }
+            continue
+        }
+        if (([string]$entry.status) -ne "OK") { continue }
+        $until = ConvertTo-RouterDate -Text ([string]$entry.unstable_until)
+        if (($null -ne $until) -and ($until -gt (Get-Date))) { continue }
+        $rawId = [string]$entry.id
+        if ([string]::IsNullOrWhiteSpace($rawId)) { $rawId = [string]$key }
+        if ([string]::IsNullOrWhiteSpace($rawId)) { continue }
+        $id = Resolve-RouterModelId -Model $rawId
+        if (Test-ModelOpen -Model $id -Root $Root) { continue }
+
+        $metrics = Get-ModelScore -Entry $entry -TaskType $TaskType
+        $latency = $null
+        if (($null -ne $entry.latency_ms) -and (([string]$entry.latency_ms) -ne "")) {
+            $parsedLatency = 0
+            if ([int]::TryParse([string]$entry.latency_ms, [ref]$parsedLatency)) { $latency = $parsedLatency }
+        }
+        [void]$candidates.Add([pscustomobject]@{
+            model      = $id
+            score      = [double]$metrics.score
+            status     = [string]$entry.status
+            latency_ms = $latency
+            task_fit   = [double]$metrics.task_fit
+        })
+    }
+
+    if ($skippedPaid) {
+        Write-Warning ("model-registry.json only exposes free models; -MaxCostTier '" + $MaxCostTier + "' cannot use its non-free entries - routing on free only")
+    }
+
+    if ($candidates.Count -eq 0) {
+        $script:LastRegistryRouteReason = "registry-no-candidate"
+        Write-Warning "no registry candidate passed the OK/free/cooldown/breaker filters - using the ladder"
+        return $null
+    }
+
+    $scoreKey = @{ Expression = { $_.score }; Descending = $true }
+    $latencyKey = @{ Expression = { if ($null -eq $_.latency_ms) { [int]::MaxValue } else { [int]$_.latency_ms } } }
+    $idKey = @{ Expression = { $_.model } }
+    $sorted = @($candidates | Sort-Object $scoreKey, $latencyKey, $idKey)
+    $best = $sorted[0]
+    $script:LastRegistryRouteReason = "registry-score"
+    return [pscustomobject]@{
+        model           = [string]$best.model
+        score           = [double]$best.score
+        status          = [string]$best.status
+        latency_ms      = $best.latency_ms
+        task_type       = $TaskType
+        task_fit        = [double]$best.task_fit
+        reason          = "registry-score"
+        source          = "registry"
+        candidate_count = $candidates.Count
+    }
 }
 
 function Get-ModelRoute {
@@ -725,6 +912,12 @@ function Format-RouteReason {
     [void]$parts.Add("chosen=" + $Decision.model)
     [void]$parts.Add("mode=" + $Decision.decision_mode)
     [void]$parts.Add("passport=" + $Decision.passport)
+    if (($null -ne $Decision.PSObject.Properties["source"]) -and (-not [string]::IsNullOrWhiteSpace([string]$Decision.source))) {
+        [void]$parts.Add("source=" + $Decision.source)
+    }
+    if (($null -ne $Decision.PSObject.Properties["registry_reason"]) -and (-not [string]::IsNullOrWhiteSpace([string]$Decision.registry_reason))) {
+        [void]$parts.Add("registry=" + $Decision.registry_reason)
+    }
     foreach ($candidate in @($Decision.candidates)) {
         if ($candidate.decision -eq "rejected") {
             [void]$parts.Add("rejected " + $candidate.model + " [" + $candidate.code + "]")
@@ -763,6 +956,8 @@ function Get-RouteDecision {
             passport      = $passportState
             passport_note = $passportNote
             policy        = $MaxCostTier
+            source        = "none"
+            registry_reason = "no-configured-model"
             candidates    = @()
         }
     }
@@ -781,16 +976,109 @@ function Get-RouteDecision {
                     configured    = $configured
                     model         = ""
                     changed       = $false
-                    reason        = "agent-capability-mismatch"
-                    reason_text   = "agent-capability-mismatch: $Agent declares [" + (@($agentTypes) -join ",") + "], task type '$TaskType' resolves to [" + (@($agentMatch.requested) -join ",") + "] - pick an agent whose passport covers it"
-                    decision_mode = "stable"
-                    passport      = $passportState
-                    passport_note = $passportNote
-                    policy        = $MaxCostTier
-                    candidates    = @()
+                    reason          = "agent-capability-mismatch"
+                    reason_text     = "agent-capability-mismatch: $Agent declares [" + (@($agentTypes) -join ",") + "], task type '$TaskType' resolves to [" + (@($agentMatch.requested) -join ",") + "] - pick an agent whose passport covers it"
+                    decision_mode   = "stable"
+                    passport        = $passportState
+                    passport_note   = $passportNote
+                    policy          = $MaxCostTier
+                    source          = "none"
+                    registry_reason = "agent-capability-mismatch"
+                    candidates      = @()
                 }
             }
         }
+    }
+
+    # R2: registry first - pick the best free model by model-registry score.
+    # A missing/broken/empty registry returns $null and the ladder below runs
+    # exactly as before (surface code no-registry-fallback), so stable routing
+    # is preserved when there is no registry to learn from.
+    $registryRoute = Get-RegistryRoute -TaskType $TaskType -MaxCostTier $MaxCostTier -Root $Root
+
+    # MAJOR-2 (BUG-059) + BUG-061: when the registry actually offers a candidate,
+    # a configured model that is healthy (last probe OK, breaker CLOSED) or simply
+    # not yet probed (no health record means viable, not unhealthy) and viable
+    # under the current policy always wins (P3 invariant). The registry is a
+    # fallback for a proven-unhealthy model, never an override of an approved one.
+    # Without a registry candidate the ladder runs unchanged, so the no-registry
+    # degradation path keeps its semantics.
+    if ((-not [string]::IsNullOrWhiteSpace($configured)) -and ($null -ne $registryRoute)) {
+        $configuredHealth = Get-ModelHealthEntry -Model $configured -Root $Root
+        $configuredOk = ($null -ne $configuredHealth) -and (([string]$configuredHealth.status) -eq "OK")
+        $configuredUnprobed = ($null -eq $configuredHealth)
+        if (($configuredOk -or $configuredUnprobed) -and (-not (Test-ModelOpen -Model $configured -Root $Root))) {
+            $healthyRejections = Get-CandidateRejections -Model $configured -TaskType $TaskType -MaxCostTier $MaxCostTier -PassportAvailable $passportAvailable -Root $Root
+            if (@($healthyRejections).Count -eq 0) {
+                $healthyPassport = $null
+                if ($passportAvailable) { $healthyPassport = Get-ModelPassport -Model $configured -Root $Root }
+                $healthyMetrics = Get-RouteCandidateMetrics -ModelPassport $healthyPassport
+                $healthyCandidate = [pscustomobject]@{
+                    model     = $configured
+                    decision  = "chosen"
+                    code      = "selected"
+                    cost_tier = $healthyMetrics.cost_tier
+                    avg_grade = $healthyMetrics.avg_grade
+                    samples   = $healthyMetrics.samples
+                    p50_ms    = $healthyMetrics.p50_ms
+                    score     = $null
+                }
+                $protectedReason = "configured-unprobed"
+                if ($configuredOk) { $protectedReason = "configured-healthy" }
+                $healthyDecision = [pscustomobject]@{
+                    agent           = $Agent
+                    task_type       = $TaskType
+                    configured      = $configured
+                    model           = $configured
+                    changed         = $false
+                    reason          = $protectedReason
+                    reason_text     = ""
+                    decision_mode   = "stable"
+                    passport        = $passportState
+                    passport_note   = $passportNote
+                    policy          = $MaxCostTier
+                    source          = "configured"
+                    registry_reason = $protectedReason
+                    candidates      = @($healthyCandidate)
+                }
+                $healthyDecision.reason_text = Format-RouteReason -Decision $healthyDecision
+                return $healthyDecision
+            }
+        }
+    }
+
+    if ($null -ne $registryRoute) {
+        $registryReason = "registry-score"
+        if (Test-ModelOpen -Model $configured -Root $Root) { $registryReason = "breaker-open-fallback" }
+        $registryEntry = [pscustomobject]@{
+            model     = [string]$registryRoute.model
+            decision  = "chosen"
+            code      = $registryReason
+            cost_tier = "free"
+            avg_grade = $null
+            samples   = 0
+            p50_ms    = $registryRoute.latency_ms
+            score     = $registryRoute.score
+        }
+        $registryDecision = [pscustomobject]@{
+            agent           = $Agent
+            task_type       = $TaskType
+            configured      = $configured
+            model           = [string]$registryRoute.model
+            changed         = ([string]$registryRoute.model -ne $configured)
+            reason          = $registryReason
+            reason_text     = ""
+            decision_mode   = "registry"
+            passport        = $passportState
+            passport_note   = $passportNote
+            policy          = $MaxCostTier
+            source          = "registry"
+            registry_reason = $registryReason
+            registry_score  = [double]$registryRoute.score
+            candidates      = @($registryEntry)
+        }
+        $registryDecision.reason_text = Format-RouteReason -Decision $registryDecision
+        return $registryDecision
     }
 
     $ladder = Get-FallbackLadder -Model $configured
@@ -874,6 +1162,8 @@ function Get-RouteDecision {
         passport      = $passportState
         passport_note = $passportNote
         policy        = $MaxCostTier
+        source        = "ladder"
+        registry_reason = $script:LastRegistryRouteReason
         candidates    = @($candidates.ToArray())
     }
     $decision.reason_text = Format-RouteReason -Decision $decision
@@ -995,8 +1285,9 @@ function Show-ModelRouterUsage {
     Write-Host "  -Status                        print the health/breaker table"
     Write-Host "  -Probe                         probe the SKILL candidate set and refresh state"
     Write-Host "  -Route -Agent <name>       resolve the model for one agent (read-only)"
+    Write-Host "  -Explain -Agent <name>     explain the route: registry vs ladder and why (read-only)"
     Write-Host "  -TaskType <t>              with -Route: capability check against the passport"
-    Write-Host "  -MaxCostTier <tier>        with -Route: free | medium | paid | any (default any)"
+    Write-Host "  -MaxCostTier <tier>        with -Route: free | medium | paid | any (default any; registry branch is free-only)"
     Write-Host "  -Optimize                  with -Route: rank viable candidates by passport score"
     Write-Host "  -Quiet                     with -Route: no candidate table, reason line only"
     Write-Host "  -Route -Agent <name> -Apply  write the routed model + sync-agents.ps1"
@@ -1014,6 +1305,7 @@ function Parse-ModelRouterArguments {
         Probe           = $false
         Status          = $false
         Route           = $false
+        Explain         = $false
         Apply           = $false
         Optimize        = $false
         Quiet           = $false
@@ -1041,6 +1333,7 @@ function Parse-ModelRouterArguments {
         if ($name -eq "-Status") { $options.Status = $true; $index++ }
         elseif ($name -eq "-Probe") { $options.Probe = $true; $index++ }
         elseif ($name -eq "-Route") { $options.Route = $true; $index++ }
+        elseif ($name -eq "-Explain") { $options.Explain = $true; $index++ }
         elseif ($name -eq "-Apply") { $options.Apply = $true; $index++ }
         elseif ($name -eq "-Optimize") { $options.Optimize = $true; $index++ }
         elseif ($name -eq "-Quiet") { $options.Quiet = $true; $index++ }
@@ -1081,7 +1374,7 @@ function Invoke-ModelRouterCommandLine {
         exit 1
     }
 
-    if ($options.Help -or ((-not $options.Probe) -and (-not $options.Status) -and (-not $options.Route))) {
+    if ($options.Help -or ((-not $options.Probe) -and (-not $options.Status) -and (-not $options.Route) -and (-not $options.Explain))) {
         Show-ModelRouterUsage
         exit 0
     }
@@ -1141,7 +1434,11 @@ function Invoke-ModelRouterCommandLine {
             Write-Host "APPLY      : refused - no viable model for this request" -ForegroundColor Red
             exit 1
         } elseif (-not $route.changed) {
-            Write-Host "APPLY      : not needed - configured model is healthy"
+            if ($route.reason -eq "configured-healthy") {
+                Write-Host "APPLY      : not needed - configured model is healthy"
+            } else {
+                Write-Host ("APPLY      : not needed - routed model already configured (" + $route.reason + ")")
+            }
         } else {
             $applied = Set-AgentModel -Agent $route.agent -Model $route.model -Root $root
             if ($applied.ok) {
@@ -1150,6 +1447,37 @@ function Invoke-ModelRouterCommandLine {
                 Write-Host ("APPLY      : FAILED - " + $applied.error) -ForegroundColor Red
                 exit 1
             }
+        }
+    }
+
+    if ($options.Explain) {
+        if ([string]::IsNullOrWhiteSpace($options.Agent)) {
+            Write-Host "-Explain requires -Agent <name>" -ForegroundColor Red
+            exit 1
+        }
+        $explain = Get-RouteDecision -Agent $options.Agent -TaskType $options.TaskType -MaxCostTier $options.MaxCostTier -Optimize:($options.Optimize) -Root $root
+        $source = [string]$explain.source
+        if ([string]::IsNullOrWhiteSpace($source)) { $source = "ladder" }
+        Write-Host ""
+        Write-Host ("AGENT      : " + $explain.agent)
+        if (-not [string]::IsNullOrWhiteSpace([string]$explain.task_type)) {
+            Write-Host ("TASK TYPE  : " + $explain.task_type)
+        }
+        Write-Host ("CONFIGURED : " + $explain.configured)
+        Write-Host ("ROUTE      : " + $explain.model)
+        Write-Host ("SOURCE     : " + $source)
+        Write-Host ("REASON     : " + $explain.reason)
+        if (-not [string]::IsNullOrWhiteSpace([string]$explain.registry_reason)) {
+            Write-Host ("REGISTRY   : " + $explain.registry_reason)
+        }
+        Write-Host ("WHY        : " + $explain.reason_text)
+        Write-Host ("POLICY     : max_cost_tier=" + $explain.policy + " mode=" + $explain.decision_mode)
+        if (-not [string]::IsNullOrWhiteSpace([string]$explain.passport_note)) {
+            Write-Host ("PASSPORT   : " + $explain.passport_note) -ForegroundColor Yellow
+        }
+        Write-Host "CANDIDATES :"
+        foreach ($candidate in @($explain.candidates)) {
+            Write-Host (Format-RouteCandidateLine -Candidate $candidate)
         }
     }
 

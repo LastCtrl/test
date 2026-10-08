@@ -1,4 +1,4 @@
-# test-model-router.ps1 - independent tests for .agents\scripts\model-router.ps1
+﻿# test-model-router.ps1 - independent tests for .agents\scripts\model-router.ps1
 #
 # Pure PowerShell 5.1 (no Pester). Everything runs inside an isolated temp root
 # exposed through $env:AGENT_HQ_ROOT, and the CLI is the deterministic fixture
@@ -467,6 +467,230 @@ $recordCount = @($stateJson.PSObject.Properties).Count
 $caseOk = (Write-Check "no record was lost (8 sequential + 1 busy + 4 concurrent)" ($recordCount -eq 13)) -and $caseOk
 
 Close-Case "k) state locking" $caseOk
+
+# --- l) R2 registry routing + filters ---------------------------------------
+
+Write-Host ""
+Write-Host "CASE: l) registry routing selects the best OK free model and honours filters"
+$caseOk = $true
+$registryPath = Join-Path $MemoryDir "model-registry.json"
+$futureUntil = (Get-Date).AddHours(1).ToString("yyyy-MM-ddTHH:mm:ss", [System.Globalization.CultureInfo]::InvariantCulture)
+
+function New-RegEntry {
+    param([string]$Id, [string]$Status, [int]$Latency, [bool]$Free, [string]$Unstable)
+    return [ordered]@{
+        id             = $Id
+        name           = $Id
+        context        = 8192
+        free           = $Free
+        probed_at      = "2026-10-07T15:00:00"
+        status         = $Status
+        latency_ms     = $Latency
+        fail_count     = 0
+        unstable_until = $Unstable
+        quality        = $null
+        speed          = $null
+        task_fit       = $null
+    }
+}
+
+function Write-RegistryFile {
+    param($Models)
+    $doc = [ordered]@{ generated_at = "2026-10-07T15:00:00"; models = [ordered]@{} }
+    foreach ($k in @($Models.Keys)) { $doc.models[$k] = $Models[$k] }
+    [System.IO.File]::WriteAllText($registryPath, (ConvertTo-Json -InputObject $doc -Depth 8), $script:Utf8NoBom)
+}
+
+Write-RegistryFile ([ordered]@{
+    "sel/top:free"      = (New-RegEntry -Id "sel/top:free" -Status "OK" -Latency 100 -Free $true -Unstable "")
+    "sel/second:free"   = (New-RegEntry -Id "sel/second:free" -Status "OK" -Latency 200 -Free $true -Unstable "")
+    "sel/dead:free"     = (New-RegEntry -Id "sel/dead:free" -Status "DEAD" -Latency 10 -Free $true -Unstable "")
+    "sel/cooldown:free" = (New-RegEntry -Id "sel/cooldown:free" -Status "OK" -Latency 10 -Free $true -Unstable $futureUntil)
+    "sel/paid:free"     = (New-RegEntry -Id "sel/paid:free" -Status "OK" -Latency 10 -Free $false -Unstable "")
+    "sel/breaker:free"  = (New-RegEntry -Id "sel/breaker:free" -Status "OK" -Latency 10 -Free $true -Unstable "")
+})
+Write-HealthState -Model "openrouter/sel/breaker:free" -Status "DEAD" -FailCount 2 -OpenUntil $futureUntil
+
+$regRoute = Get-RegistryRoute -TaskType "review" -Root $Root
+$caseOk = (Write-Check "registry route returns a candidate" ($null -ne $regRoute)) -and $caseOk
+$caseOk = (Write-Check "bare registry id is prefixed with openrouter/" ($regRoute.model -eq "openrouter/sel/top:free")) -and $caseOk
+$caseOk = (Write-Check "reason code is registry-score" ($regRoute.reason -eq "registry-score")) -and $caseOk
+$caseOk = (Write-Check "DEAD model is not selected" ($regRoute.model -ne "openrouter/sel/dead:free")) -and $caseOk
+$caseOk = (Write-Check "cooldown model is not selected" ($regRoute.model -ne "openrouter/sel/cooldown:free")) -and $caseOk
+$caseOk = (Write-Check "non-free model is not selected" ($regRoute.model -ne "openrouter/sel/paid:free")) -and $caseOk
+$caseOk = (Write-Check "breaker-open model is not selected" ($regRoute.model -ne "openrouter/sel/breaker:free")) -and $caseOk
+
+Write-RegistryFile ([ordered]@{
+    "sel/top:free"      = (New-RegEntry -Id "sel/top:free" -Status "OK" -Latency 100 -Free $true -Unstable $futureUntil)
+    "sel/second:free"   = (New-RegEntry -Id "sel/second:free" -Status "OK" -Latency 200 -Free $true -Unstable "")
+})
+$regCool = Get-RegistryRoute -TaskType "review" -Root $Root
+$caseOk = (Write-Check "leader in cooldown is skipped" ($regCool.model -eq "openrouter/sel/second:free")) -and $caseOk
+
+Write-RegistryFile ([ordered]@{
+    "sel/top:free"      = (New-RegEntry -Id "sel/top:free" -Status "OK" -Latency 100 -Free $true -Unstable "")
+    "sel/second:free"   = (New-RegEntry -Id "sel/second:free" -Status "OK" -Latency 200 -Free $true -Unstable "")
+})
+Write-HealthState -Model "openrouter/sel/top:free" -Status "DEAD" -FailCount 2 -OpenUntil $futureUntil
+$regOpen = Get-RegistryRoute -TaskType "review" -Root $Root
+$caseOk = (Write-Check "leader with an open breaker is skipped" ($regOpen.model -eq "openrouter/sel/second:free")) -and $caseOk
+
+# BUG-061: an unprobed configured model now wins over the registry, so mark the
+# configured model as proven-unhealthy to exercise the registry integration.
+Write-HealthState -Model "opencode/big-pickle" -Status "DEAD" -FailCount 2 -OpenUntil $futureUntil
+$regIntegrated = Get-RouteDecision -Agent "code-reviewer" -Root $Root
+$caseOk = (Write-Check "decision source is registry" ($regIntegrated.source -eq "registry")) -and $caseOk
+$caseOk = (Write-Check "decision is marked changed vs configured" ($regIntegrated.changed -eq $true)) -and $caseOk
+Reset-HealthState
+
+Close-Case "l) registry routing" $caseOk
+
+# --- m) R2 degradation without a registry -----------------------------------
+
+Write-Host ""
+Write-Host "CASE: m) missing registry degrades to the ladder without failing"
+$caseOk = $true
+Remove-Item -LiteralPath $registryPath -Force -ErrorAction SilentlyContinue
+
+$nullRoute = Get-RegistryRoute -TaskType "review" -Root $Root
+$caseOk = (Write-Check "missing registry returns null" ($null -eq $nullRoute)) -and $caseOk
+
+$fallback = Get-RouteDecision -Agent "code-reviewer" -TaskType "review" -Root $Root
+$caseOk = (Write-Check "decision falls back to the ladder" ($fallback.source -eq "ladder")) -and $caseOk
+$caseOk = (Write-Check "fallback code is no-registry-fallback" ($fallback.registry_reason -eq "no-registry-fallback")) -and $caseOk
+$caseOk = (Write-Check "healthy configured model is routed" ($fallback.model -eq "opencode/big-pickle")) -and $caseOk
+$caseOk = (Write-Check "reason is unchanged (configured-healthy)" ($fallback.reason -eq "configured-healthy")) -and $caseOk
+$caseOk = (Write-Check "reason text names the ladder source" ($fallback.reason_text -match "source=ladder")) -and $caseOk
+
+Close-Case "m) registry degradation" $caseOk
+
+# --- n) R2 MAJOR-1: registry + -Apply writes a provider-prefixed id ----------
+
+Write-Host ""
+Write-Host "CASE: n) registry + -Apply writes the openrouter/-prefixed id (BUG-059)"
+$caseOk = $true
+Write-RegistryFile ([ordered]@{
+    "nvidia/nemotron-test:free" = (New-RegEntry -Id "nvidia/nemotron-test:free" -Status "OK" -Latency 50 -Free $true -Unstable "")
+})
+
+$nApplyFile = Join-Path $AgentsDir "dev-a.json"
+$nBefore = [System.IO.File]::ReadAllText($nApplyFile, [System.Text.Encoding]::UTF8)
+# BUG-061: mark the configured dev-a model as proven-unhealthy so the registry
+# path (and its openrouter/ prefixing) is the one under test.
+Write-HealthState -Model "opencode-go/deepseek-v4.1-flash" -Status "DEAD" -FailCount 2 -OpenUntil $futureUntil
+$nCli = (& $Router -Route -Agent "dev-a" -Apply -Root $Root -TimeoutSec 20 *>&1 | Out-String)
+$nExit = $LASTEXITCODE
+$caseOk = (Write-Check "CLI -Apply with a registry exits 0" ($nExit -eq 0)) -and $caseOk
+$caseOk = (Write-Check "CLI prints the prefixed route" ($nCli -match 'ROUTE\s*:\s*openrouter/nvidia/nemotron-test:free')) -and $caseOk
+$nModel = Get-AgentFileModel -Path $nApplyFile
+$caseOk = (Write-Check "agent file got the routed provider-prefixed id" ($nModel -eq "openrouter/nvidia/nemotron-test:free")) -and $caseOk
+$caseOk = (Write-Check "written id starts with openrouter/" ($nModel.StartsWith("openrouter/"))) -and $caseOk
+[System.IO.File]::WriteAllText($nApplyFile, $nBefore, $script:Utf8NoBom)
+
+$caseOk = (Write-Check "bare id maps to openrouter/<id>" ((Resolve-RouterModelId -Model "nvidia/x:free") -eq "openrouter/nvidia/x:free")) -and $caseOk
+$caseOk = (Write-Check "openrouter/ id is not double-prefixed" ((Resolve-RouterModelId -Model "openrouter/nvidia/x:free") -eq "openrouter/nvidia/x:free")) -and $caseOk
+$caseOk = (Write-Check "opencode-go/ id is left untouched" ((Resolve-RouterModelId -Model "opencode-go/qwen3.8-flash") -eq "opencode-go/qwen3.8-flash")) -and $caseOk
+$caseOk = (Write-Check "empty id stays empty" ((Resolve-RouterModelId -Model "") -eq "")) -and $caseOk
+
+Close-Case "n) registry apply prefix" $caseOk
+
+# --- o) R2 MAJOR-2: healthy configured model is not overridden ---------------
+
+Write-Host ""
+Write-Host "CASE: o) healthy configured model wins over the registry (BUG-059)"
+$caseOk = $true
+Write-AgentFile -Name "senior-reviewer" -Model "opencode-go/qwen3.8-flash" | Out-Null
+Write-HealthState -Model "opencode-go/qwen3.8-flash" -Status "OK" -FailCount 0 -OpenUntil ""
+Write-RegistryFile ([ordered]@{
+    "free/other:free" = (New-RegEntry -Id "free/other:free" -Status "OK" -Latency 1 -Free $true -Unstable "")
+})
+
+$regHasCandidate = Get-RegistryRoute -TaskType "review" -Root $Root
+$caseOk = (Write-Check "registry does offer a candidate" ($null -ne $regHasCandidate)) -and $caseOk
+
+$healthyDecision = Get-RouteDecision -Agent "senior-reviewer" -Root $Root
+$caseOk = (Write-Check "decision source is configured" ($healthyDecision.source -eq "configured")) -and $caseOk
+$caseOk = (Write-Check "configured model is not changed" ($healthyDecision.model -eq "opencode-go/qwen3.8-flash")) -and $caseOk
+$caseOk = (Write-Check "changed flag is false" ($healthyDecision.changed -eq $false)) -and $caseOk
+$caseOk = (Write-Check "reason is configured-healthy" ($healthyDecision.reason -eq "configured-healthy")) -and $caseOk
+
+Write-HealthState -Model "opencode-go/qwen3.8-flash" -Status "DEAD" -FailCount 2 -OpenUntil $futureUntil
+$brokenDecision = Get-RouteDecision -Agent "senior-reviewer" -Root $Root
+$caseOk = (Write-Check "broken configured model falls back to the registry" ($brokenDecision.source -eq "registry")) -and $caseOk
+$caseOk = (Write-Check "broken configured model is replaced" ($brokenDecision.model -ne "opencode-go/qwen3.8-flash")) -and $caseOk
+
+Close-Case "o) configured healthy gate" $caseOk
+
+# --- p) R2: broken registry JSON degrades to the ladder ----------------------
+
+Write-Host ""
+Write-Host "CASE: p) broken registry JSON degrades to the ladder"
+$caseOk = $true
+[System.IO.File]::WriteAllText($registryPath, "{ this is not valid json", $script:Utf8NoBom)
+
+$brokenRoute = Get-RegistryRoute -TaskType "review" -Root $Root
+$caseOk = (Write-Check "broken JSON registry returns null" ($null -eq $brokenRoute)) -and $caseOk
+
+$brokenLadder = Get-RouteDecision -Agent "code-reviewer" -Root $Root
+$caseOk = (Write-Check "decision falls back to the ladder" ($brokenLadder.source -eq "ladder")) -and $caseOk
+$caseOk = (Write-Check "reason code is no-registry-fallback" ($brokenLadder.registry_reason -eq "no-registry-fallback")) -and $caseOk
+
+Close-Case "p) broken registry" $caseOk
+
+# --- q) R2: no candidate + free-only registry policy -------------------------
+
+Write-Host ""
+Write-Host "CASE: q) registry-no-candidate + free-only policy"
+$caseOk = $true
+Write-RegistryFile ([ordered]@{
+    "dead/one:free" = (New-RegEntry -Id "dead/one:free" -Status "DEAD" -Latency 1 -Free $true -Unstable "")
+    "paid/two"      = (New-RegEntry -Id "paid/two" -Status "OK" -Latency 1 -Free $false -Unstable "")
+})
+$noCandRoute = Get-RegistryRoute -TaskType "review" -Root $Root
+$caseOk = (Write-Check "all-filtered registry returns null" ($null -eq $noCandRoute)) -and $caseOk
+$noCandDecision = Get-RouteDecision -Agent "code-reviewer" -Root $Root
+$caseOk = (Write-Check "decision falls back to the ladder" ($noCandDecision.source -eq "ladder")) -and $caseOk
+$caseOk = (Write-Check "reason code is registry-no-candidate" ($noCandDecision.registry_reason -eq "registry-no-candidate")) -and $caseOk
+
+Write-RegistryFile ([ordered]@{
+    "paid/only"    = (New-RegEntry -Id "paid/only" -Status "OK" -Latency 1 -Free $false -Unstable "")
+    "free/ok:free" = (New-RegEntry -Id "free/ok:free" -Status "OK" -Latency 5 -Free $true -Unstable "")
+})
+$tierOut = @(Get-RegistryRoute -TaskType "review" -MaxCostTier "paid" -Root $Root 3>&1)
+$tierWarn = @($tierOut | Where-Object { $_ -is [System.Management.Automation.WarningRecord] })
+$tierRoute = @($tierOut | Where-Object { ($null -ne $_) -and ($null -ne $_.PSObject.Properties["model"]) })
+$caseOk = (Write-Check "paid tier warns instead of silently ignoring the registry policy" ($tierWarn.Count -ge 1)) -and $caseOk
+$caseOk = (Write-Check "registry stays free-only under -MaxCostTier paid" ((@($tierRoute).Count -eq 1) -and ($tierRoute[0].model -eq "openrouter/free/ok:free"))) -and $caseOk
+
+Close-Case "q) no-candidate + tier" $caseOk
+
+# --- r) BUG-061: configured model without a health record stays viable -------
+
+Write-Host ""
+Write-Host "CASE: r) configured model without a health record is not downgraded (BUG-061)"
+$caseOk = $true
+Reset-HealthState
+Write-AgentFile -Name "senior-reviewer" -Model "opencode-go/qwen3.8-flash" | Out-Null
+Write-RegistryFile ([ordered]@{
+    "free/lure:free" = (New-RegEntry -Id "free/lure:free" -Status "OK" -Latency 1 -Free $true -Unstable "")
+})
+
+$unprobedRegistry = Get-RegistryRoute -TaskType "review" -Root $Root
+$caseOk = (Write-Check "registry does offer a candidate" ($null -ne $unprobedRegistry)) -and $caseOk
+$caseOk = (Write-Check "configured model truly has no health record" ($null -eq (Read-StateEntry -Model "opencode-go/qwen3.8-flash"))) -and $caseOk
+
+$unprobedDecision = Get-RouteDecision -Agent "senior-reviewer" -Root $Root
+$caseOk = (Write-Check "unprobed configured source is configured" ($unprobedDecision.source -eq "configured")) -and $caseOk
+$caseOk = (Write-Check "unprobed configured model is not changed" ($unprobedDecision.model -eq "opencode-go/qwen3.8-flash")) -and $caseOk
+$caseOk = (Write-Check "unprobed changed flag is false" ($unprobedDecision.changed -eq $false)) -and $caseOk
+$caseOk = (Write-Check "reason is configured-unprobed" ($unprobedDecision.reason -eq "configured-unprobed")) -and $caseOk
+
+Write-HealthState -Model "opencode-go/qwen3.8-flash" -Status "OK" -FailCount 2 -OpenUntil $futureUntil
+$openDecision = Get-RouteDecision -Agent "senior-reviewer" -Root $Root
+$caseOk = (Write-Check "open breaker still sends the model to the registry" ($openDecision.source -eq "registry")) -and $caseOk
+$caseOk = (Write-Check "open breaker replaces the configured model" ($openDecision.model -ne "opencode-go/qwen3.8-flash")) -and $caseOk
+
+Close-Case "r) unprobed configured gate" $caseOk
 
 # --- summary + cleanup ------------------------------------------------------
 

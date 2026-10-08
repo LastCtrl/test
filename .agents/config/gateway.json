@@ -1,0 +1,18 @@
+{
+  "listen": "127.0.0.1:8899",
+  "streamIdleTimeoutSec": 120,
+  "aliases": {
+    "strong": { "candidates": [ {"provider":"opencode-go","baseURL":"https://opencode.ai/zen/go/v1","model":"deepseek-v4.1-flash","apiKeyEnv":"OPENCODE_API_KEY","headers":{"x-opencode-session":"agent-hq-gateway"}} ] },
+    "fast":   { "candidates": [ {"provider":"opencode-go","baseURL":"https://opencode.ai/zen/go/v1","model":"qwen3.8-flash","apiKeyEnv":"OPENCODE_API_KEY","headers":{"x-opencode-session":"agent-hq-gateway"}} ] },
+    "free":   { "candidates": [
+      {"provider":"opencode-go","baseURL":"https://opencode.ai/zen/go/v1","model":"longcat-2.5-preview-free","apiKeyEnv":"OPENCODE_API_KEY","headers":{"x-opencode-session":"agent-hq-gateway"}},
+      {"provider":"opencode-go","baseURL":"https://opencode.ai/zen/go/v1","model":"space-bunny-free","apiKeyEnv":"OPENCODE_API_KEY","headers":{"x-opencode-session":"agent-hq-gateway"}},
+      {"provider":"openrouter","baseURL":"https://openrouter.ai/api/v1","model":"nvidia/nemotron-3-ultra-550b-a55b:free","apiKeyEnv":"OPENROUTER_API_KEY"},
+      {"provider":"openrouter","baseURL":"https://openrouter.ai/api/v1","model":"nvidia/nemotron-3-super-120b-a12b:free","apiKeyEnv":"OPENROUTER_API_KEY"},
+      {"provider":"openrouter","baseURL":"https://openrouter.ai/api/v1","model":"openrouter/free","apiKeyEnv":"OPENROUTER_API_KEY"},
+      {"provider":"openrouter","baseURL":"https://openrouter.ai/api/v1","model":"poolside/laguna-xs-2.1:free","apiKeyEnv":"OPENROUTER_API_KEY"},
+      {"provider":"openrouter","baseURL":"https://openrouter.ai/api/v1","model":"inclusionai/ling-3.0-flash-sante:free","apiKeyEnv":"OPENROUTER_API_KEY"},
+      {"provider":"openrouter","baseURL":"https://openrouter.ai/api/v1","model":"cohere/north-mini-code:free","apiKeyEnv":"OPENROUTER_API_KEY"}
+    ] }
+  }
+}

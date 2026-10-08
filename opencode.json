@@ -188,7 +188,7 @@
     "code-reviewer-1": {
         "description": "Code Reviewer (copy 1) — code review, best practices, clean code для параллельной работы.",
         "mode": "subagent",
-        "model": "openrouter/nvidia/nemotron-3-super-120b-a12b:free",
+        "model": "router/free",
         "temperature": 0.1,
         "reasoningEffort": "high",
         "permission": {
@@ -209,7 +209,7 @@
     "code-reviewer": {
         "description": "Code Reviewer — code review, best practices, clean code, антипаттерны. Только чтение.",
         "mode": "subagent",
-        "model": "openrouter/thinkingmachines/inkling:free",
+        "model": "router/free",
         "temperature": 0.1,
         "reasoningEffort": "high",
         "permission": {
@@ -1000,7 +1000,7 @@
     "qa-engineer-1": {
         "description": "QA Engineer (copy 1) — тесты, edge cases, баг-репорты, регрессия для параллельной работы.",
         "mode": "subagent",
-        "model": "openrouter/inclusionai/ling-3.1-flash",
+        "model": "router/free",
         "temperature": 0.2,
         "reasoningEffort": "high",
         "permission": {
@@ -1061,7 +1061,7 @@
     "qa-engineer": {
         "description": "QA Engineer — тесты, edge cases, баг-репорты, регрессия.",
         "mode": "subagent",
-        "model": "opencode-go/qwen3.8-flash",
+        "model": "router/free",
         "temperature": 0.2,
         "reasoningEffort": "high",
         "permission": {
@@ -1122,7 +1122,7 @@
     "security-auditor-1": {
         "description": "Security Auditor (copy 1) — OWASP, уязвимости, поиск secrets для параллельной работы.",
         "mode": "subagent",
-        "model": "openrouter/cohere/north-mini-code:free",
+        "model": "router/free",
         "temperature": 0,
         "reasoningEffort": "high",
         "permission": {
@@ -1142,7 +1142,7 @@
     "security-auditor": {
         "description": "Security Auditor — OWASP, уязвимости, поиск secrets и утечек. Только чтение.",
         "mode": "subagent",
-        "model": "openrouter/nvidia/nemotron-3-ultra-550b-a55b:free",
+        "model": "router/free",
         "temperature": 0,
         "reasoningEffort": "high",
         "permission": {
@@ -1775,6 +1775,25 @@
         },
         "cohere/north-mini-code:free": {
           "name": "North Mini Code (free)"
+        }
+      }
+    },
+    "router": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "agent-hq gateway (local)",
+      "options": {
+        "baseURL": "http://127.0.0.1:8899/v1",
+        "apiKey": "gateway"
+      },
+      "models": {
+        "strong": {
+          "name": "Gateway strong (opencode-go/deepseek)"
+        },
+        "free": {
+          "name": "Gateway free (auto-fallback: go-free -> openrouter-free)"
+        },
+        "fast": {
+          "name": "Gateway fast (opencode-go/qwen3.8-flash)"
         }
       }
     }

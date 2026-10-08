@@ -1,4 +1,4 @@
-COMPLIANCE: true
+﻿COMPLIANCE: true
 STATUS: resolved
 
 [2026-09-09T10:20:00] code-reviewer -> team-lead:
@@ -6252,3 +6252,216 @@ SKILLS_LOADED: ["evidence-discipline", "windows-safety"]
 MCP_USED: ["context7: not-needed (PowerShell 5.1 + .NET, внешних библиотек нет)", "sequential-thinking: not-used (ре-приёмка — чек-лист фактических прогонов, не архитектура)", "hermes-atlas: not-needed"]
 COMPLIANCE: true
 STATUS: resolved
+[2026-10-07 16:19] qa-engineer -> team-lead:
+TYPE: update | PRIORITY: medium
+Project: agent-hq
+CONTENT: МИНИ-ПРИЁМКА по диффу BUG-057 (agent-watchdog.ps1 :493/:495, Add-Member -Force вместо assignment; commit b8b0b08). Вердикт: **PASS**. Факты: (1) Статика: Parser::ParseFile=0 ошибок; BOM=True; loneLF=0 (LF=789, CRLF=789). (2) Механизм бага подтверждён scratch-тестом PS 5.1: $e.unstable_until='x' на entry из ConvertFrom-Json -> SetValueInvocationException (ровно симптом BUG-057); Add-Member -Force -> OK. (3) Суть: temp-фикстура (-Root + -TracesPath, реальные .memory не тронуты): registry model-x {id,fail_count:1,provider} БЕЗ unstable_until; 4 STALLED-задачи; -Enforce -> EXIT=0, error-маркеров 0; ПОСЛЕ: model-x fail_count 1->4 (3 события), unstable_until СОЗДАН = 2026-10-07T16:31:01 (now+15m) — до: свойства не было (показано до/после). Edge: entry без fail_count -> создаётся =1 (scratch). (4) Регресс: обычный кейс model-w (unstable_until:null присутствовал) -> fail_count 1->2 + cooldown обновлён; model-y не участвовал -> 0/null нетронут; top-level schema_version/updated + per-model provider сохранены (minor-3 цел); guardrails: cap (T4 reassign_count=2 -> dead-letter+alert) и cycle (T5 chain=[qa-2] -> no free peer -> dead-letter+alert) отработали; reassign-файлы dev-1->dev-2/dev-3->dev-2 корректны (payload/reassigned_from/chain/count); failure-memory с local-штампом (minor-1 цел); ghost-логика :487 не задета. (5) Реальные .memory: SHA256-diff before/after — inbox/model-registry/failure-memory НЕ изменены; изменены только live-churn файлы демонов (driver.lock pid=9844 go-демон, agent-hq.db, bridge-serve.log удалён bridge-процессом) — watchdog писал строго в temp-root (лог: root=...\qa_bug057). git status чист до и после (0). Temp удалён [IO.Directory]::Delete (leftovers=False), сирот-процессов нет (CIM-проверка; совпадение pid 23744 — одноразовый CIM-хелпер, уже вышел). Дефектов по диффу не найдено. KNOWLEDGE-BASE: BUG-057 [OPEN] -> [CLOSED — QA PASS].
+SKILLS_LOADED: ["evidence-discipline", "windows-safety"]
+MCP_USED: ["context7: not-needed (PowerShell 5.1 + .NET, внешних библиотек нет)", "sequential-thinking: not-used (мини-приёмка по диффу — чек-лист фактических прогонов)", "hermes-atlas: not-needed"]
+COMPLIANCE: true
+STATUS: resolved
+
+================================================================================
+[TIME] 2026-09-22 | dev-2 → team-lead:
+TYPE: update | PRIORITY: medium
+Project: 1c-centr1507
+CONTENT: П.7 (Белтелеком) — уточнение заказчика по признаку «внутренний номер с выходом на город».
+1) Удалён ошибочный признак `СтационарныйТелефон + КодВыходаНаАТС` (в ВТ_Телефоны и в ветке подсчёта) — условия возвращены к исходным: Template.xml:271-273 и 321-323. Проверено: вхождений `КодВыходаНаАТС`/`СтационарныйТелефон` в файле нет (0).
+2) Оператор в ветке подсчёта оставлен константой `ЗНАЧЕНИЕ(Справочник.ОператорыСвязи.Белтелеком)` (Template.xml:286) + группировка по ней (Template.xml:326).
+3) Добавлена новая ветка ОБЪЕДИНИТЬ ВСЕ (Template.xml:392-406): `КОЛИЧЕСТВО(*)` строк ТЧ `ПользователиТелефонов` с `ДополнительнаяУслуга = ЗНАЧЕНИЕ(Справочник.ВидыИспользованияСредствСвязи.Исходящие_по_РБ1)`, оператор = Белтелеком, остальные 4 показателя = 0. Число колонок сверено по файлу: внутренний запрос возвращает 6 колонок (ветка 1: Template.xml:286-312), поэтому после КоличествоТелефонов — четыре нуля. Ожидание в базе: +141.
+sha256 исходное: D9AFC77383947D274A13A6DEB83FF30AD9622EAFCAA362403E2A78308214C959 (30551 б).
+sha256 предыдущее (ошибочный признак): AEEA7BC0CAEDEB2928454CD73C3A08F65DF08AB70626961BB45D4CD3DEDCBDFF (31961 б).
+sha256 итоговое: D8D876C6F8241B70BC9AD3C9831D9716816ED4E887C2B0360E78BF75DABBF7D0 (31488 б, 665 строк).
+Проверки: [xml] Load OK (root=DataCompositionSchema); BOM UTF-8 сохранён (EF BB BF); CRLF разметки 473 (без изменений); табы сохранены. Минимальность: обратная замена даёт AEEA7BC0... (revertOccurrences=2, anchorOccurrences=1); ранее доказано AEEA7BC0 -> D9AFC773.
+Метаданные (path:line): Catalogs\ВидыИспользованияСредствСвязи\Ext\Predefined.xml:64 (Name Исходящие_по_РБ1), :66 (Description «Исходящие по РБ (город)»), :40 (родитель Исходящие_по_РБ); Catalogs\ТелефоныОрганизаций.xml:1659 (Name ДополнительнаяУслуга), :1668 (cfg:CatalogRef.ВидыИспользованияСредствСвязи), внутри ТЧ ПользователиТелефонов (:1174/:1186/:1884).
+Артефакты обновлены: projects\1с-centr1507\output\fix-арм-связь-6-8\p7-beltelecom\Template.xml (sha совпадает), DIFF.md, ZAPROSY.md (+141, сверка до/после).
+Платформа не запускалась, данные не менялись, временные файлы удалены.
+SKILLS_LOADED: ["evidence-discipline", "1c-query", "1c-query-validate", "windows-safety"]
+MCP_USED: ["sequential-thinking", "context7: offline (fetch failed)"]
+COMPLIANCE: true
+STATUS: resolved
+================================================================================
+[TIME] 2026-09-22 | dev-1 → team-lead:
+TYPE: update | PRIORITY: medium
+Project: 1c-centr1507
+CONTENT: Уточнение заказчика по п.7 сводного отчёта о возмещении услуг телефонной связи (СводныйОтчетОВозмещенииУслугТелефоннойСвязиСотрудниками). Старый признак «СтационарныйТелефон + КодВыходаНаАТС» УБРАН (по базе это выход на АТС другой организации, не «город»); правильный признак — `ДополнительнаяУслуга = Справочник.ВидыИспользованияСредствСвязи.Исходящие_по_РБ1`. Сумму Белтелеком не задевает (новая ветка даёт `Сумма = 0`).
+Файл: Centr1507\Reports\СводныйОтчетОВозмещенииУслугТелефоннойСвязиСотрудниками\Templates\ОсновнаяСхемаКомпоновкиДанных\Ext\Template.xml
+Правки (только внутри <query> первого оператора): (1) в ветке Белтелеком `ГДЕ` сокращён до `НЕ Телефоны.ПОМЕТКАУДАЛЕНИЯ И Телефоны.ОператорСвязи = ЗНАЧЕНИЕ(Справочник.ОператорыСвязи.Белтелеком)` — условие про ВидТелефона/КодВыходаНаАТС удалено, фильтр оператора в параметре `Обороты(...)` (п.8, v2) оставлен; (2) сразу после ветки Белтелеком добавлена ветка `ОБЪЕДИНИТЬ ВСЕ`: `ЗНАЧЕНИЕ(...Белтелеком) КАК ОператорСвязи, КОЛИЧЕСТВО(*) КАК КоличествоТелефонов, 0 КАК Сумма`, `ИЗ Справочник.ТелефоныОрганизаций.ПользователиТелефонов`, `ГДЕ НЕ ПользователиТелефонов.Ссылка.ПометкаУдаления И ПользователиТелефонов.ДополнительнаяУслуга = ЗНАЧЕНИЕ(...Исходящие_по_РБ1)`, `СГРУППИРОВАТЬ ПО ДополнительнаяУслуга`. Ветки «прочие мобильные», «без телефона», «услуги» и второй оператор пакета — не тронуты.
+sha256 до (v2): 212452EBC8B3E23738D01E366D24ABB7E74BD681DF1103F55BCF42F9B8CD22BA (19364 б).
+sha256 после (финал v3): EBFEEB4EDC7550C1DAFC9EECA028BACA5BF55FB83111FAF6249C0FC0AB52FA7F (19570 б, 396 стр., запрос 3666 симв./84 стр.).
+Проверки: [xml] New-Object xml; Load() = OK (root=DataCompositionSchema); BOM UTF-8 (EF BB BF) сохранён; CRLF вне <query> 156+156 без изменений; внутри <query> — только LF (после вставки edit-tool нормализовано обратно в LF); табы сохранены. Минимальность: префикс и суффикс файла вне <query> побайтово равны v2 (второй оператор и вся схема/настройки не тронуты); внутри query diff: удалены 3 строки старого условия, добавлены условие оператора + новая ветка. `КодВыходаНаАТС`/`СтационарныйТелефон` в запросе отсутствуют (0).
+Метаданные (path:line): Catalogs\ВидыИспользованияСредствСвязи\Ext\Predefined.xml:64 (Name Исходящие_по_РБ1), :66 (Description «Исходящие по РБ (город)»); Catalogs\ТелефоныОрганизаций.xml:1659 (Name ДополнительнаяУслуга), :1668 (type cfg:CatalogRef.ВидыИспользованияСредствСвязи).
+Артефакты обновлены: output\fix-арм-связь-6-8\p7-8-telefon\Template.xml (финал v3, sha=EBFEEB4E…52FA7F), DIFF.md (таблица хэшей оригинал/v1/v2/v3 + раздел «Уточнение заказчика (v3, ФИНАЛ)»), ZAPROSY.md (раздел (а) переписан под Исходящие_по_РБ1 с ожиданием 141; раздел (г) — сумма Белтелеком не меняется).
+NOT ENOUGH EVIDENCE: авто-валидатор запроса не запускался (скилл 1c-query-validate — только SKILL.md, python отсутствует, exit 9009); совпадение «141» и равенство сумм — только на данных (ZAPROSY.md, разделы (а)/(б)/(г)).
+Платформа не запускалась, данные не менялись, временные файлы удалены, фоновых процессов проекта не осталось.
+SKILLS_LOADED: ["evidence-discipline", "1c-query", "1c-query-validate", "windows-safety"]
+MCP_USED: ["sequential-thinking", "context7: not used"]
+COMPLIANCE: true
+STATUS: resolved
+================================================================================
+
+================================================================================
+[2026-10-07] backend-3 -> team-lead:
+TYPE: update | PRIORITY: medium
+Project: agent-hq
+CONTENT: Phase 1 model gateway (Go) delivered. Local OpenAI-compatible transparent proxy on loopback.
+Files created:
+- go/internal/gateway/config.go (Config/Alias/Candidate, LoadConfig, fail-fast validation: loopback-only listen, non-empty aliases/candidates, http(s) baseURL, DisallowUnknownFields)
+- go/internal/gateway/gateway.go (Server: GET /v1/models -> alias ids; POST /v1/chat/completions -> rewrite only model via map[string]json.RawMessage, stream passthrough with per-chunk Flush, fallback only before first response byte, 500 on missing key env without leaking value, 502 upstream failure, OpenAI error envelope, trackedWriter prevents masking post-stream errors)
+- go/internal/gateway/config_test.go, go/internal/gateway/gateway_test.go
+- go/cmd/agent-hq-gateway/main.go (-config default .agents/config/gateway.json, SIGINT/SIGTERM graceful Shutdown, no background leftovers)
+- .agents/config/gateway.json (defaults: strong/free/fast aliases)
+Evidence: go build ./... exit 0; go vet ./... exit 0; gofmt -l empty; all new .go ASCII-only (5 files).
+Tests: go test ./internal/gateway/ -count=1 -v -> 17 PASS (models aliases, non-stream rewrite, SSE order/content, tools/tool_calls untouched, fallback on refused+500, post-stream not masked, missing key 500, unknown alias 400, config validation). Full go test ./... -count=1 -> all packages ok.
+NOTE: upstream model ids in gateway.json are the literal ones from the task spec; not independently verified against provider /models (NOT ENOUGH EVIDENCE for provider-side availability).
+No secrets used; keys resolved from env by apiKeyEnv name only.
+SKILLS_LOADED: ["clean-code", "superpowers-implement", "evidence-discipline", "windows-safety"]
+MCP_USED: ["sequential-thinking", "context7: not needed (stdlib only)"]
+COMPLIANCE: true
+STATUS: resolved
+
+================================================================================
+[2026-10-07 16:50] dev-3 -> team-lead:
+TYPE: update | PRIORITY: medium
+Project: agent-hq
+CONTENT: R2 complete - model-router selects the model by model-registry score (registry-first) + explainable routing.
+Files changed:
+- .agents/scripts/model-router.ps1 (255+/10-): (1) Get-RegistryRoute -TaskType [code|review|qa|analysis] [-MaxCostTier free]: reads .memory/model-registry.json via reused Read-RegistryDocument; filters free=true + status=OK + unstable_until not-future + breaker CLOSED (model-health.json Test-ModelOpen); scores via reused Get-ModelScore so the composite weights are NOT copied; sorts score desc, latency asc, id; returns best + reason code 'registry-score', or $null + warning + $script:LastRegistryRouteReason ('no-registry-fallback' / 'registry-no-candidate') on missing/broken/empty registry. (2) model-registry.ps1 dot-sourced at top level to keep its functions in script scope; its param() variables are saved and restored around the dot-source (PS 5.1 gotcha: dot-sourcing a param() script otherwise overwrote the caller's $Root and 11 other vars). Only name overlap Get-ProbeStatus resolves to the router's own later definition. (3) Get-RouteDecision: registry first; on $null the existing ladder runs unchanged (decision gains source=ladder + registry_reason); on a registry hit decision_mode=registry, source=registry, reason=registry-score (or breaker-open-fallback when the configured model's breaker is open). -Apply unchanged (Set-AgentModel backup + sync-agents). (4) CLI -Explain -Agent <name> -TaskType <t> prints SOURCE/REASON/REGISTRY/WHY/candidates, read-only; added to usage and to the no-action guard.
+- tests/test-model-router.ps1 (94+/): case l (registry picks the best OK free model; DEAD / cooldown(unstable) / breaker-open / non-free are NOT selected; cooldown and breaker leaders are skipped) and case m (missing registry -> Get-RegistryRoute $null + no-registry-fallback; Get-RouteDecision falls back to ladder with unchanged reason configured-healthy).
+Both changed files: CRLF + UTF-8 BOM, ASCII-only diff.
+Evidence:
+- [System.Management.Automation.Language.Parser]::ParseFile: model-router.ps1 0 errors; test-model-router.ps1 0 errors.
+- tests/test-model-router.ps1 -> passed=12 failed=0 total=12, EXIT=0 (previous cases a,c,d,e,f,g,h,i,j,k all still PASS).
+- Live (real registry): -Explain -Agent code-reviewer -TaskType review -> SOURCE=registry REASON=registry-score REGISTRY=registry-score ROUTE=nvidia/nemotron-3.5-content-safety:free score=0.83 p50=584ms, EXIT=0.
+- Degradation demo (temp root): no registry -> SOURCE=ladder REGISTRY=no-registry-fallback EXIT=0; broken JSON -> Read-RegistryDocument warns, Get-RegistryRoute warns + returns $null, ladder used, EXIT=0 (no crash).
+- Regression smoke: -Status EXIT=0 (table unchanged); -Route -Agent qa-engineer -TaskType qa EXIT=0.
+- Hygiene: no new background processes; temp demo root deleted via [IO.Directory]::Delete; test temp residue=False; jobs=0.
+NOT ENOUGH EVIDENCE: -Probe mode not exercised in this session (it spawns opencode CLI probes / network); its code path was not modified.
+SKILLS_LOADED: ["windows-safety", "evidence-discipline"]
+MCP_USED: ["sequential-thinking: used (design - reuse-vs-copy scoring, dot-source param collision)", "context7: not-needed (PowerShell 5.1 / .NET stdlib)", "hermes-atlas: not-needed"]
+COMPLIANCE: true
+STATUS: resolved
+================================================================================
+[2026-10-07 16:52] qa-engineer → team-lead:
+TYPE: update | PRIORITY: medium
+Project: 1c-centr1507
+CONTENT: QA-приёмка правок п.7 (уточнение замечания 7) в двух сводных отчётах Centr1507 (только чтение выгрузки). A PASS: [xml].Load обоих Template.xml OK (root=DataCompositionSchema). B PASS: КодВыходаНаАТС=0, СтационарныйТелефон=0, Исходящие_по_РБ1=1 в каждом (telefon:185, beltelecom:406). C PASS: Predefined.xml:64/:66 Исходящие_по_РБ1 «Исходящие по РБ (город)»; ТЧ ПользователиТелефонов (ТелефоныОрганизаций.xml:1174-1884) реквизит ДополнительнаяУслуга :1659, тип cfg:CatalogRef.ВидыИспользованияСредствСвязи :1668. D PASS: BOM EF BB BF; сырых «<» вне экранирования в <query>=0 (сущностей &lt; — 3/4, &amp; — 10/24); строк 396/665. E PASS: sha256 артефактов = рабочие файлы (telefon EBFEEB4E…52FA7F/19570, beltelecom D8D876C6…BBF7D0/31488). F PASS с примечаниями: новая ветка Сумма=0 → суммы не затронуты; без join → нет размножения строк; единицы счёта разные (телефоны vs строки ТЧ) — осознанно через ОБЪЕДИНИТЬ ВСЕ + SUM; в телефонном новая ветка без фильтра по оператору родителя (атрибуция к Белтелеком по признаку услуги) — согласуется с отсутствием параметра Организация у телефонного сводного (параметры :287/:305/:323). ИТОГ: ПРИНЯТО (правки). НАХОДКА (вне правки, pre-existing по DIFF.md:93-94): BUG-058 — Template.xml Белтелеком :364/:386 «ПустаяССылка» (двойная С) — не-имя платформенной константы, риск некомпилляции запроса; требует проверки на платформе; заведено в KNOWLEDGE-BASE.md BUG-058 [OPEN]. Minor: DIFF.md ссылается на параметры «:532-545», фактически :544-556 (default Белтелеком :555, useRestriction :556 — суть верна). NOT ENOUGH EVIDENCE: число 141 в базе; совпадение сумм п.8; компиляция запросов (включая СГРУППИРОВАТЬ ПО ЗНАЧЕНИЕ(...) и ПустаяССылка) — только на платформе; провенанс «исходный файл» beltelecom — нет Template.original.xml на диске, git игнорит projects/ (.gitignore:71).
+SKILLS_LOADED: ["evidence-discipline", "windows-safety"]
+MCP_USED: ["sequential-thinking: not-used (плоский чек-лист проверок)", "context7: not-used (1С выгрузка, офлайн-проверки)", "hermes-atlas: not-used"]
+COMPLIANCE: true
+STATUS: resolved
+================================================================================
+### 2026-10-XX | team-lead | Project: 1с-centr1507 | П.7 ПЕРЕДЕЛАН ПО ДАННЫМ, П.6 ПОДТВЕРЖДЁН
+Проверка на тестовой базе (заказчик выполняет запросы). Итоги:
+- п.6 (регистр должности): ПОДТВЕРЖДЕНО на данных — в карточках ТЭЦ-5 «инженер II категории» строчными, ТЭЦ-4 «Инженер II категории»; СБольшой(.., ОстальныеБуквыМалые=ИСТИНА по умолчанию) делал «Инженер ii категории ссдту». Удаление нормализации — верный фикс. Закрыто.
+- п.7: первый критерий (СтационарныйТелефон + КодВыходаНаАТС) оказался НЕВЕРНЫМ — по данным это выход на АТС другой организации (ГПО Белэнерго): 304 записи; ТЧ КодыВыходовНаАТС — 630. Правильный признак «выход на город» = ПользователиТелефонов.ДополнительнаяУслуга = ВидыИспользованияСредствСвязи.Исходящие_по_РБ1 («Исходящие по РБ (город)»), 141 запись (пользовательский/внутренний номер); на телефоне (ПодключенныеУслуги=город) — 191. Заказчик выбрал уровень пользователя/внутреннего номера (141). Реализация переделана в обоих сводных: убрано условие КодВыходаНаАТС/СтационарныйТелефон, добавлена ветка ОБЪЕДИНИТЬ ВСЕ с КОЛИЧЕСТВО(*) по записям ТЧ ПользователиТелефонов с ДополнительнаяУслуга=Исходящие_по_РБ1 (атрибуция к Белтелеком, Сумма=0), в Белтелеком-отчёте с фильтром Организация=&Организация. Новые sha: телефонный EBFEEB4EDC7550C1DAFC9EECA028BACA5BF55FB83111FAF6249C0FC0AB52FA7F (19570 б); Белтелеком D8D876C6F8241B70BC9AD3C9831D9716816ED4E887C2B0360E78BF75DABBF7D0 (31488 б). Артефакты обновлены (output\fix-арм-связь-6-8\p7-8-telefon, p7-beltelecom, README.md).
+- п.8: заказчик подтвердил логику «как во 2-м отчёте»; 1-й отчёт приведён к тем же источникам (РасшифровочнаяВедомость1 + РасшифровочнаяВедомость_Услуги + строки без телефона, фильтр НеВключатьВОтчетОВозмещенииУслуг, ветка Белтелеком с фильтром оператора). В ТЕСТОВОЙ базе новые регистры пусты (обмены отключены) — проверка сумм только на основной базе. Тонкость: телефонный сводный не фильтруется по Организации (её несколько), Белтелеком-отчёт требует организацию — если на основной цифры не сойдутся, добавить фильтр/параметр Организация в телефонный сводный.
+- Приёмка: qa-engineer — ПРИНЯТО (A-G PASS). Находка QA BUG-058 (ПустаяССылка, двойная «С», в Белтелеком-отчёте :364/:386) — FALSE POSITIVE: отличается только регистр 8-го символа (U+0421 vs U+0441), 1С-идентификаторы регистронезависимы; проверил [int][char] — 2 вхождения «ПустаяССылка» и 1 «ПустаяСсылка» (:448), для платформы это один идентификатор. Бага нет.
+- Осталось: заказчик тестит п.6/7/8 в предприятии на основной базе; далее п.9, затем 1-5.
+SKILLS_LOADED: ["evidence-discipline", "1c-query"]
+MCP_USED: ["sequential-thinking", "context7: not used"]
+COMPLIANCE: true
+STATUS: resolved
+================================================================================
+[2026-10-07 17:08] qa-engineer → team-lead:
+TYPE: update | PRIORITY: high
+Project: agent-hq
+CONTENT: ПРИЁМКА R2 (model-router registry-routing) — ВЕРДИКТ: ВОЗВРАТЬ (REJECT). 2 major + 4 minor, заведено BUG-059 (KNOWLEDGE-BASE.md).
+Проверено фактами (PASS-часть):
+1) Parser::ParseFile: model-router.ps1 0 ошибок, test-model-router.ps1 0 ошибок; оба BOM=True, только CRLF (1420/579 строк, lone-LF=0).
+2) tests/test-model-router.ps1 → SUMMARY: passed=12 failed=0 total=12, EXIT=0 (полный вывод прогона получен; случаи a,c,d,e,f,g,h,i,j,k,l,m — все PASS).
+3) Живой -Explain -Agent code-reviewer -TaskType review → SOURCE=registry REASON=registry-score ROUTE=nvidia/nemotron-3.5-content-safety:free score=0.83 p50=584ms EXIT=0. Независимая перепроверка argmax: 14 viable-кандидатов (free+OK+без cooldown+breaker closed), пересчёт Get-ModelScore — tie 0.83 у content-safety(584ms) и nemotron-3-super-120b(647ms), tiebreak по latency → выбор ВЕРНЫЙ, не случайный.
+4) Фильтры: case l сюиты (DEAD/cooldown/non-free/breaker не выбираются; лидер в cooldown/breaker скипается) + живая enumeration (RATE_LIMIT/DEAD-статусы отсечены status≠OK).
+5) Деградация (мои прогоны на temp-root): нет реестра / битый JSON / пустой models → SOURCE=ladder + REGISTRY=no-registry-fallback, EXIT=0; все кандидаты отфильтрованы → registry-no-candidate + ladder, EXIT=0. Без падений.
+6) Ключевой риск dot-source clobber — ПОДТВЕРЖДЁН ПОФИКСЕННЫЙ: sentinel-переменные всех 12 имён param() model-registry.ps1 (Root/TaskType/TimeoutSec/Top/Sort/Json/List/Score/Force/Refresh/FreeOnly/MaxProbe) сохранены после `. model-router.ps1`; -Status (таблица цела), -Route (read-only), -Apply-путь (только на temp-root!), usage-guard без аргументов EXIT=0, -Explain без -Agent EXIT=1 — не сломаны. Get-ProbeStatus: активна router-версия (Stdout/Stderr/ExitCode/TimedOut) — shadowing как заявлено.
+7) Регрессии: git diff model-registry.ps1 = пусто (не изменён); .memory/model-registry.json + model-health.json парсятся OK, не порчены; ratings.jsonl +1 строка — team-lead grade-log (не R2); driver.lock — pre-existing heartbeat; tmp/bak residue=0, jobs=0.
+Дефекты (см. BUG-059):
+- MAJOR-1 namespace: Get-RegistryRoute отдаёт ГОЛЫЕ openrouter-id; opencode-агентский конфиг требует `openrouter/<id>` (доказательство: security-auditor.json содержит ровно `openrouter/`+registry-id). -Apply с реестром пишет нерезолвящийся id (демо на temp-root: model="nvidia/...:free", exit 0) → агент сломается. Комбинация registry+-Apply тестами НЕ покрыта. Нормализации в коде нет (grep 0).
+- MAJOR-2 политика: registry-first безусловен и переопределяет ЗДОРОВЫЕ configured paid-модели: -Route senior-reviewer (opencode-go/qwen3.8-flash, согласован §1) → ROUTE=free nemotron, changed=true (то же qa-engineer). Нарушен P3-инвариант «viable configured wins» (model-router.ps1:32-34). Гейт/pin-список — решение тимлида.
+- MINOR: registry_reason захардкожен "registry-score" даже при reason=breaker-open-fallback (:993 vs :969); -MaxCostTier paid/medium/any игнорируется на registry-ветке (всегда free, :670-673); коллизия Get-ProbeStatus (хрупко, сейчас безопасно); тест-гэп: broken-JSON/no-candidate не в сюите (проверены вручную).
+Фикс-ТЗ: (1) provider-префикс/маппинг id на границе роутинга + case n (registry+-Apply → резолвящийся id); (2) гейт registry-first над здоровым configured (или явный флаг) — см. BUG-059. Retry по §5 попытка 1.
+HYGIENE: временные demo-корни удалены ([IO.Directory]::Delete), тестовый temp сюжетом стёрт (residue=False), фоновых процессов/джобов не оставлял (jobs=0), реальные .opencode/agents и opencode.json НЕ трогал (-Apply только в temp-root).
+NOT ENOUGH EVIDENCE: -Probe в этой приёмке не запускался (тратит живую квоту opencode; код-путь не менялся); runtime-поведение opencode на голом id («nvidia/...») — вывод по схеме provider-ключей opencode.json, не прогоном CLI.
+SKILLS_LOADED: ["evidence-discipline", "windows-safety", "superpowers-test", "clean-code"]
+MCP_USED: ["sequential-thinking: used (чек-лист 7 пунктов, план прогонов деградации)", "context7: not-needed (PowerShell 5.1 / .NET stdlib)", "hermes-atlas: not-needed"]
+COMPLIANCE: true
+STATUS: resolved
+================================================================================
+[2026-10-08 09:05] dev-3 -> team-lead:
+TYPE: update | PRIORITY: high
+Project: agent-hq
+CONTENT: Завершён фикс BUG-059 (R2 model-router) — 2 major + 4 minor закрыты, diffs минимальные.
+MAJOR-1 (normalize id): добавлены $script:RouterProviderPrefixes (opencode/, opencode-go/, openrouter/, aihubmix/, tokenrouter/) и функция Resolve-RouterModelId; в Get-RegistryRoute и id, и health-lookup идут через нормализованный id. -Apply теперь пишет openrouter/<bare-id>. Проверено независимо на temp-root: dev-a.json -> model="openrouter/nvidia/nemotron-3.5-content-safety:free", начало openrouter/, а opencode.json provider-ключи = tokenrouter,aihubmix,openrouter (резолвится).
+MAJOR-2 (gate): в Get-RouteDecision перед registry-веткой добавлен гейт: configured здоров (health-entry.status=OK + breaker CLOSED) и без rejections -> ранний возврат source=configured/reason=configured-healthy/changed=false, registry не вызывается. Иначе registry, иначе ladder. Проверено: -Explain senior-reviewer (OK) -> SOURCE=configured ROUTE=opencode-go/qwen3.8-flash unchanged; breaker OPEN -> SOURCE=registry ROUTE=openrouter/... REGISTRY=breaker-open-fallback.
+MINOR-3: registry_reason теперь $registryReason (не хардкод) — подтверждено REGISTRY=breaker-open-fallback.
+MINOR-4: free-only реестра явно задокументирован (комментарий + usage), при явном -MaxCostTier medium/paid и наличии non-free OK-записей выводится Warning (не молча); реестр остаётся free-only.
+MINOR-5: router-функция Get-ProbeStatus переименована в Get-RouterProbeStatus (def + call); коллизия с model-registry.ps1:257 устранена.
+MINOR-6: tests/test-model-router.ps1 расширены с 12 до 16 кейсов: n (registry+-Apply -> openrouter/ + идемпотентность Resolve-RouterModelId), o (configured-healthy gate + broken->registry), p (broken-JSON -> no-registry-fallback), q (registry-no-candidate + free-only под -MaxCostTier paid + warning). Обновлены ожидания case l под provider-префикс.
+АРТЕФАКТЫ: Parser::ParseFile 0 ошибок у обоих файлов; BOM=True, CRLF, loneLF=0. test-model-router.ps1 -> SUMMARY passed=16 failed=0 total=16 EXITCODE=0. (Первый прогон дал 15/16 из-за pre-existing флейка case k "tmp+swap leaves no residue" — повторный прогон 16/16 без изменений в этом коде; к моим правкам не относится.) model-registry.ps1 не изменён (git diff пуст).
+NOT ENOUGH EVIDENCE: runtime-поведение самого opencode на записанном openrouter/<id> не прогонялось (только сверка со схемой provider-ключей opencode.json).
+SKILLS_LOADED: ["evidence-discipline", "superpowers-implement", "clean-code"]
+MCP_USED: ["sequential-thinking: used (план 5 шагов + edge-cases)", "context7: not-needed (PowerShell 5.1 / .NET stdlib)", "hermes-atlas: not-needed"]
+COMPLIANCE: true
+STATUS: resolved
+================================================================================
+[2026-10-08 09:42] qa-engineer -> team-lead:
+TYPE: update | PRIORITY: medium
+Project: сим-карты+бд
+CONTENT: Независимая приёмка v2 (read-only, проверены файлы на диске через exceljs, не самоотчёты). ВЕРДИКТ: ПРИНЯТО. Общий result_симкарты_бд_final.xlsx: 7 листов; Некорректные=5194 (причины 2358/1329/1478/29 — точные), Перепроверить=3127 без колонки причины, Совпадения=39534, Только в 1С=15197, Только в БД=111632, сгруппированные=1109; баланс 8321 сошёлся; 3 строки Мобильный телефон с 3G-модем/Модем/Шлюз присутствуют (+3 «Шлюз GSM» — легитимно по DATA_DEVICE_RE, согласовано с филиалом Молодечненские). Косметика (ширины/заливки) = эталону result_reference_backup/filials_reference_backup (сверено фактическими значениями; отличие: у главного Сводка добавлен 5-й ширинок 18 под новую колонку таблицы — не дефект). Описания: главный 34/34 совпадают с src_host_descriptions.json побайтово (0 расхождений), РУП 34, Борисовские 14, Энергосбыт 12, Минские эл. 8, Молодечненские 7, Слуцкие 2. Filials: 15 актуальных файлов по 3 листа без Перепроверить, колонка «Возможная причина», сумма Некорректных=5194 (разбивка по причинам поп-филиально сошлась с общим); Филиал _Засковичи_.xlsx — сирота 4 листа (устаревший, не считался). Прошлые корректные: главный 6 листов без голосовых, Некорректные=2807 (причины только пусто=1329/некорректный формат=1478), колонка «Причина», косметика есть; 9 актуальных филиалов (сумма 2807 ✓). НАЙДЕНО: BUG-060 minor — осиротевший файл «Филиал _Минские электрические сети1_.xlsx» (07.10, старый формат без косметики) в прошлые корректные/filials/ (10 файлов вместо 9; наивная сумма=2837). Исправления не вносились (режим read-only). Артефакты проверок: прогоны exceljs readFile по всем 27 xlsx (временные скрипты удалены).
+SKILLS_LOADED: ["evidence-discipline", "superpowers-test", "clean-code"]
+MCP_USED: ["sequential-thinking: not-needed (плоский чек-лист приёмки)", "context7: not-needed (exceljs API проверен локально по node_modules)"]
+COMPLIANCE: true
+STATUS: resolved
+================================================================================
+[2026-10-08 13:46] qa-engineer -> team-lead:
+TYPE: update | PRIORITY: high
+Project: agent-hq
+CONTENT: Ре-приёмка по дифу BUG-059 (model-router.ps1 + tests/test-model-router.ps1). ВЕРДИКТ: ВОЗВРАТЬ (1 residual major, остальное PASS). Факты: (1) Parser::ParseFile — model-router.ps1 0 ошибок, test-model-router.ps1 0 ошибок; BOM=True оба, CRLF-only (loneLF=0). (2) Тесты: прогон1 16/16 exit0 (11с), прогон2 16/16 exit0 (10с); флейк case k НЕ воспроизвёлся (2/2 pass; case k вне дифа — тест-диф начинается с :469 после k). (3) MAJOR-1 закрыт: temp-root + -Apply -> qa-probe-agent.json model="openrouter/nvidia/qa-model:free" (старт openrouter/), повторный -Apply идемпотентен; provider-ключ openrouter подтверждён в opencode.json (tokenrouter,aihubmix,openrouter). (4) MAJOR-2 закрыт по спеке: health OK+CLOSED -> SOURCE=configured REASON=configured-healthy ROUTE=opencode-go/qwen3.8-flash changed=false, файл не тронут; breaker OPEN (open_until future) -> SOURCE=registry REGISTRY=breaker-open-fallback. (5) MINOR-3 закрыт (REGISTRY=breaker-open-fallback, не хардкод); MINOR-4 закрыт (usage: «registry branch is free-only» + WARNING при -MaxCostTier paid с non-free OK-записями); MINOR-5 закрыт (Get-RouterProbeStatus :491/:511 только в router; Get-ProbeStatus остался лишь в model-registry.ps1 :257/:295, иных ссылок в репо нет). (6) Регрессии: git diff model-registry.ps1 пуст; -Status exit0; usage-guard без флагов exit0; senior-reviewer.json цел (opencode-go/qwen3.8-flash); .memory/model-health.json и model-registry.json не изменены прогонами (git diff пуст; ratings.jsonl M — pre-existing до начала приёмки). НАЙДЕНО: BUG-061 major (residual) — гейт :999-1002 требует доказанного health status=OK; модель БЕЗ health-записи не защищена. Живой корон: model-health.json содержит только 2 записи, для qwen3.8-flash записи нет; фактический read-only -Explain senior-reviewer -> SOURCE=registry ROUTE=openrouter/nvidia/nemotron-3.5-content-safety:free changed=true — -Apply понизил бы согласованную §1 paid-модель (тот же вред дефекта 2 BUG-059 в не покрытом спецификацией состоянии). Косметика: :1432 «configured model is healthy» врёт при changed=false из-за registry-score. Фикс-ТЗ в KNOWLEDGE-BASE.md BUG-061 (вариант a/b/c + test case r). За BUG-059: MAJOR-1/2/MINOR-3/4/5 закрыты, тест-сюита 16/16. Артефакты: temp-root C:\Users\...\Temp\qa-bug059-78600b17fe69422f8b6f340500b9af1f удалён (LEFTOVER=0), фоновых процессов/джоб не оставлено. NOT ENOUGH EVIDENCE: runtime-поведение opencode на записанном openrouter/<id> не проверялось (только сверка provider-ключей); флейк case k не воспроизводился на 2 прогонах — стабильность при нагрузке не гарантирована.
+SKILLS_LOADED: ["evidence-discipline", "superpowers-test", "clean-code"]
+MCP_USED: ["sequential-thinking: used (план проверок 1 шаг)", "context7: not-needed (PowerShell 5.1 / .NET stdlib)", "hermes-atlas: not-needed"]
+COMPLIANCE: true
+STATUS: resolved
+================================================================================
+
+================================================================================
+[2026-10-08 14:45] dev-3 -> team-lead:
+TYPE: update | PRIORITY: high
+Project: agent-hq
+CONTENT: BUG-061 fix (team-lead decision variant a). (1) model-router.ps1 Get-RouteDecision: the registry route is now fetched BEFORE the configured gate; the gate applies only when the registry actually offers a candidate ($null -ne $registryRoute). It protects the configured model when the health entry is OK + breaker CLOSED, OR when there is NO health record at all (unprobed = viable). Downgrade to registry/ladder happens only on a proven non-OK status or an OPEN breaker. New reason code "configured-unprobed" (a proven-healthy model keeps "configured-healthy"); registry_reason follows the same value. APPLY message at :1432 split: "configured model is healthy" is printed only for reason=configured-healthy, otherwise "routed model already configured (<reason>)". Scoping the gate to a present registry candidate keeps the no-registry ladder degradation semantics untouched (cases m/p/q unchanged). (2) tests: case l and n now seed the configured model as DEAD/OPEN so the registry path is legitimately exercised under the new policy; new case r: unprobed configured + filled registry -> source=configured / model unchanged / changed=false / reason=configured-unprobed, plus OK + open breaker -> source=registry. (3) live read-only -Explain senior-reviewer (no health record) -> SOURCE=configured ROUTE=opencode-go/qwen3.8-flash REASON=configured-unprobed changed=false. Isolated temp root with configured OK + open breaker -> SOURCE=registry ROUTE=openrouter/nvidia/nemotron-3.5-content-safety:free REASON=breaker-open-fallback; temp dir deleted (LEFTOVER=False).
+ARTIFACTS: Parser::ParseFile - model-router.ps1 0 errors, test-model-router.ps1 0 errors; BOM=True, CRLF-only (loneLF=0), nonAscii=0 on both; tests 17/17 passed 0 failed exit0, run twice. model-registry.ps1 untouched (absent from git diff).
+SKILLS_LOADED: ["evidence-discipline", "superpowers-implement", "clean-code"]
+MCP_USED: ["sequential-thinking: used (gate/edge-case design)", "context7: not-needed (PowerShell 5.1 / .NET stdlib)", "hermes-atlas: not-needed"]
+COMPLIANCE: true
+STATUS: resolved
+================================================================================
+
+[2026-10-08 16:05] backend-1 -> team-lead:
+TYPE: update | PRIORITY: medium
+Project: agent-hq
+CONTENT: Phase 1 gateway minor fixes (7 review minors). (1) MaxBytesReader 32MiB in handleChat -> 413 on oversize (server.maxRequestBody overridable for tests). (2) Per-chunk stream idle timeout: config streamIdleTimeoutSec (default 120) wired to Server.streamIdleTimeout; idleGuard watchdog closes the stalled upstream body; copyUpstream returns a clear "upstream stream idle for more than <d>" error and the post-start failure is never masked by another candidate. (3) Test gaps closed: 405 on wrong method, invalid/empty/missing-model JSON -> 400, oversize -> 413, stream:true forwarded upstream (body + Accept: text/event-stream), stream fallback before first byte, slow-upstream idle abort. (4) Doc comments clarified in config.go package + handleChat: responses byte-for-byte; requests re-encoded (only model substitution + required headers), client query string not forwarded. (5) main.go: removed duplicate SetLogger (New already sets it); -h returns 0 (flag.ErrHelp), real flag usage errors still 2.
+FILES: go/internal/gateway/config.go, go/internal/gateway/gateway.go, go/internal/gateway/config_test.go, go/internal/gateway/gateway_test.go, go/cmd/agent-hq-gateway/main.go (tree go/ is untracked - no git baseline; no other files touched).
+ARTIFACTS: gofmt -l -> empty; go build ./... = 0; go vet ./... = 0; go test ./internal/gateway/ -count=1 -v -> 26 top-level PASS / 0 FAIL (pre-edit baseline 16 test funcs; requirement >17 satisfied); go test ./... -count=1 all ok. Binary check: -h exit 0, -bogus exit 2, no leftover process/file. ASCII-only on all 5 .go files.
+SKILLS_LOADED: ["evidence-discipline", "superpowers-implement", "clean-code", "windows-safety"]
+MCP_USED: ["sequential-thinking: used (idle-timeout watchdog design)", "context7: not-needed (Go stdlib net/http)", "hermes-atlas: not-needed"]
+COMPLIANCE: true
+STATUS: resolved
+================================================================================
+[2026-10-08 14:05] qa-engineer -> team-lead:
+TYPE: update | PRIORITY: high
+Project: agent-hq
+CONTENT: Ре-приёмка по дифу BUG-061 (model-router.ps1 + tests/test-model-router.ps1). ВЕРДИКТ: PASS (принято). Факты: (1) Parser::ParseFile — model-router.ps1 0 ошибок, test-model-router.ps1 0 ошибок; BOM=True оба, CRLF-only (loneLF=0, loneCR=0). (2) Тесты: прогон1 17/17 exit0 (10.9с), прогон2 17/17 exit0 (10.8с); кейс r присутствует и зелёный; флейк case k не наблюдался (2/2). (3) Суть BUG-061 проверена НЕ только тестами, а независимым сидингом в temp-root (AGENTS.md §1 согласованная paid-модель senior-reviewer): «unprobed configured + заполненный реестр» -> SOURCE=configured REASON=configured-unprobed ROUTE=opencode-go/qwen3.8-flash changed=false, файл агента и health не тронуты; OK+breaker OPEN (open_until future) -> SOURCE=registry REASON=breaker-open-fallback; DEAD+CLOSED (доказанный non-OK) -> SOURCE=registry REASON=registry-score; OK+CLOSED -> configured/configured-healthy. Гейт :1006-1048 читается так же (registryRoute до гейта; gate только при $null -ne $registryRoute; unprobed = Get-ModelHealthEntry -eq null :1009). Инвариант заголовка :33 «viable configured model always wins» восстановлен. (4) Живой корень read-only -Explain senior-reviewer (health-записи нет — в model-health.json только mimo/glm-5.3) -> SOURCE=configured REASON=configured-unprobed exit0; хэши .memory/model-health.json и model-registry.json до/после идентичны. (5) Cosmetic закрыт: APPLY :1437-1441 — «configured model is healthy» печатается ТОЛЬКО при reason=configured-healthy; проверено живым -Route -Apply на temp-root: unprobed -> «not needed - routed model already configured (configured-unprobed)», OK+CLOSED -> «configured model is healthy». (6) Регрессии: кейс l (:538-544) и n (:578-580) пересидированы в DEAD/OPEN корректно под новую политику (сброс :544 / восстановление файла :588); model-registry.ps1 вне git diff; .memory не испорчен (ratings.jsonl M — pre-existing команда тимлида, одна строка grade-лога, к прогонам не относится); тестовый temp-root самоочищается (ABSENT); мой temp-root qa-bug061-* удалён (LEFTOVER=False), фоновых процессов не оставлено. Наблюдение (не дефект): Read-ModelHealthState (:234) ждёт плоскую map без обёртки "models"; чужеродная структура файла трактуется как «записей нет» -> все configured модели защищены (fail-safe, соответствует варианту a). Замечание по bus-времени: timestamp записи dev-3 14:45 опережает системные часы (14:01) — на приёмку не влияет. KB: строка ре-приёмки добавлена в BUG-061 (закрытие заголовка [OPEN] — за тимлидом при merge).
+SKILLS_LOADED: ["evidence-discipline", "superpowers-test", "clean-code"]
+MCP_USED: ["sequential-thinking: used (план проверок/матрица состояний)", "context7: not-needed (PowerShell 5.1 / .NET stdlib)", "hermes-atlas: not-needed"]
+COMPLIANCE: true
+STATUS: resolved
+================================================================================
+
+[2026-10-08 14:09] qa-engineer -> team-lead:
+TYPE: update | PRIORITY: medium
+Project: agent-hq
+CONTENT: Ре-приёмка (QA) minor-фиксов Фазы 1 шлюза (go/). ВЕРДИКТ: PASS (принято). Факты (проверены лично): (1) gofmt -l пусто; go build ./... = 0; go vet ./... = 0; nonAscii=0 во всех 5 изменённых .go (config.go/gateway.go/config_test.go/gateway_test.go/main.go) + gateway.json. (2) go test ./internal/gateway/ -count=1 -v: 26 top-level PASS / 0 FAIL (заявленные 26 подтверждены), ok 0.419s, exit 0; go test ./... -count=1 — все пакеты ok, exit 0 (cmd/agent-hq 64.6s, остальные <6s). (3) Свойства по коду+тестам: 413 — http.MaxBytesReader gateway.go:117-124 (deфолт 32MiB :31, overridable :73), тест ставит maxRequestBody=64 -> 413 (gateway_test.go:393-402) реальный; idle — streamIdleTimeoutSec config.go:32,55,102-107 (0->120, <0 отклоняется), wired gateway.go:74, idleGuard gateway.go:320-383 рвёт зависший стрм close'ом тела, ошибка «upstream stream idle...» :310; тест TestChatStreamIdleTimeoutAborts прошёл за 0.15s при сталле апстрима 3s, second candidate НЕ тронут и SECOND-ANSWER не утекло — маскировки нет; post-start failure не подменяется (trackedWriter gateway.go:140-145,407-433; TestChatErrorAfterStreamStartNotMasked). 405/400 — gateway.go:93-96,111-114,129-134 + тесты :353-390 (3 кейда бодий). stream:true уходит наверх: тело raw-passthrough + Accept: text/event-stream gateway.go:213-214, тест :406-444 проверяет оба. (4) gateway.json: валиден (ConvertFrom-Json); free-кандидаты = ultra-550b:free, super-120b-a12b:free, openrouter/free — в реестре OK (model-registry.json:262,:66,:276); inkling:free (DEAD :52) и inkling-small/lyria×2 (DEAD :150,:136,:192) в конфиге ОТСУТСТВУЮТ; ASCII-only. Замечание QA: первая выдача Read усекла длинную строку 6 (462 симв.) — подтвердил 3 кандидата сырыми байтами, ложного дефекта не выставил. (5) Регрессии целы: loopback-only (config.go:96-98, тест 0.0.0.0/localhost/:8899/192.168), фолбэк только до первого байта (TestChatFallback + TestChatStreamFallbackBeforeFirstByte), тела не логируются (logf только method/path/status/latency/candidate/stream/error; upstream error body -> io.Discard gateway.go:226; секрет-тест :335). main.go: -h exit 0 / -bogus exit 2 проверены ЖИВЫМ бинарником (сборка в %TEMP%, удалён). (6) Гигиена: процессов gateway нет, temp_* в репо нет, мой qa-лог удалён. Косметика (не блокеры): gateway.go:126 — 400 «cannot read request body» без access-log строки (все остальные error-пути логируют). Багов в KNOWLEDGE-BASE не добавлял — новых дефектов не найдено.
+SKILLS_LOADED: ["evidence-discipline", "superpowers-test"]
+MCP_USED: ["sequential-thinking: used (план проверок 6 пунктов)", "context7: not-needed (Go stdlib net/http)", "hermes-atlas: not-needed"]
+COMPLIANCE: true
+STATUS: resolved
+================================================================================

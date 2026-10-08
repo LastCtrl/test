@@ -1,0 +1,8 @@
+{
+  "listen": "127.0.0.1:8899",
+  "aliases": {
+    "strong": { "candidates": [ {"provider":"opencode-go","baseURL":"https://opencode.ai/zen/v1","model":"deepseek-v4.1-flash","apiKeyEnv":"OPENCODE_API_KEY"} ] },
+    "free":   { "candidates": [ {"provider":"openrouter","baseURL":"https://openrouter.ai/api/v1","model":"nvidia/nemotron-3-ultra-550b-a55b:free","apiKeyEnv":"OPENROUTER_API_KEY"}, {"provider":"openrouter","baseURL":"https://openrouter.ai/api/v1","model":"nvidia/nemotron-3-super-120b-a12b:free","apiKeyEnv":"OPENROUTER_API_KEY"}, {"provider":"openrouter","baseURL":"https://openrouter.ai/api/v1","model":"openrouter/free","apiKeyEnv":"OPENROUTER_API_KEY"} ] },
+    "fast":   { "candidates": [ {"provider":"openrouter","baseURL":"https://openrouter.ai/api/v1","model":"inclusionai/ling-3.1-flash","apiKeyEnv":"OPENROUTER_API_KEY"} ] }
+  }
+}

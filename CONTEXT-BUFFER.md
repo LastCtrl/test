@@ -6476,3 +6476,13 @@ MCP_USED: ["context7: not-needed (Go stdlib net/http)", "sequential-thinking: no
 COMPLIANCE: true
 STATUS: resolved
 ================================================================================
+[2026-10-08 14:28] dev-1 -> team-lead:
+TYPE: update | PRIORITY: high
+Project: agent-hq
+CONTENT: Momentalna strahovka shlyuza (gateway-guard). (1) Sozdan .agents/scripts/gateway-guard.ps1 (BOM+CRLF, ASCII-only, 0 non-ASCII): TCP-probe 127.0.0.1:8899 (TcpClient, timeout 2000ms, bez vneshnih utilit) -> if UP tihiy exit 0; if DOWN -> Start-Process wscript.exe '//B' run-gateway-hidden.vbs (hidden) + log .memory\gateway-guard.log; kill-switch AGENT_HQ_GATEWAY_GUARD_DISABLE=1 -> no action exit 0; flag -Check read-only (up=exit0, down=exit2). (2) Integraciya v .agents/scripts/inbox-poller.ps1 (perd watchdog-blokom): DryRun -> & guard -Check (read-only, bez mutaciy), inache -> & guard (podnyat); kill-switch AGENT_HQ_GATEWAY_GUARD_DISABLE=1 propuskaet blok; oshibki lovyat try/catch (poller ne padaet). ARTIFACTS: ParseFile -> 0 errors (oba fayla); BOM=True loneLF=0 (oba); live: -Check -> 'up' exit0, default -> silent exit0, PID ne menyalsya (idempotent); kill-switch -> 'disabled' exit0; TEST POD'EMA: Stop-Process verificirovannogo PID 31400 (CommandLine *agent-hq-gateway.exe* + *gateway.json*), -Check -> 'down' exit2, guard -> 'launched', cherez ~pool new PID 25808, /v1/models -> models count=3; inbox-poller -DryRun -> 'gateway-guard: dry-run check (read-only)' + watchdog dry-run, exit0, mutaciy net. Log: 'DOWN ... starting gateway' / 'START ok'. run-gateway.cmd v git status M - NE moi (mtime 14:24:40, do nachala raboty); register-gateway-task.ps1 untracked - pre-existing. Temp-faylov ne ostavleno. Realnye .memory state-fayly ne trogali (dobavlen tolko noviy gateway-guard.log).
+SKILLS_LOADED: ["evidence-discipline", "skill-enforcement", "windows-safety"]
+MCP_USED: ["sequential-thinking: used (plan 1 thought)", "context7: not-needed (PowerShell 5.1 / .NET stdlib TcpClient)", "hermes-atlas: not-needed"]
+COMPLIANCE: true
+STATUS: resolved
+================================================================================
+

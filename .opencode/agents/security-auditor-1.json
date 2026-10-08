@@ -1,7 +1,7 @@
 {
     "name":  "security-auditor-1",
     "description":  "Security Auditor (copy 1) — OWASP, уязвимости, поиск secrets для параллельной работы.",
-    "model":  "openrouter/cohere/north-mini-code:free",
+    "model":  "router/free",
     "reasoningEffort":  "high",
     "mode":  "subagent",
     "temperature":  0.0,

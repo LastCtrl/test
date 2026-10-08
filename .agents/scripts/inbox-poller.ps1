@@ -64,6 +64,26 @@ if (-not (Test-Path $tzCopyPath)) {
     }
 }
 
+# --- Gateway guard (infra safety): if the local model gateway (127.0.0.1:8899)
+# is down, raise it. Kill-switch: AGENT_HQ_GATEWAY_GUARD_DISABLE=1. In -DryRun the
+# guard runs read-only (-Check) only; it never mutates task state.
+if ($env:AGENT_HQ_GATEWAY_GUARD_DISABLE -ne '1') {
+    $gatewayGuardPath = Join-Path $PSScriptRoot 'gateway-guard.ps1'
+    if (Test-Path -LiteralPath $gatewayGuardPath -PathType Leaf) {
+        try {
+            if ($DryRun) {
+                Write-Log "gateway-guard: dry-run check (read-only)"
+                & $gatewayGuardPath -Check | Out-Null
+            } else {
+                Write-Log "gateway-guard: ensure gateway is up"
+                & $gatewayGuardPath | Out-Null
+            }
+        } catch {
+            Write-Log "gateway-guard: failed: $($_.Exception.Message)"
+        }
+    }
+}
+
 # --- Live supervision (R3/R4): reassign STALLED tasks to a peer agent.
 # Kill-switch: set AGENT_HQ_WATCHDOG_DISABLE=1 to skip. When nothing is stalled
 # the sweep is read-only; it never kills processes.

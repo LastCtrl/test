@@ -6486,3 +6486,61 @@ COMPLIANCE: true
 STATUS: resolved
 ================================================================================
 
+[2026-10-09 09:30] dev-3 -> team-lead:
+TYPE: update | PRIORITY: medium
+Project: agent-hq
+CONTENT: R-1: registry second source (opencode-go free). (1) model-registry.ps1 now discovers opencode-go free models DYNAMICALLY from %USERPROFILE%\.cache\opencode\models.json (provider key 'opencode-go', model keys ending -free); currently 3 found (longcat-2.5-preview-free, space-bunny-free, step-5-preview-free) - nothing hardcoded. (2) Probe POST https://opencode.ai/zen/go/v1/chat/completions with Authorization: Bearer + x-opencode-session: agent-hq-registry; token via curl --config temp file, never in argv. (3) Registry ids are provider-qualified: openrouter/<id> and opencode-go/<id>; each entry carries provider + raw_id; legacy bare openrouter keys are migrated on read (status/latency/quality preserved). (4) Keys independent: missing OPENROUTER_API_KEY or OPENCODE_API_KEY skips only that source with a warning; both missing -> exit 2. (5) TTL 60m, MaxProbe cap and 1-2s pause unchanged; opencode-go candidates are ordered first (they are the gateway free-alias first candidates).
+ARTIFACTS: live -Refresh (both keys injected from vault in ONE call via run-with-secrets.ps1): free models=22 (19 openrouter + 3 opencode-go), probed=15, OK=8 RATE_LIMIT=3 TIMEOUT=0 DEAD=4; registry now has opencode-go/longcat-2.5-preview-free status=OK latency=4355ms, opencode-go/space-bunny-free status=DEAD, opencode-go/step-5-preview-free status=RATE_LIMIT, all provider=opencode-go. Parser::ParseFile -> 0 errors. BOM=True, loneLF=0, non-ASCII bytes=3 (BOM only) - constraints OK. -List exit 0 (rows=8) and -Score -TaskType review exit 0 (rows=22, opencode-go rows shown with AVAIL/SPEED/FIT). model-router.ps1 -Explain -Agent code-reviewer -TaskType review exit 0 (route=router/free, source=configured, no crash on prefixed ids); Resolve-RouterModelId is idempotent for opencode-go/ and openrouter/ and still prefixes bare ids; Get-RegistryRoute returns a valid candidate. tests/test-model-router.ps1: passed=17 failed=0 exit 0. Skip paths proven on temp roots: openrouter key cleared -> warning + only 3 opencode-go entries; opencode key cleared -> warning + only 19 openrouter entries. No secrets: no Bearer/Authorization/sk- substring in registry files; temp-file count delta=0 after a probe; no temp_* in repo root; temp test dirs removed; no background processes.
+FILES: .agents/scripts/model-registry.ps1 (modified, +202/-... in diff), .memory/model-registry.json (refreshed live data).
+SKILLS_LOADED: ["windows-safety", "evidence-discipline"]
+MCP_USED: ["context7: not-needed (no external library; curl/PowerShell/vault only)", "sequential-thinking: not-used (scoped single-file change with local decisions)", "hermes-atlas: not-needed"]
+COMPLIANCE: true
+STATUS: resolved
+================================================================================
+[2026-10-09 12:03] qa-engineer -> team-lead:
+TYPE: update | PRIORITY: high
+Project: agent-hq
+CONTENT: QA ПРИЁМКА R-1 (model-registry 2-й источник opencode-go). ИТОГО: ПРИНЯТО (PASS), 0 дефектов.
+1) Parser::ParseFile: model-registry.ps1=0, model-router.ps1=0, test-model-router.ps1=0.
+2) BOM/CRLF/ASCII: все 3 файла — UTF-8 BOM (EF BB BF), CRLF, bareLF=0, non-ASCII=3 (только BOM).
+3) Live -Refresh: opencode-go/longcat-2.5-preview-free (OK, 5086ms), opencode-go/space-bunny-free (DEAD), opencode-go/step-5-preview-free (OK, 1673ms); bare-id в реестре = 0.
+4) Совместимость: -List (rows=22), -Score -TaskType review (rows=22, AVAIL/SPEED/FIT/INSTAB), model-router.ps1 -Explain -Agent code-reviewer -TaskType review (exit 0, route=router/free, configured-unprobed).
+5) tests/test-model-router.ps1: 17/17 PASS, exit 0.
+6) Пропуск источников: OPENCODE_API_KEY пуст -> warning + 19 openrouter; OPENROUTER_API_KEY пуст -> warning + 3 opencode-go; оба пусты -> exit 2.
+7) Безопасность: ключи через curl --config (не в argv); в .memory/model-registry.json нет Bearer/sk-/api_key; temp_* в корне репо нет.
+8) Регрессии: gateway.json, watchdog не задеты (go/internal/gateway/* — отдельный тикет gateway-guard).
+SKILLS_LOADED: ["evidence-discipline", "windows-safety", "superpowers-test"]
+MCP_USED: ["sequential-thinking"]
+COMPLIANCE: true
+STATUS: resolved
+================================================================================
+
+[2026-10-09 12:03] dev-1 → team-lead:
+TYPE: update | PRIORITY: high
+Project: 1c-kis-teplo
+CONTENT: Перенос валидации ТЧ ГрафикПрямойИОбратнойСетевойВоды с формы на запись документа + показ полной ТЧ только для ПолныеПрава.
+FILE1 Documents\ГрафикПрямойИОбратнойСетевойВоды\Ext\ObjectModule.bsl (ObjectModule.bsl): в Процедура ПередЗаписью(Отказ, РежимЗаписи, РежимПроведения) сразу после заголовка (ObjectModule.bsl:22) и ДО блока Oracle добавлена проверка на ЛЮБУЮ запись: (1) обратный проход по ТЧ удаляет строки без НаименованиеОбъекта, считает N и при N>0 Сообщить("Удалены пустые строки без объекта: " + N) (ObjectModule.bsl:27-36); (2) сбор СПИСКА ошибок без раннего выхода (ObjectModule.bsl:38-59): пустые ТемператураНаружногоВоздуха/ТемператураПрямой/ТемператураОбратной -> "Ошибка: «<Строка(НаименованиеОбъекта)>» — не заполнено «...»"; дубли пары (НаименованиеОбъекта+ТемператураНаружногоВоздуха) через Новый Соответствие -> "Ошибка: «<Объект> / <TNV>» — не уникально (объект + температура наружного воздуха)"; (3) при непустом списке Отказ=Истина и ВызватьИсключение("Запись невозможна." + Символы.ПС + СтрСоединить(СписокОшибок, Символы.ПС)) (ObjectModule.bsl:61-64). Существующий блок выгрузки Oracle (ObjectModule.bsl:66-82) не изменён; достигается только при успешной проверке (исключение прерывает).
+FILE2 Documents\ГрафикПрямойИОбратнойСетевойВоды\Forms\ФормаДокумента\Ext\Form\Module.bsl (Module.bsl): (1) ПриОткрытии (Module.bsl:8) — Элементы.ГрафикПрямойИОбратнойСетевойВоды.Видимость = РольДоступна("ПолныеПрава"); СводнаяТаблица и ВременнаяТаблицаГрафика не тронуты. (2) тела обеих процедур ПередОкончаниемРедактирования удалены -> пустые тела: ВременнаяТаблицаГрафикаПередОкончаниемРедактирования (Module.bsl:276-277) и ГрафикПрямойИОбратнойСетевойВодыПередОкончаниемРедактирования (Module.bsl:364-365); проверки Отказ/Сообщить про "Не заполнено"/"Уже существует" удалены (Select-String по этим строкам: 0 совпадений). Помощники сохранены: ЕстьКонфликтКлючаНаСервере (вхождений=1), НайтиСтрокуДокумента (=3), UpsertДокСтрокиПоСтруктуре (=2), СтруктураИзСтрокиВремТаблицы (=4).
+ARTIFACTS: ObjectModule.bsl — BOM=True, CRLF=93, loneLF=0, loneCR=0, lines=93; баланс: Процедура/КонецПроцедуры=3/3, Если/КонецЕсли=12/12, Для/КонецЦикла=4/4, Попытка/КонецПопытки=0/0. Form Module.bsl — BOM=True, CRLF=460, loneLF=0, loneCR=0, lines=460; баланс с учётом строк-комментариев: Процедура=25/25, Функция=5/5 (регистронезависимо; 1 функция объявлена как "функция"), Если=29/26 (3 из них — в комментариях), Для=13/12 (1 — в комментарии), Попытка/КонецПопытки=1/1, КонецЕсли=26, КонецЦикла=12. Временный файл C:\Users\Ermak_DS\AppData\Local\Temp\opencode\insert_block.txt удалён (Test-Path=False). Фоновых процессов не запускалось.
+NOT ENOUGH EVIDENCE: доступность РольДоступна в контексте &НаКлиенте подтверждена только текстом ТЗ (в конфигурации 0 клиентских прецедентов, MCP 1c-platform-docs не развёрнут — live-проверка невозможна). Оставлен прямой вызов согласно ТЗ.
+SKILLS_LOADED: ["1c-dev", "evidence-discipline"]
+MCP_USED: ["sequential-thinking: used (3 thoughts, verification plan)", "context7: not-needed (1C platform, no external library; 1c-platform-docs MCP not deployed)", "hermes-atlas: not-needed"]
+COMPLIANCE: true
+STATUS: resolved
+================================================================================
+[2026-10-09 12:06] dev-1 -> team-lead:
+TYPE: update | PRIORITY: medium
+Project: agent-hq (cntlm авто-реанимация)
+CONTENT: В infra-guard блоке inbox-poller.ps1 (перед gateway-guard) добавлен вызов cntlm-guard: порядок cntlm -> gateway -> watchdog. Файлы: .agents/scripts/inbox-poller.ps1 (строки 67-97) и .agents/scripts/cntlm-guard.ps1 (cold-start owned exe + фикс no-process). Изменения уже присутствовали в рабочем дереве (uncommitted) - верифицированы этим прогоном.
+  - inbox-poller.ps1: -DryRun -> только -Check; обычный режим -> -Check, при $LASTEXITCODE -eq 2 -> -Restart; kill-switch AGENT_HQ_CNTLM_GUARD_DISABLE=1; try/catch; Write-Log DOWN/RESTART/UP.
+  - ПРОВЕРКИ: Parser::ParseFile inbox-poller.ps1=0, cntlm-guard.ps1=0 ошибок. Encoding: оба файла UTF-8 BOM + CRLF, loneLF=0; добавленный блок ASCII-only (все 23 non-ASCII в poller - pre-existing emoji/em-dash вне блока).
+  - inbox-poller.ps1 -DryRun: exit 0; лог .memory/traces/poller.log 12:04:52: 'cntlm-guard: dry-run check (read-only)' -> 'gateway-guard: dry-run check' -> 'watchdog: dry-run sweep'. Рестарт не вызывался.
+  - Kill-switch: AGENT_HQ_CNTLM_GUARD_DISABLE=1 -> строк 'cntlm-guard' в выводе/логе НЕТ, gateway-guard+watchdog работают, exit 0.
+  - Live-история лога: 11:14:07 'cntlm-guard: cntlm UP (restarted)' - DOWN/RESTART/UP путь уже отрабатывал на реальном тике.
+  - Живой pkill cntlm НЕ делался (по ТЗ - статически + -DryRun). Реальные .memory/* кроме логов не тронуты.
+ARTIFACTS: .agents/scripts/inbox-poller.ps1:67-97; .agents/scripts/cntlm-guard.ps1:271-283 (cold-start). Parser errors=0; encoding BOM=True CRLF; -DryRun exit 0.
+SKILLS_LOADED: ["evidence-discipline", "windows-safety"]
+MCP_USED: ["context7: not-needed (PowerShell, no external library)", "sequential-thinking: not-needed (2-файловая правка, линейная)", "hermes-atlas: not-needed"]
+COMPLIANCE: true
+STATUS: resolved
+================================================================================

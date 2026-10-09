@@ -1,11 +1,15 @@
 ﻿# model-registry.ps1 - free-model registry: discovery, live probe, scoring (R1).
-# Discovery: openrouter /api/v1/models; free = pricing.prompt==0 and pricing.completion==0.
+# Discovery source 1: openrouter /api/v1/models; free = pricing.prompt==0 and pricing.completion==0.
+# Discovery source 2 (R-1): opencode-go free models read dynamically from the local
+#   opencode models cache; probe endpoint https://opencode.ai/zen/go/v1/chat/completions.
 # Probe: POST /chat/completions ("Reply with exactly: PONG"), classified OK|RATE_LIMIT|DEAD|TIMEOUT.
+# Registry ids are provider-qualified: openrouter/<id> and opencode-go/<id>.
 # State: .memory/model-registry.json (TTL 60 min for OK, unless -Force).
 # Composite score: W_AVAILABILITY*availability + W_SPEED*speed + W_QUALITY*quality
 #                  + W_TASK_FIT*task_fit - W_INSTABILITY*instability.
-# Weights are the constants below. API key: env OPENROUTER_API_KEY only, never
-# printed and never passed in the process command line (curl --config header file).
+# Weights are the constants below. API keys: env OPENROUTER_API_KEY and
+# env OPENCODE_API_KEY, never printed and never passed in the process command line
+# (curl --config header file).
 
 [CmdletBinding()]
 param(
@@ -38,6 +42,17 @@ $script:FailThreshold       = 2
 $script:IntervalMinSec      = 1
 $script:IntervalMaxSec      = 2
 $script:SpeedRefMs          = 30000.0
+
+# Second discovery source (R-1): opencode-go free models are read dynamically from
+# the opencode models cache, never hardcoded. The probe uses the same endpoint and
+# headers as the gateway "free" alias; the x-opencode-session header is required.
+$script:OpenCodeGoModelsCache = ".cache\opencode\models.json"
+$script:OpenCodeGoProvider    = "opencode-go"
+$script:OpenCodeGoChatUrl     = "https://opencode.ai/zen/go/v1/chat/completions"
+$script:OpenCodeGoSession     = "agent-hq-registry"
+$script:OpenRouterProvider    = "openrouter"
+$script:OpenRouterPrefix      = "openrouter/"
+$script:OpenCodeGoPrefix      = "opencode-go/"
 
 # Composite score weights (documented; change here only).
 $script:WAvailability = 0.30
@@ -239,7 +254,13 @@ function Get-FreeModelList {
                 if ([string]::IsNullOrWhiteSpace($name)) { $name = $id }
                 $context = 0
                 if ($null -ne $item.context_length) { [void][int]::TryParse([string]$item.context_length, [ref]$context) }
-                [void]$result.Add([pscustomobject]@{ id = $id; name = $name; context = $context })
+                [void]$result.Add([pscustomobject]@{
+                    id       = ($script:OpenRouterPrefix + $id)
+                    raw_id   = $id
+                    name     = $name
+                    context  = $context
+                    provider = $script:OpenRouterProvider
+                })
             }
         }
         return $result.ToArray()
@@ -248,6 +269,61 @@ function Get-FreeModelList {
             if (Test-Path -LiteralPath $f) { Remove-Item -LiteralPath $f -Force -ErrorAction SilentlyContinue }
         }
     }
+}
+
+# ===========================================================================
+# Discovery (opencode-go free models from the local models cache)
+# ===========================================================================
+
+function Get-OpenCodeGoModelsPath {
+    $homePath = [Environment]::GetFolderPath([Environment+SpecialFolder]::UserProfile)
+    if ([string]::IsNullOrWhiteSpace($homePath)) { $homePath = $env:USERPROFILE }
+    if ([string]::IsNullOrWhiteSpace($homePath)) { return "" }
+    return (Join-Path $homePath $script:OpenCodeGoModelsCache)
+}
+
+# Reads the opencode models cache and returns every "opencode-go" model whose key
+# ends with "-free". The list is dynamic: whatever the cache declares is used, so
+# a changed free set needs no code change. Any failure (missing cache, bad JSON,
+# absent provider) yields an empty list and a warning - the other source is
+# unaffected. IDs are normalised to "<provider>/<raw>".
+function Get-OpenCodeGoFreeModelList {
+    $result = New-Object System.Collections.ArrayList
+    $path = Get-OpenCodeGoModelsPath
+    if ([string]::IsNullOrWhiteSpace($path) -or (-not (Test-Path -LiteralPath $path -PathType Leaf))) {
+        Write-Warning "opencode-go discovery skipped: models cache not found ($path)"
+        return $result.ToArray()
+    }
+    try {
+        $raw = [System.IO.File]::ReadAllText($path, [System.Text.Encoding]::UTF8)
+        if ([string]::IsNullOrWhiteSpace($raw)) { throw "models cache is empty" }
+        $json = $raw | ConvertFrom-Json
+        $provider = $json.PSObject.Properties[$script:OpenCodeGoProvider]
+        if ($null -eq $provider) { throw "provider '$($script:OpenCodeGoProvider)' is not present in the cache" }
+        $providerModels = $provider.Value.models
+        if ($null -eq $providerModels) { throw "provider '$($script:OpenCodeGoProvider)' declares no models" }
+        foreach ($property in @($providerModels.PSObject.Properties)) {
+            $key = [string]$property.Name
+            if ([string]::IsNullOrWhiteSpace($key)) { continue }
+            if (-not $key.EndsWith("-free", [System.StringComparison]::OrdinalIgnoreCase)) { continue }
+            $item = $property.Value
+            $name = $key
+            if (($null -ne $item) -and ($null -ne $item.name) -and (-not [string]::IsNullOrWhiteSpace([string]$item.name))) { $name = [string]$item.name }
+            $context = 0
+            if (($null -ne $item) -and ($null -ne $item.limit) -and ($null -ne $item.limit.context)) { [void][int]::TryParse([string]$item.limit.context, [ref]$context) }
+            [void]$result.Add([pscustomobject]@{
+                id       = ($script:OpenCodeGoPrefix + $key)
+                raw_id   = $key
+                name     = $name
+                context  = $context
+                provider = $script:OpenCodeGoProvider
+            })
+        }
+    } catch {
+        Write-Warning "opencode-go discovery failed: $($_.Exception.Message)"
+        return $result.ToArray()
+    }
+    return $result.ToArray()
 }
 
 # ===========================================================================
@@ -269,8 +345,9 @@ function Get-ProbeStatus {
 }
 
 function Invoke-ModelProbe {
-    param([string]$Model, [string]$ApiKey, [int]$TimeoutSec)
+    param([string]$Model, [string]$ApiKey, [int]$TimeoutSec, [string]$Url = "", [string]$Provider = "openrouter")
     if ($TimeoutSec -le 0) { $TimeoutSec = $script:DefaultTimeoutSec }
+    if ([string]::IsNullOrWhiteSpace($Url)) { $Url = $script:ChatUrl }
     $bodyFile = [System.IO.Path]::GetTempFileName()
     $outFile = [System.IO.Path]::GetTempFileName()
     $cfgFile = [System.IO.Path]::GetTempFileName()
@@ -278,10 +355,17 @@ function Invoke-ModelProbe {
     try {
         $body = '{"model":"' + $Model + '","messages":[{"role":"user","content":"' + $script:ProbePrompt + '"}],"max_tokens":8}'
         [System.IO.File]::WriteAllText($bodyFile, $body, (New-Object System.Text.UTF8Encoding($false)))
-        [System.IO.File]::WriteAllText($cfgFile, ('header = "Authorization: Bearer ' + $ApiKey + '"'), (New-Object System.Text.UTF8Encoding($false)))
+        # curl --config keeps the bearer token out of the process command line. The
+        # opencode-go endpoint additionally requires the x-opencode-session header.
+        $headerLines = New-Object System.Collections.ArrayList
+        [void]$headerLines.Add('header = "Authorization: Bearer ' + $ApiKey + '"')
+        if ($Provider -eq $script:OpenCodeGoProvider) {
+            [void]$headerLines.Add('header = "x-opencode-session: ' + $script:OpenCodeGoSession + '"')
+        }
+        [System.IO.File]::WriteAllText($cfgFile, ($headerLines -join ([Environment]::NewLine)), (New-Object System.Text.UTF8Encoding($false)))
 
         $sw = [System.Diagnostics.Stopwatch]::StartNew()
-        $http = & curl.exe -s -S --max-time $TimeoutSec --config $cfgFile -w "%{http_code}" -o $outFile -X POST $script:ChatUrl -H "Content-Type: application/json" --data-binary ("@" + $bodyFile) 2>$errFile
+        $http = & curl.exe -s -S --max-time $TimeoutSec --config $cfgFile -w "%{http_code}" -o $outFile -X POST $Url -H "Content-Type: application/json" --data-binary ("@" + $bodyFile) 2>$errFile
         $sw.Stop()
         $exit = $LASTEXITCODE
 
@@ -404,9 +488,11 @@ function Get-ModelScore {
 # ===========================================================================
 
 function New-RegistryEntry {
-    param([string]$Id, [string]$Name, [int]$Context, $Quality)
+    param([string]$Id, [string]$RawId, [string]$Name, [int]$Context, $Quality, [string]$Provider)
     return [ordered]@{
         id            = $Id
+        raw_id        = $RawId
+        provider      = $Provider
         name          = $Name
         context       = $Context
         free          = $true
@@ -426,23 +512,52 @@ function Invoke-RegistryRefresh {
     if ($MaxProbe -le 0) { $MaxProbe = $script:DefaultMaxProbe }
     if ($TimeoutSec -le 0) { $TimeoutSec = $script:DefaultTimeoutSec }
 
-    $apiKey = $env:OPENROUTER_API_KEY
-    if ([string]::IsNullOrWhiteSpace($apiKey)) {
-        Write-Error "OPENROUTER_API_KEY is not set in this process environment (use the vault wrapper: get-secret ... -AsEnv OPENROUTER_API_KEY). Nothing to probe."
+    # Two independent sources. A missing key disables only its own source with a
+    # warning, so e.g. an absent OPENCODE_API_KEY never blocks the openrouter run.
+    $openRouterKey = $env:OPENROUTER_API_KEY
+    $openCodeKey = $env:OPENCODE_API_KEY
+    $haveOpenRouter = -not [string]::IsNullOrWhiteSpace($openRouterKey)
+    $haveOpenCodeGo = -not [string]::IsNullOrWhiteSpace($openCodeKey)
+    if ((-not $haveOpenRouter) -and (-not $haveOpenCodeGo)) {
+        Write-Error "Neither OPENROUTER_API_KEY nor OPENCODE_API_KEY is set in this process environment (use the vault wrapper: get-secret ... -AsEnv ...). Nothing to probe."
         exit 2
     }
+    if (-not $haveOpenRouter) {
+        Write-Warning "OPENROUTER_API_KEY is not set - openrouter discovery/probe skipped"
+    }
+    if (-not $haveOpenCodeGo) {
+        Write-Warning "OPENCODE_API_KEY is not set - opencode-go discovery/probe skipped (vault wrapper: get-secret opencode-api-key -AsEnv OPENCODE_API_KEY)"
+    }
 
-    $apiModels = @()
-    try {
-        $apiModels = @(Get-FreeModelList -TimeoutSec $script:DownloadTimeoutSec)
-    } catch {
-        Write-Error ("model discovery failed: " + $_.Exception.Message)
-        exit 3
+    # opencode-go first: its free models are the gateway "free" alias's first
+    # candidates (R-1), so they win the probe cap over the larger openrouter set.
+    $apiModels = New-Object System.Collections.ArrayList
+    if ($haveOpenCodeGo) {
+        foreach ($model in @(Get-OpenCodeGoFreeModelList)) { [void]$apiModels.Add($model) }
+    }
+    $openRouterError = ""
+    if ($haveOpenRouter) {
+        try {
+            foreach ($model in @(Get-FreeModelList -TimeoutSec $script:DownloadTimeoutSec)) { [void]$apiModels.Add($model) }
+        } catch {
+            $openRouterError = $_.Exception.Message
+            Write-Warning ("openrouter model discovery failed: " + $openRouterError)
+        }
     }
     if ($apiModels.Count -eq 0) {
-        Write-Error "model discovery returned zero free models"
+        if (-not [string]::IsNullOrWhiteSpace($openRouterError)) {
+            Write-Error ("model discovery failed: " + $openRouterError)
+            exit 3
+        }
+        Write-Error "model discovery returned zero free models from the available source(s)"
         exit 3
     }
+
+    # Per-provider endpoint and token, resolved once; every probe candidate carries
+    # its own copy so the probe loop stays source-agnostic.
+    $providerSettings = @{}
+    $providerSettings[$script:OpenRouterProvider] = [pscustomobject]@{ url = $script:ChatUrl; key = $openRouterKey }
+    $providerSettings[$script:OpenCodeGoProvider] = [pscustomobject]@{ url = $script:OpenCodeGoChatUrl; key = $openCodeKey }
 
     $qualityMap = Read-RatingsQuality -Root $Root
     $previous = Read-RegistryDocument -Root $Root
@@ -450,19 +565,29 @@ function Invoke-RegistryRefresh {
 
     $models = [ordered]@{}
     $candidates = New-Object System.Collections.ArrayList
+    $freshCount = 0
     foreach ($api in $apiModels) {
         $id = [string]$api.id
+        if ([string]::IsNullOrWhiteSpace($id)) { continue }
+        if ($models.Contains($id)) { continue }
+        $rawId = [string]$api.raw_id
+        if ([string]::IsNullOrWhiteSpace($rawId)) { $rawId = $id }
+        $provider = [string]$api.provider
+
         $quality = $null
         if ($qualityMap.ContainsKey($id)) { $quality = $qualityMap[$id] }
-        $entry = New-RegistryEntry -Id $id -Name ([string]$api.name) -Context ([int]$api.context) -Quality $quality
+        elseif ($qualityMap.ContainsKey($rawId)) { $quality = $qualityMap[$rawId] }
+        $entry = New-RegistryEntry -Id $id -RawId $rawId -Name ([string]$api.name) -Context ([int]$api.context) -Quality $quality -Provider $provider
 
-        if ($previous.models.Contains($id)) {
-            $old = $previous.models[$id]
+        # Migration: a pre-R-1 document keys openrouter entries by their bare id;
+        # either key is accepted so cached status/latency/quality survive the switch.
+        $old = $null
+        if ($previous.models.Contains($id)) { $old = $previous.models[$id] }
+        elseif ($previous.models.Contains($rawId)) { $old = $previous.models[$rawId] }
+        if ($null -ne $old) {
             if ($null -ne $old.probed_at) { $entry.probed_at = [string]$old.probed_at }
             if ($null -ne $old.status) { $entry.status = [string]$old.status }
-            if ($null -ne $old.latency_ms) {
-                $entry.latency_ms = $old.latency_ms
-            }
+            if ($null -ne $old.latency_ms) { $entry.latency_ms = $old.latency_ms }
             $fail = 0
             if ($null -ne $old.fail_count) { [void][int]::TryParse([string]$old.fail_count, [ref]$fail) }
             $entry.fail_count = $fail
@@ -474,12 +599,25 @@ function Invoke-RegistryRefresh {
             $probedAt = ConvertTo-RegistryDate -Text ([string]$entry.probed_at)
             if (($null -ne $probedAt) -and (((($now - $probedAt).TotalMinutes) -lt $script:TtlMinutes))) { $fresh = $true }
         }
-        if (-not $fresh) { [void]$candidates.Add($id) }
+        if ($fresh) {
+            $freshCount++
+        } else {
+            $settings = $null
+            if ($providerSettings.ContainsKey($provider)) { $settings = $providerSettings[$provider] }
+            if (($null -ne $settings) -and (-not [string]::IsNullOrWhiteSpace([string]$settings.key))) {
+                [void]$candidates.Add([pscustomobject]@{
+                    id       = $id
+                    raw_id   = $rawId
+                    provider = $provider
+                    url      = [string]$settings.url
+                    key      = [string]$settings.key
+                })
+            }
+        }
         $models[$id] = $entry
     }
 
     $probeList = @($candidates | Select-Object -First $MaxProbe)
-    $freshCached = $models.Count - $candidates.Count
     $deferred = $candidates.Count - $probeList.Count
     $probedCount = 0
     $okCount = 0
@@ -487,12 +625,12 @@ function Invoke-RegistryRefresh {
     $dead = 0
     $timedOut = 0
 
-    foreach ($id in $probeList) {
+    foreach ($candidate in $probeList) {
         if ($probedCount -gt 0) {
             Start-Sleep -Seconds (Get-Random -Minimum $script:IntervalMinSec -Maximum ($script:IntervalMaxSec + 1))
         }
-        $result = Invoke-ModelProbe -Model $id -ApiKey $apiKey -TimeoutSec $TimeoutSec
-        $entry = $models[$id]
+        $result = Invoke-ModelProbe -Model $candidate.raw_id -ApiKey $candidate.key -TimeoutSec $TimeoutSec -Url $candidate.url -Provider $candidate.provider
+        $entry = $models[$candidate.id]
         $entry.probed_at = Format-RegistryTimestamp -Value (Get-Date)
         $entry.status = $result.status
         $entry.latency_ms = $result.latency_ms
@@ -523,7 +661,7 @@ function Invoke-RegistryRefresh {
         path          = $path
         total_free    = $models.Count
         probed        = $probedCount
-        fresh_cached  = $freshCached
+        fresh_cached  = $freshCount
         deferred      = $deferred
         ok            = $okCount
         rate_limited  = $rateLimited
@@ -557,6 +695,7 @@ function Get-RegistryRows {
         $metrics = Get-ModelScore -Entry $entry -TaskType $TaskType
         [void]$rows.Add([pscustomobject]@{
             id            = $id
+            provider      = [string]$entry.provider
             name          = [string]$entry.name
             status        = [string]$entry.status
             free          = [bool]$entry.free
@@ -611,6 +750,7 @@ function Invoke-RegistryList {
         foreach ($row in $rows) {
             [void]$payload.Add([ordered]@{
                 id           = $row.id
+                provider     = $row.provider
                 name         = $row.name
                 status       = $row.status
                 free         = $row.free

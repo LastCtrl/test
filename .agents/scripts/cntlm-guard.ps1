@@ -1,9 +1,10 @@
 ﻿# cntlm-guard.ps1 - watchdog for the local cntlm proxy (127.0.0.1:3128).
 # Modes: -Check (default, read-only) | -Restart (real heal; -DryRun simulates only).
 # Proxy source: -ProxyConfig <path> (explicit file) overrides -Root/.agents/config/proxy.json.
-# Safety: heals ONLY an owned cntlm (name + exe path under -AllowedDir); stop by PID
-# after identity re-check; restart budget + circuit breaker; -DryRun never acts.
-# Exit: 0 ok, 2 proxy down, 3 breaker open, 4 restart failed, 5 no owned process, 1 usage.
+# Safety: stops ONLY an owned cntlm (name + exe path under -AllowedDir) by PID after
+# an identity re-check; when none runs it cold-starts the configured exe (which must
+# exist under -AllowedDir); restart budget + circuit breaker; -DryRun never acts.
+# Exit: 0 ok, 2 proxy down, 3 breaker open, 4 restart failed, 5 no exe to start, 1 usage.
 param(
     [switch]$Check,
     [switch]$Restart,
@@ -268,13 +269,18 @@ if ($MyInvocation.InvocationName -ne '.') {
     }
 
     if ($owned.Count -eq 0) {
-        Write-Host ("no owned cntlm process under '{0}' - nothing to restart (no foreign process touched)." -f $AllowedDir)
-        Write-Host 'STATUS: no-process'
-        Write-CntlmLog -Path $LogFile -Line ("NO-PROCESS allowed={0}" -f $AllowedDir)
-        exit 5
+        $coldExe = Join-Path $AllowedDir $ExeName
+        if (-not (Test-Path -LiteralPath $coldExe -PathType Leaf)) {
+            Write-Host ("no owned cntlm process under '{0}' and executable missing - nothing to start (no foreign process touched)." -f $AllowedDir)
+            Write-Host 'STATUS: no-process'
+            Write-CntlmLog -Path $LogFile -Line ("NO-PROCESS allowed={0}" -f $AllowedDir)
+            exit 5
+        }
+        Write-Host ("no running cntlm - cold start from '{0}'" -f $coldExe)
+        Write-CntlmLog -Path $LogFile -Line ("DOWN cold-start exe={0}" -f $coldExe)
+    } else {
+        Write-Host ("owned   : {0} process(es) -> {1}" -f $owned.Count, (($owned | ForEach-Object { $_.PID }) -join ', '))
     }
-
-    Write-Host ("owned   : {0} process(es) -> {1}" -f $owned.Count, (($owned | ForEach-Object { $_.PID }) -join ', '))
 
     if ($DryRun) {
         foreach ($p in $owned) {
@@ -307,7 +313,7 @@ if ($MyInvocation.InvocationName -ne '.') {
             Write-CntlmLog -Path $LogFile -Line ("STOP-FAIL PID {0} error={1}" -f $p.PID, $_.Exception.Message)
         }
     }
-    if ($stopped -eq 0) {
+    if ($owned.Count -gt 0 -and $stopped -eq 0) {
         Write-Host 'no owned process could be stopped.'
         Write-Host 'STATUS: no-process'
         exit 5
@@ -341,7 +347,7 @@ if ($MyInvocation.InvocationName -ne '.') {
     }
     if ($restored) {
         Write-Host 'STATUS: restart-ok'
-        Write-CntlmLog -Path $LogFile -Line ('RESTART ok stopped={0}' -f $stopped)
+        Write-CntlmLog -Path $LogFile -Line ('RESTART ok stopped={0} -> UP' -f $stopped)
         exit 0
     }
     Write-Host 'STATUS: restart-failed'

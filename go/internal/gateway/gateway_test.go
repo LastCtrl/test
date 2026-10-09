@@ -635,3 +635,44 @@ func TestChatWithoutHeadersSendsNoCustomHeader(t *testing.T) {
 		t.Fatalf("unexpected x-opencode-session header sent: %q", gotSession)
 	}
 }
+
+// (p) The upstream client must ignore the environment proxy: a dead HTTP_PROXY
+// (the flapping cntlm 127.0.0.1:3128) must not break or reroute upstream calls.
+func TestUpstreamClientIgnoresEnvProxy(t *testing.T) {
+	// A proxy address that cannot accept connections. If the upstream client
+	// used ProxyFromEnvironment, this would fail with proxyconnect refused.
+	t.Setenv("HTTP_PROXY", "http://127.0.0.1:1")
+	t.Setenv("http_proxy", "http://127.0.0.1:1")
+
+	// Direct assertion: the shared transport has no proxy function at all, so
+	// env changes cannot affect it (loopback upstreams are bypassed by
+	// ProxyFromEnvironment regardless, which is why this check is explicit).
+	transport, ok := defaultClient().Transport.(*http.Transport)
+	if !ok {
+		t.Fatalf("upstream transport type = %T, want *http.Transport", defaultClient().Transport)
+	}
+	if transport.Proxy != nil {
+		t.Fatal("upstream transport must not use an environment proxy")
+	}
+
+	var hit atomic.Bool
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hit.Store(true)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"choices":[{"message":{"content":"direct"}}]}`)
+	}))
+	defer upstream.Close()
+
+	server := newTestServer(t, singleAlias(upstream.URL, "real-model-1"))
+	rec := doChat(t, server.Handler(), `{"model":"strong","messages":[]}`)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body=%s", rec.Code, rec.Body.String())
+	}
+	if !hit.Load() {
+		t.Fatal("upstream was not reached directly despite a dead proxy in the environment")
+	}
+	if !strings.Contains(rec.Body.String(), `"direct"`) {
+		t.Fatalf("body = %s, want the direct upstream response", rec.Body.String())
+	}
+}

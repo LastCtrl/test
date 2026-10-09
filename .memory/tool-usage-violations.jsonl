@@ -514,3 +514,9 @@
     "missing":  "MCP_USED empty",
     "severity":  "warning"
 }
+{
+    "date":  "2026-10-09T14:25:37",
+    "agent":  "qa-engineer",
+    "missing":  "MCP_USED empty",
+    "severity":  "warning"
+}

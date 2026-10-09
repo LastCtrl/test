@@ -471,11 +471,20 @@ func writeError(w http.ResponseWriter, status int, message string) {
 	writeJSON(w, status, errorEnvelope{Error: errorBody{Message: message, Type: "gateway_error"}})
 }
 
-// defaultClient builds the upstream client. It has no overall timeout (streams
-// may be long-lived) but bounds dialing and response headers.
+// defaultClient builds the shared upstream client. It has no overall timeout
+// (streams may be long-lived) but bounds dialing and response headers, so a
+// stalled connection cannot hang forever; long idle streams are handled
+// separately by idleGuard.
+//
+// Proxy is deliberately nil: the upstreams (openrouter.ai, opencode.ai) are
+// reachable directly and are faster without a proxy. Inheriting HTTP_PROXY (set
+// by run-with-secrets/proxy-mode to the local cntlm 127.0.0.1:3128) made every
+// upstream request depend on cntlm; when cntlm flapped, the gateway failed with
+// "proxyconnect ... connection refused" and every router/* agent went offline.
+// The gateway must stay independent of cntlm, so it ignores the environment.
 func defaultClient() *http.Client {
 	transport := &http.Transport{
-		Proxy:                 http.ProxyFromEnvironment,
+		Proxy:                 nil,
 		DialContext:           (&net.Dialer{Timeout: 10 * time.Second}).DialContext,
 		ForceAttemptHTTP2:     true,
 		MaxIdleConns:          100,

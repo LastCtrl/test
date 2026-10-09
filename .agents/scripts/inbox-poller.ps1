@@ -64,6 +64,38 @@ if (-not (Test-Path $tzCopyPath)) {
     }
 }
 
+# --- cntlm guard (infra safety #1): the corporate proxy (127.0.0.1:3128) must be
+# up before the gateway routes through it. Probe read-only first; if the port is
+# down, heal via cntlm-guard -Restart (owned-PID only, restart budget + circuit
+# breaker live inside the guard; it never touches a foreign process).
+# Order per tick: cntlm -> gateway -> watchdog.
+# Kill-switch: AGENT_HQ_CNTLM_GUARD_DISABLE=1. In -DryRun only -Check (read-only).
+if ($env:AGENT_HQ_CNTLM_GUARD_DISABLE -ne '1') {
+    $cntlmGuardPath = Join-Path $PSScriptRoot 'cntlm-guard.ps1'
+    if (Test-Path -LiteralPath $cntlmGuardPath -PathType Leaf) {
+        try {
+            if ($DryRun) {
+                Write-Log "cntlm-guard: dry-run check (read-only)"
+                & $cntlmGuardPath -Check | Out-Null
+            } else {
+                Write-Log "cntlm-guard: ensure cntlm is up"
+                & $cntlmGuardPath -Check | Out-Null
+                if ($LASTEXITCODE -eq 2) {
+                    Write-Log "cntlm-guard: cntlm DOWN - restarting"
+                    & $cntlmGuardPath -Restart | Out-Null
+                    if ($LASTEXITCODE -eq 0) {
+                        Write-Log "cntlm-guard: cntlm UP (restarted)"
+                    } else {
+                        Write-Log "cntlm-guard: cntlm still DOWN (restart exit $LASTEXITCODE)"
+                    }
+                }
+            }
+        } catch {
+            Write-Log "cntlm-guard: failed: $($_.Exception.Message)"
+        }
+    }
+}
+
 # --- Gateway guard (infra safety): if the local model gateway (127.0.0.1:8899)
 # is down, raise it. Kill-switch: AGENT_HQ_GATEWAY_GUARD_DISABLE=1. In -DryRun the
 # guard runs read-only (-Check) only; it never mutates task state.

@@ -47,6 +47,14 @@ Watchdog (каждые 1–2 мин):
   6. нотификация (Telegram/лог).
 - Различать «думает» и «завис»: если провайдер стримит — по `chunkTimeout` (opencode умеет, задаётся per-provider); если нет — по отсутствию любых событий.
 
+> **NOTE checkpoint (проверка 2026-10-09):** API `agent-hq checkpoint save|list|latest`
+> (`go/cmd/agent-hq/checkpoint.go`) и `store.SaveCheckpoint` (`go/internal/store/checkpoint.go`)
+> заполняют checkpoint **только по явному вызову CLI**. Go-loop (`go/internal/loop/loop.go`) и
+> `recover` (`go/cmd/agent-hq/recover.go`) checkpoint при остановке/переотдаче НЕ пишут
+> (grep `SaveCheckpoint` — вызовы только в CLI и тестах). Поэтому auto-resume watchdog'а
+> опирается на `.memory/evidence/` (последний частичный результат попытки). Авто-checkpoint
+> в loop при stale/остановке — открытая задача (не чинилось в этой итерации).
+
 ### Слой C — Enforcement (шлюз)
 - Go-шлюз (из основного плана) = точка применения: алиасы `router/strong|free|fast` + `router/auto:<task-type>`.
 - Per-request: выбрать лучшую модель по Registry (score), при ошибке/таймауте — следующую (до старта стрима).

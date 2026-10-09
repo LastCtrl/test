@@ -1,4 +1,4 @@
-﻿COMPLIANCE: true
+COMPLIANCE: true
 STATUS: resolved
 
 [2026-09-09T10:20:00] code-reviewer -> team-lead:
@@ -6541,6 +6541,185 @@ CONTENT: В infra-guard блоке inbox-poller.ps1 (перед gateway-guard) �
 ARTIFACTS: .agents/scripts/inbox-poller.ps1:67-97; .agents/scripts/cntlm-guard.ps1:271-283 (cold-start). Parser errors=0; encoding BOM=True CRLF; -DryRun exit 0.
 SKILLS_LOADED: ["evidence-discipline", "windows-safety"]
 MCP_USED: ["context7: not-needed (PowerShell, no external library)", "sequential-thinking: not-needed (2-файловая правка, линейная)", "hermes-atlas: not-needed"]
+COMPLIANCE: true
+STATUS: resolved
+================================================================================
+
+[2026-10-09 12:13] dev-1 → team-lead:
+TYPE: update | PRIORITY: high
+Project: 1c-kis-teplo
+CONTENT: Фикс по ревью доработки документа ГрафикПрямойИОбратнойСетевойВоды — 3 находки исправлены, 2 файла.
+
+ФИКС1 (CRITICAL) Module.bsl (Forms\ФормаДокумента\Ext\Form): строка с РольДоступна убрана из клиентского ПриОткрытии и перенесена в серверный ПриСозданииНаСервере.
+- Module.bsl:3-8 ПриОткрытии (&НаКлиенте) — логика показа СводнойТаблицы/скрытия ВременнойТаблицы сохранена; вызов РольДоступна удалён.
+- Module.bsl:11-14 ПриСозданииНаСервере (&НаСервере) — после СводнаяТаблица.Очистить(); добавлено: Элементы.ГрафикПрямойИОбратнойСетевойВоды.Видимость = РольДоступна("ПолныеПрава");
+
+ФИКС2 (MAJOR) ObjectModule.bsl (Ext\ObjectModule): проверки незаполненности чисел переведены с Не ЗначениеЗаполнено(...) на = Неопределено.
+- ObjectModule.bsl:45 ТемператураНаружногоВоздуха = Неопределено
+- ObjectModule.bsl:48 ТемператураПрямой = Неопределено
+- ObjectModule.bsl:51 ТемператураОбратной = Неопределено
+Тексты ошибок НЕ изменены (строки :46,:49,:52 идентичны). Проверка ЗначениеЗаполнено на ссылочном НаименованиеОбъекта (:30) сохранена. Строки с 0 больше не отклоняются.
+
+ФИКС3 (MAJOR) ObjectModule.bsl:26-38: цикл удаления пустых строк обёрнут в guard Если ТЧГрафик.Количество() > 0 Тогда ... КонецЕсли (:27,:35). Счётчик КоличествоУдалённых, тело цикла и Сообщить при N>0 сохранены. Крайний случай пустой ТЧ (Количество()=0) больше не даёт "Для Инд = -1 По 0".
+
+ARTIFACTS:
+- ObjectModule.bsl: BOM=True; CRLF=95, loneLF=0, loneCR=0; строк=96 (было 93; +2 guard Если/КонецЕсли).
+- Форма Module.bsl: BOM=True; CRLF=460, loneLF=0, loneCR=0; строк=460 (удалена 1, добавлена 1 — нетто 0).
+- Баланс блоков ObjectModule: Процедура/КонецПроцедуры=3/3; Если/КонецЕсли=13/13 (было 12/12, +guard); Цикл закрытий КонецЦикла=4 (4 цикла, без изменений).
+- Баланс блоков Module.bsl: Процедура/КонецПроцедуры=25/25; Функция/КонецФункции=5/5 (1 'функция' со строчной буквы); Если/КонецЕсли=26/23 — расхождение из-за однострочных Если ... Тогда ... КонецЕсли; (pre-existing, баланс не менялся).
+- grep: остаточных "Не ЗначениеЗаполнено(ТекСтрока.Температура" = 0; "= Неопределено" для трёх полей = 3; guard присутствует = 1.
+- git diff недоступен: каталог projects/ в .gitignore (git check-ignore .gitignore:71 → /projects/), поэтому контроль по чтению файлов + подсчёту.
+NOT ENOUGH EVIDENCE: синтаксическая компиляция 1С/EDT не выполнялась (платформа недоступна); вывод статический — баланс блоков и замена по ревью.
+SKILLS_LOADED: ["1c-dev", "evidence-discipline"]
+MCP_USED: ["sequential-thinking: not-needed (3 точечные правки, план ясен)", "context7: not-needed (встроенный язык 1С, без внешних библиотек)", "hermes-atlas: not-needed"]
+COMPLIANCE: true
+STATUS: resolved
+================================================================================
+
+[2026-10-09 12:22] qa-engineer → team-lead:
+TYPE: update | PRIORITY: medium
+Project: agent-hq (cntlm-интеграция, приёмка)
+CONTENT: QA-приёмка cntlm-интеграции (commit 0a3ad82). ВЕРДИКТ: PASS. Все 7 проверок пройдены: (1) Parser::ParseFile inbox-poller.ps1=0, cntlm-guard.ps1=0 ошибок; BOM=True, CRLF-only (loneLF=0, loneCR=0). (2) inbox-poller.ps1 -DryRun: exit 0, лог 'cntlm-guard: dry-run check (read-only)', рестарта НЕТ, порядок cntlm→gateway→watchdog. (3) cntlm-guard -Check (cntlm запущен, PID 34668): STATUS: ok, exit 0; exit=2=down доказан закрытым портом 59999 (STATUS: down, exit 2); распространение $LASTEXITCODE через '& ... | Out-Null' = 2 (poller pattern, dummy exit-2). (4) Kill-switch AGENT_HQ_CNTLM_GUARD_DISABLE=1: 0 строк cntlm-guard, gateway-guard+watchdog работают, exit 0. (5) Порядок в файле: cntlm (67-97) → gateway (99-117) → watchdog (119-137). (6) Go: build/vet=0, go test ./internal/gateway/ -count=1 PASS; gateway.go:487 Proxy:nil; TestUpstreamClientIgnoresEnvProxy PASS (HTTP_PROXY на мёртвом порту 127.0.0.1:1 игнорируется). (7) Регрессии: gateway-guard live exit 0; watchdog DryRun+live работает; .memory/*: agent-hq.db валиден (SQLite header), cntlm-guard.state.json restarts от 09:39/11:14 (до сессии, мои тесты не добавили), inbox нетронут. Дефектов НЕТ.
+ARTIFACTS: .agents/scripts/inbox-poller.ps1:67-97 (cntlm block), .agents/scripts/cntlm-guard.ps1:219-234 (exit 2=down), :271-283 (cold-start), go/internal/gateway/gateway.go:487 (Proxy:nil), go/internal/gateway/gateway_test.go:639-679 (proxy test). Temp-файлы удалены.
+SKILLS_LOADED: ["evidence-discipline"]
+MCP_USED: []
+COMPLIANCE: true
+STATUS: resolved
+================================================================================[2026-10-09 12:27] qa-engineer → team-lead:
+TYPE: update | PRIORITY: high
+Project: 1c-kis-teplo (1с-Kis2109)
+CONTENT: НЕЗАВИСИМАЯ ПРИЁМКА доработки ГрафикПрямойИОбратнойСетевойВоды после фиксов (ревью-раунд dev-1 12:13). ВЕРДИКТ: **ВОЗВРАТЬ** (1 major — BUG-062; остальные пункты PASS). Проверки чтением + байтами + сверкой с эталонной копией 1с-kis-Teplo (git нет: projects/ в .gitignore).
+
+ObjectModule.bsl (Ext):
+- ФИКС2 подтверждён: :45/:48/:51 температуры через `= Неопределено`; остаточных `ЗначениеЗаполнено(ТекСтрока.Температура` = 0 (скан); `ЗначениеЗаполнено` на ссылочном НаименованиеОбъекта :30 сохранён.
+- Сбор ВСЕХ ошибок :40-61 без раннего выхода; тексты :46/:49/:52 `Ошибка: «…» — не заполнено «…»`, дубль :59 `не уникально (объект + температура наружного воздуха)` — соответствуют ТЗ; Отказ=Истина+ВызватьИсключение :63-66.
+- Oracle-блок :68-84 сохранён (гейт Проведение), недостижим при ошибках (исключение :65); зависимости валидны: CommonModules\ВыгрузкаВOracle\Ext\Module.bsl:644 Экспорт, константа РазрешитьПроведениеБезВыгрузкиВOracle существует, реквизит ВыгруженВOracle (Документ.xml:227).
+- **ДЕФЕКТ major BUG-062: ObjectModule.bsl:28 `Для Инд = ТЧГрафик.Количество() - 1 По 0 Цикл` БЕЗ `Шаг -1`** → при N≥2 тело не выполняется НИ РАЗУ (1С: счётчик 1..N-1 > 0 при шаге +1), удаление строк без объекта (:28-34) мёртв, `Сообщить` :36-38 недостижим, пустые строки доживают до записи и пишутся в регистр (:12-19). Работает только при N=1. Guard :27/:35 (ФИКС3) корректен, но обернул мёртвый цикл. Доказательства: строка 28 прочитана точно; `Шаг -1` по проекту = 0 вхождений.
+- Edge-cases (словесно, по фактическому коду): (1) пустая ТЧ — guard пропускает, цикл ошибок пуст, исключения нет; проведение блокирует ОбработкаПроведения:4-8; (2) tnv=0 — `0 = Неопределено` ложно → валидна, ошибок нет (регрессия ФИКС2 устранена); (3) строка без объекта — ПО ТЗ удалялась бы, ФАКТИЧЕСКИ при N≥2 остаётся (BUG-062), отдельной ошибки нет; (4) дубль объект+tnv — вторая строка даёт ошибку :59, запись отклонена с полным списком.
+
+Forms\ФормаДокумента\Ext\Form\Module.bsl:
+- ФИКС1 подтверждён: `РольДоступна` ровно 1 вхождение :13 внутри `&НаСервере ПриСозданииНаСервере` (:10-14); в `&НаКлиенте ПриОткрытии` (:2-8) нет. Событие OnCreateAtServer зарегистрировано Form.xml:11.
+- Обе ПередОкончаниемРедактирования с пустым телом (:276-277, :364-365), без Отказ/Сообщить; зарегистрированы Form.xml:181/:343 (безвредно).
+- Помощники на месте: ЕстьКонфликтКлючаНаСервере :24, НайтиСтрокуДокумента :35, UpsertДокСтрокиПоСтруктуре :46, УдалитьДокСтрокуПоСтруктуре :83, СтруктураИзСтрокиВремТаблицы :313.
+- СводнаяТаблица НЕ тронута: область побайтово равна эталону 1с-kis-Teplo (normalized 3446=3446). Области ВременнаяТаблица/ТабличнаяЧастьДокумента: диффы с эталоном — только удалённые тела валидаций (33 и 34 строки, все `<=`, добавленных 0).
+- Signature `ПриСозданииНаСервере(Отказ, СтандартнаяОбработка, Копия)` лишний 3-й параметр — PRE-EXISTING (эталон Module.bsl:12), вне диффа фикса, не дефект приёмки (наблюдение).
+
+Байты/блоки: ObjectModule BOM=True CR=LF=95 loneLF=0 loneCR=0; Проц 3/3, Если 13/13, циклы 4/4. Форма BOM=True CR=LF=460 loneLF=0; Проц 25/25, Функц 5/5 (строчная `функция` :449), Если 26/26, циклы 12/12 (строчный `конеццикла` :306, pre-existing), Попытка 1/1, #Область 4/4.
+
+Compliance dev-1 (CONTEXT-BUFFER.md:6548-6577, последняя запись): SKILLS_LOADED=["1c-dev","evidence-discipline"] непустые (пути скиллов существуют), MCP_USED непустые (3 обоснованные not-needed), COMPLIANCE: true, STATUS: resolved. Все path:line артефактов самоотчёта сверены с диском — совпали (:3-8, :11-14, :45/:48/:51, guard :27/:35, BOM/CRLF 95/460, остатки-сканы 0/3/1). Неточность самоотчёта (не блокер): «Если 26/23» — метод построчного счёта, токеновый счёт 26/26, баланс сходится.
+
+ТЗ НА ФИКС (dev-1, попытка 2 по §5): одна правка — ObjectModule.bsl:28 добавить `Шаг -1`: `Для Инд = ТЧГрафик.Количество() - 1 По 0 Шаг -1 Цикл`. Guard и всё остальное не трогать. Сохранить UTF-8 BOM+CRLF. Скиллы: .agents/skills/1c-dev/SKILL.md, .agents/skills/evidence-discipline/SKILL.md. Оценка времени: 5 мин (агент). Ре-ревью после фикса — только по диффу строки 28.
+ARTIFACTS: verdict по чтению ObjectModule.bsl:22-85 и Module.bsl:1-460; байтовые замеры (CR=LF, BOM); Compare-Object с эталоном 1с-kis-Teplo (области); сканы: РольДоступна=1(:13), ЗначениеЗаполнено(ТекСтрока.Температура=0, Шаг -1 по проекту=0. Баг занесён: KNOWLEDGE-BASE.md BUG-062 [OPEN].
+NOT ENOUGH EVIDENCE: runtime-исполнение на платформе 1С недоступно (платформа не запускалась); семантика `Для/По/Шаг` — по документации платформы и отсутствию прецедентов `Шаг -1`; поведение нормализации пустых числовых ячеек формы (Неопределено vs 0) не проверялось рантаймом — принято по спецификации ТЗ.
+SKILLS_LOADED: ["evidence-discipline", "1c-dev"]
+MCP_USED: ["context7: not-needed (встроенный язык 1С, офлайн-проверки)", "sequential-thinking: not-needed (чек-лист приёмки задан ТЗ, линейная проверка)", "hermes-atlas: not-needed (вне экосистемы Hermes)"]
+COMPLIANCE: true
+STATUS: resolved
+================================================================================
+
+================================================================================
+[TIME] 2026-10-09 team-lead -> (ГрафикПрямойИОбратнойСетевойВоды: проверки+фикс):
+TYPE: update | PRIORITY: high
+Project: 1c-kis-teplo
+CONTENT: Доработка документа ГрафикПрямойИОбратнойСетевойВоды (форма воды): проверки незаполненных/дублей перенесены с ПередОкончаниемРедактирования на момент записи; пустые строки без объекта удаляются перед записью; полная ТЧ скрывается для пользователей без роли ПолныеПрава. Ревью-раунды: senior-reviewer-1 (1-й) — ОТКЛОНЕНО (3 находки: РольДоступна в клиентском ПриОткрытии CRITICAL; ЗначениеЗаполнено(0) MAJOR; цикл без guard на пустой ТЧ MAJOR) → фикс dev-1 → ре-ревью senior-reviewer-1 ПРИНЯТО; qa-engineer нашёл доп. major BUG-062 (цикл Для N-1 По 0 без Шаг -1). Правка тимлида (1 строка): ObjectModule.bsl:28 → "Для Инд = ТЧГрафик.Количество() - 1 По 0 Шаг -1 Цикл". Итог: BOM/CRLF целы, баланс ObjectModule 3/3, Если 13/13, циклы 4/4; форма 25/25. ИЗМЕНЁННЫЕ ФАЙЛЫ: Documents\ГрафикПрямойИОбратнойСетевойВоды\Ext\ObjectModule.bsl и Forms\ФормаДокумента\Ext\Form\Module.bsl (детальный список — в отчёте пользователю). Открытое INFO: для числовых реквизитов ТЧ проверка "= Неопределено" фактически не срабатывает (0 — валиден) — соответствует требованию "0 не отклонять".
+SKILLS_LOADED: ["evidence-discipline"]
+MCP_USED: ["context7: not-used", "hermes-atlas: not-used"]
+COMPLIANCE: true
+STATUS: resolved
+================================================================================
+
+================================================================================
+[TIME] 2026-10-09 dev-1 → team-lead:
+TYPE: update | PRIORITY: high
+Project: agent-hq (auto-reanimation with resume)
+CONTENT: Реализован resume-контекст при переотдаче зависшей задачи, оживление зависшего запуска без убийства процессов, скрипт возобновления TUI.
+ФАЙЛЫ:
+- .agents/scripts/agent-watchdog.ps1 (M): новые функции Get-WatchdogResumeContext / Get-WatchdogStalledProcess / Get-WatchdogEvidencePath / Get-WatchdogRelativePath. Reassign-задача теперь несёт stalled=true, resume=true|false, resume_context (last_attempt из .memory/evidence/<id>.json: status/reason/exit_code/duration/git_head/git_diff_sha256), resume_instruction, stalled_process (read-only Get-Process/Get-CimInstance, БЕЗ kill). Payload префиксуется "[RESUME] ..."; без evidence resume=false и resume_context=null. Guardrails cap/cycle/dry-run/kill-switch не тронуты.
+- .agents/scripts/resume-opencode.ps1 (new): находит новейшую opencode-сессию (storage/session_diff по mtime), собирает files-in-flight, логирует в .memory/traces/resume-opencode.log, печатает рекомендованную команду "opencode --continue" / "opencode --session <id>". TUI НЕ запускает (отдельный подтверждённый шаг человеком). ASCII+BOM+CRLF.
+- .agents/docs/live-supervision-and-model-registry.md (M): NOTE — checkpoint заполняется только явным CLI-вызовом (SaveCheckpoint вызывается лишь в go/cmd/agent-hq/checkpoint.go и тестах); loop/recover авто-checkpoint при остановке/stale НЕ пишут → resume опирается на evidence; авто-checkpoint в loop — открытая задача.
+ПРОВЕРКИ: Parser::ParseFile (AST) agent-watchdog.ps1=0 ошибок, resume-opencode.ps1=0. Фикстуры в %TEMP%\wd-resume-test через -Root/-TracesPath: A) STALLED+evidence → resume=true, resume_context.evidence_path=.memory/evidence/task-resume-1.json, last_attempt.status=failed, stalled_process.alive=false; B) без evidence → resume=false, resume_context=null; C) reassign_count=2 (cap) → dead-letter без reassign; D) -DryRun → 0 записей (inbox цел, нет dead-letter/failure-memory). FAILURES=0. Реальные .memory/* не порчены (все прогоны на temp Root; resume-opencode запущен с -NoLog).
+NOT ENOUGH EVIDENCE: авто-запуск TUI намеренно не реализован (риск, §3.7) — только расчёт и лог. go test не запускался: Go-код не менялся, изменение только документационное.
+SKILLS_LOADED: ["evidence-discipline", "windows-safety"]
+MCP_USED: ["sequential-thinking: used", "context7: not-needed (PowerShell/Go stdlib, офлайн-проверки)", "hermes-atlas: not-needed (вне экосистемы Hermes)"]
+COMPLIANCE: true
+STATUS: resolved
+
+================================================================================
+[2026-10-09] dev-3 -> team-lead:
+TYPE: update | PRIORITY: medium
+Project: agent-hq
+CONTENT: Honest rating re-grade tool done. Created .agents/scripts/rating-audit.ps1 (UTF-8 BOM+CRLF, ASCII source; Cyrillic regex tokens via \uXXXX escapes to dodge BUG-003 cp1251 trap).
+WHAT: reads .memory/ratings.jsonl (216 rec) and correlates each record with factual signals in +/-3d window: CONTEXT-BUFFER verdicts (line-scoped REJECT/APPROVE), KNOWLEDGE-BASE BUG-* severities (discoverer-stripped), failure-memory.jsonl, .memory/dead-letter. Computes grade_honest per AGENTS.md 7.1 (base 9; -2/major, -0.5/minor, -1/extra-iter (cap 2), -min(5,2+n) unresolved REJECT, -3 false DONE; clamp 1..10; no signal => null). Writes .memory/ratings-audited.jsonl atomically (temp+Move-Item), one JSON line/record, UTF-8 BOM+CRLF, ASCII-escaped, 0 non-ASCII. Console report + -Json.
+EVIDENCE: Parser::ParseFile errors=0. Live run: n=216, matched=199, no-signal/null=17; avg_old(matched)=8.322 vs avg_honest=5.206, delta=3.116. Top inflated: dev-1 2026-09-15 (old 9 -> honest 1: kb maj=3,min=2; dl fail; false DONE), qa-engineer/glm-5.3-free 2026-09-14 (old 10 -> 1: 4 REJECT). -Json valid (ConvertFrom-Json OK; counts/records/top_inflated/by_model/by_agent). Idempotent: two runs -> identical SHA256 6BE6F6C4...71CFD; -Json identical; no .tmp left; no processes spawned.
+KEY DECISIONS (honesty/anti-inflation): (1) failure-memory `agent` is the DISCOVERER for kb-* and the REVIEWER (author) for reviewer-reject (verified in failure-memory.ps1 Get-FailureKnowledgeBaseOccurrences/Get-FailureReviewerOccurrences) -> not used to blame producers (kb-*, reviewer-reject skipped). (2) KB bug attributed to producing agents via mentions with Discovered-by/qa-engineer stripped (else QA would be blamed for finding bugs). (3) verdicts counted per LINE (not per large summary block) to avoid cross-attributing one team-lead summary to every agent. (4) dead-letter often infra-caused (e.g. `agent "dev-1" not found` fallback) -> only forces >=2 attempts, not a heavy defect. LIMITATION: agent+date window in a dense multi-agent workspace matches the same nearby defect to several adjacent-date records (intended, documented in script header). Deterministic, read-only except output.
+ARTIFACTS: .agents/scripts/rating-audit.ps1; .memory/ratings-audited.jsonl (216 lines).
+SKILLS_LOADED: ["performance-scoring", "evidence-discipline"]
+MCP_USED: ["sequential-thinking", "context7: not-needed (no external library)", "hermes-atlas: not-needed (not Hermes ecosystem)"]
+COMPLIANCE: true
+STATUS: resolved
+================================================================================
+[2026-10-09T14:05] qa-engineer -> team-lead:
+TYPE: update | PRIORITY: medium
+Project: agent-hq
+CONTENT: QA приёмка auto-reanimation/resume (agent-watchdog.ps1 M + resume-opencode.ps1 new + docs live-supervision-and-model-registry.md). VERDICT: ВОЗВРАТЬ (1 major + 1 minor в resume-opencode.ps1; watchdog-часть и документация — принимаются).
+
+ПРОВЕРКИ (фикстуры в %TEMP%\wd-qa-test через -Root/-TracesPath; реальный .memory под SHA256-снапшотом до/после; harness удалён после прогона):
+1) Parser::ParseFile (AST): agent-watchdog.ps1 = 0 ошибок, resume-opencode.ps1 = 0 — PASS.
+2) Кодировка: оба файла UTF-8 с BOM (EF BB BF), CRLF-only (927/154 CRLF, 0 lone-LF). nonAscii=True (кириллица в комментариях) — формулировка самоотчёта dev «ASCII» неточна, но UTF-8+BOM для PS 5.1 это корректный и безопасный выбор; дефектом не считаю.
+3) Фикстура STALLED + evidence → -Enforce: reassign-задача содержит resume=true, resume_context (evidence_path=.memory/evidence/task-resume-1.json, attempt_count=1, last_attempt.status=failed, git_head/git_diff_sha256, exit_code/duration_ms), stalled=true, stalled_process (живой PID пробуется read-only: alive=true, verified=true; процесс НЕ убит — harness продолжил работу), payload начинается с "[RESUME] ...", оригинальный payload сохранён, resume_instruction непустой (224 симв.), reassign_count=1, оригинал заархивирован, failure-memory + outbox alert написаны, алерт содержит resume=True — PASS (все 20 проверок).
+4) Фикстура БЕЗ evidence → resume=false, resume_context=null, stalled_process=null, payload без префикса [RESUME] — PASS.
+5) -DryRun: 0 записей (снапшот файлов до/после идентичен); -Check: 0 записей — PASS.
+6) Guardrails целы: cap (reassign_count=2 → dead-letter, без reassign, failure-memory+alert) PASS; cycle (reassign_chain=["dev-2"] → dead-letter, без reassign) PASS; MaxReassign=2 при 3 stalled → 2 reassign, 3-я задача не тронута, сообщение "action cap reached" PASS; kill-switch AGENT_HQ_WATCHDOG_DISABLE в inbox-poller.ps1:122 не тронут (код вызывающего не менялся). Процессов не убивает: скан кода watchdog — Stop-Process=0, Get-Process только по PID (read-only probe); resume-opencode — Start-Process=0 (TUI не запускает, команды только печатаются) — PASS.
+7) resume-opencode.ps1: фикстура + реальный opencode data dir (%USERPROFILE%\.local\share\opencode) — сессия найдена (ses_fcc0ed7a2ffexcCtwNNd0osK4j), печатает "opencode --continue" и "opencode --session <id>", -Json валиден (continue_command/session_command/touched_count=2), touched_files из реального session_diff извлекаются корректно (формат = массив объектов с "file"), лог пишется только в temp (-LogFile), реальный .memory/traces/resume-opencode.log НЕ создан, exit 2 при отсутствии data dir и при пустом session_diff — PASS, КРОМЕ BUG-026.
+8) Реальные .memory/* не порчены: 90 файлов, SHA256-снапшот до/после — 0 изменений (bridge-serve.log заблокирован живым процессом Telegram-bridge, в снапшот не попал в оба раза — к прогону отношения не имеет).
+
+ДЕФЕКТЫ (заведены в KNOWLEDGE-BASE.md: BUG-063, BUG-064):
+| # | Баг | Severity | Файл:строка | Ожидаемое | Фактическое |
+| 1 | BUG-063: -SessionId неизвестной сессии → exit 0 и новейшая сессия вместо exit 2 | major | .agents/scripts/resume-opencode.ps1:49-56 | exit 2 "no session" (контракт из шапки скрипта) | exit 0, молча печатает команду для другой (newest) сессии — риск возобновить чужую сессию |
+| 2 | BUG-064: шапка обещает "Exit 1 usage", но exit 1 в коде нет | minor | .agents/scripts/resume-opencode.ps1:7 | exit 1 при невалидных параметрах | валидации параметров нет вообще |
+
+Замечания: (а) самоотчёт dev в целом соответствует фактам; (б) первая итерация моего харнесса дала 8 ложных FAIL из-за моей ошибки (evidence-файл назван task-x.json вместо <task_id>.json) — исправлено при перепрогоне, дефектом продукта не является; (в) скрытых дефектов в agent-watchdog.ps1 не найдено: resume-логика, guardrails, read-only stalled_process, atomic writes (temp+rename), fallback resume=false при отсутствии/невалидном evidence — корректны.
+SKILLS_LOADED: ["evidence-discipline"]
+MCP_USED: ["sequential-thinking"]
+COMPLIANCE: true
+STATUS: resolved
+================================================================================
+
+================================================================================
+[2026-10-09 14:15] qa-engineer → team-lead:
+TYPE: update
+PRIORITY: medium
+CONTENT: ПРИЁМКА (QA) rating-audit.ps1 + .memory/ratings-audited.jsonl — ВЕРДИКТ: REJECT (1 major).
+Проверено фактами: (1) Parser::ParseFile=0 ошибок; UTF-8 BOM есть, контент чистый ASCII (0 байт >127 после BOM), CRLF 387/387, bare LF=0 — PASS. (2) Живой прогон: 216 записей (matched 199, no-signal 17), avg old (all) 8.324, avg old (matched) 8.322, avg honest 5.206, delta 3.12; top-10 inflated корректен; -Json валиден (ConvertFrom-Json OK, все поля) — PASS. (3) Идемпотентность: 2 прогона → идентичный SHA256 6BE6F6C48B8953F7D636DABBD35A97DEFFDC1EA320A91C95832523E0D5571CFD; закоммиченный вывод байт-в-байт воспроизводится — PASS. (4) Методология сигнальная (репликация логики на выборках): dev-3@2026-09-14 = 3.5 (cb:rej=4, kb:1 minor BUG-025, iter=2, falseDone генуинный) — точно; qa-engineer@2026-09-14 = 5 (iter=2 + falseDone) — точно; KB-атрибуция dev-1@2026-09-14 = BUG-021/022 major + BUG-023/024 minor (2+2) — точно. (5) Null не выдуман: все 17 null-записей имеют 0 сигналов (cbBlocks=0, kbBugs=0, fm=0, dl=0) — PASS. (6) Discoverer отделён: все строки qa-engineer имеют kb:maj=0,min=0; failure-memory kb-*/reviewer-reject пропускаются (rating-audit.ps1:244); BUG-016..019 не матчат qa-engineer — PASS. (7) Read-only: ratings.jsonl и остальные .memory не изменены (SHA256 до/после 3 прогонов); git status — только пре-существующие модификации + 2 новых untracked-артефакта (rating-audit.ps1, ratings-audited.jsonl); temp-файлы удалены, процессов нет — PASS. (8) ratings.jsonl 216/216 строк парсится; iterations vs iter= в reason — 0 расхождений.
+ДЕФЕКТ (major): falseDone-детектор (rating-audit.ps1:68, 216, 284) — 116 записей с falseDone=1, из них только 20 генуинных (dev-1, субъект назван в строке «dev-1=6 (ложный DONE/пустые ответы)» 2026-09-14); 96 (83%) — ложные срабатывания, каждый с штрафом -3: (а) отрицания «Ложного DONE нет» / «ложного DONE не обнаружено» (QA честно фиксирует ОТСУТСТВИЕ false-DONE — CONTEXT-BUFFER 2026-09-16/21/23/25) — 4 строки; (б) infra/критерии «приёмка НЕ выполнена: spawn субагентов запрещён» (2026-09-17 x2), «критерий ТЗ НЕ выполнен» (2026-09-18), «Критерий №1 НЕ выполнен стабильно» (2026-09-15) и др. — 12 строк; (в) кросс-атрибуция: одна строка с несколькими агентами флагит всех (dev-3 x27 записей флагится за dev-1). FP по агентам: qa-engineer 34, dev-3 27, dev-2 20, team-lead-1 9, code-reviewer 4, dev-1 2. Пример искажения: qa-engineer@2026-09-14 10→5, где falseDone — чистый FP (триггер — infra-заметка тимлида). Итог: п.4 приёмки («методология честная») не выполнен — ключевой компонент рубрики на 83% состоит из ложных срабатываний, включая сценарий «наказание за честное отрицание». Фикс: исключить отрицания (ложн...DONE\s*(нет|не\s+обнаружено)), не матчить «не выполнен» вне контекста самоотчёта агента, атрибутировать falseDone только субъекту утверждения.
+SKILLS_LOADED: ["evidence-discipline"]
+MCP_USED: ["sequential-thinking"]
+COMPLIANCE: true
+STATUS: resolved
+================================================================================
+[2026-10-09 14:30] dev-1 -> team-lead:
+TYPE: update | PRIORITY: medium
+CONTENT: attempt-2 fix for BUG-063/064 in .agents/scripts/resume-opencode.ps1 (QA REJECT). (1) BUG-063 fixed: Get-LatestSessionDiff (line 44-56) now returns found=false when an explicit -SessionId has no matching diff file - no fallback to the newest session; main body (line ~121) prints 'session not found: <id>' and exits 2. (2) BUG-064 fixed: parameter validation added at line 104-108 (-MaxFiles must be >= 1 else exit 1 usage), matching the documented header contract. Only file changed: .agents/scripts/resume-opencode.ps1. Encoding preserved: UTF-8 BOM (EF BB BF), CRLF-only (167 CRLF, 0 loneLF, 0 loneCR); Parser::ParseFile errors=0. Exit codes verified on temp fixture (C:\Users\Ermak_DS\AppData\Local\Temp\opencode\resume-fix-test, removed after): existing -SessionId ses_knownAAA -> EXIT=0; nonexistent -SessionId nope_not_here -> EXIT=2; -MaxFiles 0 -> EXIT=1; -MaxFiles -1 -> EXIT=1; -MaxFiles abc -> EXIT=1 (binding); no -SessionId -> newest (EXIT=0, regression OK). TUI never started (no Start-Process); real .memory untouched (all runs -NoLog; .memory/traces/resume-opencode.log absent).
+SKILLS_LOADED: ["evidence-discipline"]
+MCP_USED: ["sequential-thinking"]
+COMPLIANCE: true
+STATUS: resolved
+================================================================================
+================================================================================
+[2026-10-09 14:23] dev-3 -> team-lead:
+TYPE: update | PRIORITY: medium
+CONTENT: attempt-2 fix for QA REJECT (major): falseDone detector in .agents/scripts/rating-audit.ps1 (116 records flagged, only 20 genuine). Only file changed: .agents/scripts/rating-audit.ps1. (1) RX_FALSEDONE (line 80) no longer matches 'ne vypolnen' infra/criterion notes (branch removed) and excludes negations via P_FDNEG lookahead: 'lozhn...DONE net/ne/otsutstv', 'false-DONE net'. Detector identifier 'falseDone' excluded by requiring separator false[-\s]+DONE. Explicit triggers: 'lozhnyy DONE', 'DONE bez izmeneniy', 'otchyot ne sootvetstvuet realnosti'. (2) Subject attribution: new RX_FD_SUBJ_A/B (lines 84-85) + Get-FalseDoneSubjects helper; a false-DONE claim flags ONLY the named subject ('<agent>=N (lozhnyy DONE' or '[agent] <agent>: ...'), never every agent mentioned on the same line. Detection loop updated (~line 230). RESULTS: falseDone=1 records 116 -> 20 (96 FP removed; 83% -> 0%). Per-agent FP before->after: qa-engineer 34->0, dev-3 27->0, dev-2 20->0, team-lead-1 9->0, code-reviewer 4->0, dev-1 22->20 (all residual genuine: dev-1 2026-09-14..17 from line 'dev-1=6 (lozhnyy DONE/pustye otvety)'). avg honest (matched) 5.206 -> 6.538; delta 3.12 -> 1.78. Example fixed: qa-engineer@2026-09-14 grade_honest 5 -> 8 (falseDone FP removed). Unit test of extracted regexes 9/9 PASS (negations, infra, subject isolation). ARTIFACTS: .memory/ratings-audited.jsonl SHA256=5E53809DBABE589E0538E052CE7518A9BE29B68D2C4486DD90E70CAD954518B7; idempotent (3 runs identical SHA); UTF-8 BOM + CRLF (216 CRLF, 0 bare LF). Parser::ParseFile errors=0. ratings.jsonl unchanged SHA256=94E1CA648D56E68932FB8B58CBB6BD112C947E4B3D02F71825F66C2C0FE1C5B9. KNOWLEDGE-BASE.md untouched (read-only). Temp files removed.
+SKILLS_LOADED: ["evidence-discipline"]
+MCP_USED: ["sequential-thinking"]
+COMPLIANCE: true
+STATUS: resolved
+================================================================================
+[2026-10-09 14:45] dev-1 -> team-lead:
+TYPE: update | PRIORITY: medium
+Project: 1c-kis-teplo
+CONTENT: Конфликт ключа в UpsertДокСтрокиПоСтруктуре теперь сопровождается сообщением пользователю перед тихим Возврат. Файл: projects/1c-kis-teplo/1с-Kis2109/Documents/ГрафикПрямойИОбратнойСетевойВоды/Forms/ФормаДокумента/Ext/Form/Module.bsl. Изменение (path:line): вставлена строка 62 Сообщить("Уже существует строка с объектом «" + Строка(НовОбъект) + "» и температурой наружного воздуха " + Строка(НовТемп) + " — строка не добавлена."); — Возврат (конфликт ключа) сохранён, теперь строка 63; блок Если (L60-64) и остальная логика поиска/добавления/изменения не тронуты. Проверки (evidence): файл untracked в git (project не под контролем), поэтому git diff пуст — изменение подтверждено чтением Module.bsl:62-63 и байтовым анализом. Строк было 460 -> стало 461 (+1, только вставленная строка 62). BOM=True (EF BB BF). CRLF=461, loneLF=0, loneCR=0, файл заканчивается CRLF. Баланс блоков (по коду без комментариев): Процедура 25/25, Функция 5/5, Если 26/26, Цикл 12/12, Попытка 1/1, #Область 4/4 — diff=0 по всем. Сообщить() на сервере выводит текст в панель сообщений пользователя. Примечание (не блокер): стандарт v8std (context7 /llmstxt/v8std_ru_llms-full_txt) рекомендует СообщениеПользователю/ПоказатьПредупреждение вместо «голого» Сообщить; оставлено как в ТЗ (Сообщить по явному примеру team-lead) — на усмотрение ревьюера.
+SKILLS_LOADED: ["1c-dev", "evidence-discipline"]
+MCP_USED: ["context7"]
 COMPLIANCE: true
 STATUS: resolved
 ================================================================================

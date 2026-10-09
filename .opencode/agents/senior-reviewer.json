@@ -2,6 +2,7 @@
     "name":  "senior-reviewer",
     "description":  "Senior Reviewer — углублённое ревью крупных и значимых изменений (архитектура, интеграции, релизные решения). Только чтение.",
     "model":  "opencode-go/qwen3.8-flash",
+    "reasoningEffort":  "high",
     "mode":  "subagent",
     "temperature":  0.1,
     "permissions":  [

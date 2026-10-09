@@ -2,6 +2,7 @@
     "name":  "senior-reviewer-1",
     "description":  "Senior Reviewer (запасной) — углублённое ревью крупных и значимых изменений. Копия senior-reviewer для подмены без переназначения моделей. Только чтение.",
     "model":  "opencode-go/deepseek-v4.1-flash",
+    "reasoningEffort":  "high",
     "mode":  "subagent",
     "temperature":  0.1,
     "permissions":  [

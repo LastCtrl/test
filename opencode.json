@@ -1164,6 +1164,7 @@
         "mode": "subagent",
         "model": "opencode-go/deepseek-v4.1-flash",
         "temperature": 0.1,
+        "reasoningEffort": "high",
         "permission": {
             "bash": "deny",
             "edit": "deny",
@@ -1184,6 +1185,7 @@
         "mode": "subagent",
         "model": "opencode-go/qwen3.8-flash",
         "temperature": 0.1,
+        "reasoningEffort": "high",
         "permission": {
             "bash": "deny",
             "edit": "deny",

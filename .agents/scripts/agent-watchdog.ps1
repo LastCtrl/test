@@ -3,8 +3,11 @@
 # heartbeat, .memory/inbox/* (tasks in work), .memory/claims/*.claim.json.
 # Modes: -Check (read-only table), -DryRun (show plan), -Enforce (act).
 # Enforce on STALLED: failure-memory entry, registry instability++, reassign to
-# another agent of the same role pool (cap 2 per task), outbox alert. No process
-# killing, atomic writes only (temp + rename), bounded actions per run.
+# another agent of the same role pool (cap 2 per task), outbox alert. The
+# reassigned task carries resume/resume_context (last partial state from
+# .memory/evidence) and stalled_process (read-only liveness of the recorded PID,
+# never killed). No process killing, atomic writes only (temp + rename),
+# bounded actions per run.
 
 [CmdletBinding()]
 param(
@@ -413,6 +416,120 @@ function Find-ReassignTarget {
 }
 
 # ---------------------------------------------------------------------------
+# Resume context (partial state of the stalled attempt)
+# ---------------------------------------------------------------------------
+
+function Get-WatchdogRelativePath {
+    param([string]$Root, [string]$Path)
+    if ([string]::IsNullOrWhiteSpace($Path)) { return "" }
+    $trimmed = ([string]$Root).TrimEnd('\')
+    if (-not [string]::IsNullOrWhiteSpace($trimmed) -and
+        $Path.StartsWith($trimmed, [System.StringComparison]::OrdinalIgnoreCase)) {
+        return ($Path.Substring($trimmed.Length).TrimStart('\') -replace '\\', '/')
+    }
+    return ($Path -replace '\\', '/')
+}
+
+function Get-WatchdogEvidencePath {
+    param([string]$Memory, [string]$TaskId)
+    if ([string]::IsNullOrWhiteSpace($TaskId)) { return "" }
+    $candidate = Join-Path (Join-Path $Memory "evidence") ($TaskId + ".json")
+    if (Test-Path -LiteralPath $candidate -PathType Leaf) { return $candidate }
+    return ""
+}
+
+# Read-only liveness probe: a stalled attempt may still have a live, silent
+# worker process. We never kill anything here (AGENTS.md 3.7); we only report
+# whether the recorded PID is alive and looks like this project, so the new
+# executor can decide to wait or shadow it.
+function Get-WatchdogStalledProcess {
+    param($ProcessId)
+    if ($null -eq $ProcessId) { return $null }
+    $pidValue = 0
+    if (-not [int]::TryParse([string]$ProcessId, [ref]$pidValue)) { return $null }
+    if ($pidValue -le 0) { return $null }
+    $proc = Get-Process -Id $pidValue -ErrorAction SilentlyContinue
+    if ($null -eq $proc) {
+        return [ordered]@{ pid = $pidValue; alive = $false; verified = $false; note = "recorded process is gone" }
+    }
+    $verified = $false
+    try {
+        $cim = Get-CimInstance Win32_Process -Filter ("ProcessId = " + $pidValue) -ErrorAction SilentlyContinue
+        if ($null -ne $cim) {
+            $cmd = [string]$cim.CommandLine
+            if ($cmd -match 'opencode' -or $cmd -match 'agent-hq') { $verified = $true }
+        }
+    } catch { }
+    return [ordered]@{
+        pid      = $pidValue
+        alive    = $true
+        verified = $verified
+        note     = "live but silent; do NOT kill - resume from evidence/checkpoint"
+    }
+}
+
+# Collect the last partial state of a stalled task: the newest evidence record
+# (attempt status/reason/output sizes/git head) plus the liveness of the PID it
+# recorded. When nothing is found the caller must fall back to resume=false.
+function Get-WatchdogResumeContext {
+    param([string]$Memory, [string]$Root, [string]$TaskId)
+    $context = [ordered]@{
+        has_context     = $false
+        task_id         = $TaskId
+        source          = ""
+        evidence_path   = ""
+        attempt_count   = 0
+        last_attempt    = $null
+        stalled_process = $null
+        instruction     = "No partial state found for this task; start cleanly."
+    }
+    $evidencePath = Get-WatchdogEvidencePath -Memory $Memory -TaskId $TaskId
+    if ([string]::IsNullOrWhiteSpace($evidencePath)) { return $context }
+
+    $doc = $null
+    try {
+        $raw = [System.IO.File]::ReadAllText($evidencePath, [System.Text.Encoding]::UTF8)
+        $doc = $raw | ConvertFrom-Json -ErrorAction Stop
+    } catch { $doc = $null }
+
+    $relative = Get-WatchdogRelativePath -Root $Root -Path $evidencePath
+    if ($null -eq $doc -or $null -eq $doc.attempts) {
+        $context.evidence_path = $relative
+        return $context
+    }
+    $attempts = @($doc.attempts)
+    if ($attempts.Count -eq 0) {
+        $context.evidence_path = $relative
+        return $context
+    }
+
+    $last = $attempts[$attempts.Count - 1]
+    $context.has_context = $true
+    $context.source = "evidence"
+    $context.evidence_path = $relative
+    $context.attempt_count = $attempts.Count
+    $context.last_attempt = [ordered]@{
+        attempt_id      = [string]$last.attempt_id
+        agent           = [string]$last.agent
+        status          = [string]$last.status
+        reason          = [string]$last.reason
+        exit_code       = $last.exit_code
+        duration_ms     = $last.duration_ms
+        started_at      = [string]$last.started_at
+        finished_at     = [string]$last.finished_at
+        stdout_length   = $last.stdout_length
+        stderr_length   = $last.stderr_length
+        git_head        = [string]$last.git_head
+        git_diff_sha256 = [string]$last.git_diff_sha256
+    }
+    $context.stalled_process = Get-WatchdogStalledProcess -ProcessId $last.pid
+    $context.instruction = ("Continue task '" + $TaskId + "' from the recorded state (" + $relative +
+        "); do NOT restart from scratch. Last attempt " + [string]$last.attempt_id + " ended '" +
+        [string]$last.status + "' (" + [string]$last.reason + "). Re-check the working tree and diff before continuing.")
+    return $context
+}
+
+# ---------------------------------------------------------------------------
 # Enforce side effects
 # ---------------------------------------------------------------------------
 
@@ -749,24 +866,45 @@ if ($Enforce -or $DryRun) {
         $newChain = @($newChain | Select-Object -Unique)
         $stamp = Format-WatchdogTime -Value $now
         $newId = "reassign-" + [guid]::NewGuid().ToString("N").Substring(0, 8)
+
+        $resume = Get-WatchdogResumeContext -Memory $memory -Root $script:Root -TaskId $row.Task
+        $resumeContext = $null
+        $resumeInstruction = "Start this task cleanly; no partial state was found."
+        $newPayload = [string]$task.Payload
+        if ($resume.has_context) {
+            $resumeContext = $resume
+            $resumeInstruction = [string]$resume.instruction
+            $newPayload = "[RESUME] " + $resumeInstruction + "`r`n`r`n" + $newPayload
+        }
+
         $newTask = [ordered]@{
-            id              = $newId
-            from            = "agent-watchdog"
-            to              = $target
-            type            = "task"
-            priority        = $task.Priority
-            payload         = $task.Payload
-            created         = $stamp
-            source          = $task.TaskSource
-            reassigned_from = $agentName
-            reassign_chain  = $newChain
-            reassign_count  = $newCount
+            id                 = $newId
+            from               = "agent-watchdog"
+            to                 = $target
+            type               = "task"
+            priority           = $task.Priority
+            payload            = $newPayload
+            created            = $stamp
+            source             = $task.TaskSource
+            reassigned_from    = $agentName
+            reassign_chain     = $newChain
+            reassign_count     = $newCount
+            stalled            = $true
+            resume             = [bool]$resume.has_context
+            resume_context     = $resumeContext
+            resume_instruction = $resumeInstruction
+            stalled_process    = $resume.stalled_process
         }
         $targetInbox = Join-Path $inbox $target
-        $alertMsg = "Watchdog: reassigned STALLED task '" + $row.Task + "' from " + $agentName + " to " + $target + " (gap " + $row.Gap + "m, attempt " + $newCount + "/" + $ReassignCapPerTask + ", model=" + $model + ")."
+        $alertMsg = "Watchdog: reassigned STALLED task '" + $row.Task + "' from " + $agentName + " to " + $target + " (gap " + $row.Gap + "m, attempt " + $newCount + "/" + $ReassignCapPerTask + ", model=" + $model + ", resume=" + [bool]$resume.has_context + ")."
 
         if ($DryRun) {
-            Write-Host ("  [" + $agentName + "/" + $row.Task + "] PLAN: reassign -> " + $target + " (pool '" + $base + "', attempt " + $newCount + "/" + $ReassignCapPerTask + ")") -ForegroundColor Gray
+            Write-Host ("  [" + $agentName + "/" + $row.Task + "] PLAN: reassign -> " + $target + " (pool '" + $base + "', attempt " + $newCount + "/" + $ReassignCapPerTask + ", resume=" + [bool]$resume.has_context + ")") -ForegroundColor Gray
+            if ($resume.has_context) {
+                Write-Host ("    resume_context: evidence=" + $resume.evidence_path + " last_attempt=" + [string]$resume.last_attempt.attempt_id + " status=" + [string]$resume.last_attempt.status) -ForegroundColor DarkGray
+            } else {
+                Write-Host "    resume_context: none (clean restart)" -ForegroundColor DarkGray
+            }
             Write-Host ("    also: failure-memory += " + $script:FailureSignature + ", registry instability++ " + $model + ", outbox alert") -ForegroundColor DarkGray
         } else {
             $archived = Move-WatchdogArchive -FilePath $task.FilePath -Agent $agentName -ArchiveDir $archive

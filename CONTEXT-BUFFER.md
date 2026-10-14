@@ -6080,6 +6080,16 @@ SKILLS_LOADED: []
 MCP_USED: []
 COMPLIANCE: true
 STATUS: resolved
+================================================================================
+
+[2026-10-14] team-lead -> bus:
+TYPE: update | PRIORITY: high
+Project: security/PD-incident
+CONTENT: Инцидент ПДн (РБ). Обнаружены открытые данные сотрудника в локальном хранилище opencode: файлы opencode.db / opencode.db-wal / log\opencode.log содержат открытый пароль доменной учётки (подтверждён байтовым поиском; пароль действителен) и логин. Логины сотрудников присутствуют в рабочем дереве git-файла CONTEXT-BUFFER.md (по 1 строке, uncommitted), а git log -S указывает на коммиты f4345a6/708cb59 (в версии f4345a6 логинов нет -> появлялись в истории до него; нужен аудит истории). Первопричина: при удалённой диагностике был выведен ЦЕЛИКОМ C:\cntlm\cntlm.ini сотрудника с открытым паролем; результат попал в лог/БД opencode. Открытый пароль из C:\cntlm\cntlm.ini на ПК сотрудника удалён, хэши перегенерированы. Правовая оценка (legal-advisor): данные квалифицируются как ПДн (ст.1 Закона РБ №99-З; связка логин+пароль — ПДн, изолированный пароль — NOT ENOUGH EVIDENCE); при последствиях (предоставление/распространение) - уведомление НЦЗПД незамедлительно, не позднее 3 раб. дней (ст.16 п.1 + приказ НЦЗПД №13 от 15.11.2021); отдельной обязанности уведомлять субъектов нет (по требованию/усмотрению); Указ №40 (1 час НКЦБ) - применимость требует уточнения. Меры: немедленная ротация пароля; уничтожение копий секрета (db/wal/log/бэкапы); очистка git-истории (filter-repo/BFG) при необходимости; фиксация инцидента; подключение юриста/DPO оператора (наниматель minsk.energo.net). Ответственность: ст.24.11 КоАП - до 20 БВ (просрочка <=3 р.д. - не нарушение); ст.23.7 ч.4 КоАП - юрлицо 20-50 БВ; УК РБ 203-1/203-2. Рекомендация процессу: НЕ выводить конфиги/секреты целиком, де-персонализировать записи в репозитории (не хранить логины/ФИО сотрудников). Действия тимлида: пользователю предложено решение по технической очистке и эскалации.
+SKILLS_LOADED: []
+MCP_USED: []
+COMPLIANCE: true
+STATUS: resolved
 ================================================================================[2026-10-02 13:05] dev-1 -> team-lead:
 TYPE: update | PRIORITY: medium
 Project: infra/mcp-health
@@ -6723,3 +6733,45 @@ MCP_USED: ["context7"]
 COMPLIANCE: true
 STATUS: resolved
 ================================================================================
+
+================================================================================
+[2026-10-09 14:50] qa-engineer -> team-lead:
+TYPE: update | PRIORITY: medium
+Project: agent-hq
+CONTENT: РЕ-ПРИЁМКА (QA) двух фиксов по дифу — ВЕРДИКТ: ПРИНЯТО (PASS). Дефектов не найдено.
+
+ПРОВЕРКИ (факты, не по самоотчёту):
+1) Parser::ParseFile (AST): rating-audit.ps1 = 0 ошибок, resume-opencode.ps1 = 0 — PASS.
+2) Кодировка: оба файла UTF-8 BOM (EF BB BF), CRLF-only (421/167 CRLF, 0 loneLF, 0 loneCR), nonAscii=0 — PASS.
+3) rating-audit живой прогон: 216 записей (matched 199, no-signal 17); avg old (all) 8.324, avg old (matched) 8.322, avg honest 6.538, delta 1.78 — PASS (ожидание ~6.5/~1.8).
+4) falseDone-детектор: 20 записей с falseDone=1 (было 116, -96 FP); все 20 — dev-1 (2026-09-14..17), кросс-атрибуция устранена (dev-3/dev-2/qa-engineer/team-lead-1/code-reviewer = 0) — PASS.
+5) Юнит-тесты извлечённых regex'ов (10/10 PASS): негации «Ложного DONE нет»/«ложного DONE не обнаружено»/«false-DONE net»/«ложных DONE отсутствует» → не флагается; infra «приёмка НЕ выполнена: spawn»/«критерий ТЗ НЕ выполнен» → не флагается; генуинные «dev-1=6 (ложный DONE...)»/«[agent] dev-1: ложный DONE»/«dev-2: DONE без изменений» → флагается только субъект; изоляция «dev-1=6 (ложный DONE...), dev-3=8» → только dev-1 — PASS.
+6) Идемпотентность: 3 прогона → идентичный SHA256 5E53809DBABE589E0538E052CE7518A9BE29B68D2C4486DD90E70CAD954518B7 (байт-в-байт совпадает с закоммиченным артефактом) — PASS.
+7) ratings.jsonl не изменён: SHA256 94E1CA648D56E68932FB8B58CBB6BD112C947E4B3D02F71825F66C2C0FE1C5B9 до/после — PASS.
+8) resume-opencode exit-коды (фикстура в %TEMP%, удалена после): -SessionId <есть> → EXIT=0; -SessionId <нет> → EXIT=2 «session not found» (BUG-063 fixed); -MaxFiles 0 → EXIT=1 «usage» (BUG-064 fixed); -MaxFiles -1 → EXIT=1; без -SessionId → новейшая сессия EXIT=0; -SessionId с .json → EXIT=0; несуществующий DataDir → EXIT=2 — PASS.
+9) Реальный .memory: ratings.jsonl не изменён, git status чист; фоновые процессы (poller/daemon/cntlm-guard) обновили свои логи/БД за время прогона — к фиксам отношения не имеют; temp-фикстура и бэкапы удалены — PASS.
+
+Замечания: (а) самоотчёт dev-3 в целом соответствует фактам; (б) мой первый харнесс resume-opencode дал ложные EXIT=0 из-за передачи аргументов через автоматическую $args в функции-обёртке (баг харнесса, не продукта) — исправлено прямыми вызовами; (в) строка 393 CONTEXT-BUFFER «dev-1:6 false-DONE» (2026-08-25) не ловится RX_FD_SUBJ_B (паттерн требует разделитель перед субъект+RX_FALSEDONE, «:6» ломает) — вне окна ±3d всех рейтингов (2026-09-14+), на аудит не влияет; потенциальный FN для будущих записей с форматом «agent:N false-DONE» — не блокер.
+SKILLS_LOADED: ["evidence-discipline"]
+MCP_USED: ["sequential-thinking"]
+COMPLIANCE: true
+STATUS: resolved
+================================================================================
+
+[2026-10-09 16:00] dev-1 -> team-lead:
+TYPE: update | PRIORITY: medium
+Project: 1c-kis-teplo
+CONTENT: 2 правки в Documents\ГрафикПрямойИОбратнойСетевойВоды\Forms\ФормаДокумента\Ext\Form\Module.bsl. (1) Module.bsl:49-52 — в UpsertДокСтрокиПоСтруктуре добавлена проверка «Если Не ЗначениеЗаполнено(Данные.НаименованиеОбъекта) Тогда Сообщить(...); Возврат; КонецЕсли;» (строка без объекта в ТЧ не добавляется). (2) Module.bsl:278 — в ВременнаяТаблицаГрафикаПриОкончанииРедактирования после ЗаполнитьСводнуюТаблицуНаСервере() добавлен вызов СформироватьВремТаблицуНаСервере(ТекущийОбъектВоВременнойТаблице). Баланс блоков: добавлен один закрытый Если...КонецЕсли (49-52), остальные Если/КонецЕсли не тронуты. Строк: было 461 -> стало 467 (+6). BOM UTF-8 (EF BB BF) сохранён; окончания строк CRLF=467, LF=467 (все CRLF). ПередЗаписью/метаданные/прочая логика не тронуты.
+SKILLS_LOADED: ["1c-dev", "evidence-discipline"]
+MCP_USED: ["context7: not-needed (только встроенные функции платформы)", "sequential-thinking: not-needed (2 простые правки)"]
+COMPLIANCE: true
+STATUS: resolved
+================================================================================
+[2026-10-14 15:20] dev-1 -> team-lead:
+TYPE: update | PRIORITY: medium
+Project: agent-hq
+CONTENT: Auto orphan-sweep wired into inbox-poller infra-guard chain. Added block in .agents/scripts/inbox-poller.ps1 (lines 139-163, after watchdog, before DryRun plan): kill-switch AGENT_HQ_ORPHAN_SWEEP_DISABLE=1; -DryRun -> '& orphan-sweep.ps1 -DryRun' (report only); normal -> '& orphan-sweep.ps1 -Apply -OlderThanMinutes 60' with exit-code logging (2=killed,0=none,else=error), wrapped in try/catch so poller never fails. Order in file: cntlm(73)->gateway(102)->watchdog(122)->orphan(145). orphan-sweep.ps1 NOT modified. Verified: Parser::ParseFile both files = 0 errors; poller -DryRun exit 0 with 'orphan-sweep: dry-run report' line + 'no orphaned project processes found' (nothing killed); with AGENT_HQ_ORPHAN_SWEEP_DISABLE=1 the orphan-sweep line count = 0. File kept CRLF-only (205/205) + UTF-8 BOM (EF BB BF); added lines ASCII-only.
+SKILLS_LOADED: ["evidence-discipline", "windows-safety"]
+MCP_USED: ["sequential-thinking: not-needed (single-file edit)"]
+COMPLIANCE: true
+STATUS: resolved

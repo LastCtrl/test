@@ -136,6 +136,36 @@ if ($env:AGENT_HQ_WATCHDOG_DISABLE -ne '1') {
     }
 }
 
+# --- Orphan sweep (infra safety #4): kill ORPHANED processes belonging to THIS
+# project only (parent gone, older than the threshold, PID re-verified right
+# before kill). The sweep script is fully project-scoped and never kills by
+# port/mask/range. Conservative 60-min threshold. Kill-switch:
+# AGENT_HQ_ORPHAN_SWEEP_DISABLE=1. In -DryRun the sweep only reports.
+# Order per tick: cntlm -> gateway -> watchdog -> orphan-sweep.
+if ($env:AGENT_HQ_ORPHAN_SWEEP_DISABLE -ne '1') {
+    $orphanSweepPath = Join-Path $PSScriptRoot "orphan-sweep.ps1"
+    if (Test-Path -LiteralPath $orphanSweepPath -PathType Leaf) {
+        try {
+            if ($DryRun) {
+                Write-Log "orphan-sweep: dry-run report (nothing is killed)"
+                & $orphanSweepPath -DryRun | Out-Null
+            } else {
+                Write-Log "orphan-sweep: apply (older than 60 min)"
+                & $orphanSweepPath -Apply -OlderThanMinutes 60 | Out-Null
+                if ($LASTEXITCODE -eq 2) {
+                    Write-Log "orphan-sweep: killed orphaned project process(es)"
+                } elseif ($LASTEXITCODE -eq 0) {
+                    Write-Log "orphan-sweep: no orphaned project processes"
+                } else {
+                    Write-Log "orphan-sweep: exit $LASTEXITCODE (see .memory\traces\orphan-sweep.log)"
+                }
+            }
+        } catch {
+            Write-Log "orphan-sweep: failed: $($_.Exception.Message)"
+        }
+    }
+}
+
 # Dry run mode — show plan, nothing executes
 if ($DryRun) {
     Write-Log "🔍 Dry run mode — showing plan only"

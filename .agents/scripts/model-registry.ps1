@@ -226,7 +226,7 @@ function Get-FreeModelList {
     $tmp = [System.IO.Path]::GetTempFileName()
     $err = [System.IO.Path]::GetTempFileName()
     try {
-        $http = & curl.exe -s -S --max-time $TimeoutSec -w "%{http_code}" -o $tmp $script:ModelsUrl 2>$err
+        $http = & curl.exe -s -S --ssl-no-revoke --max-time $TimeoutSec -w "%{http_code}" -o $tmp $script:ModelsUrl 2>$err
         $exit = $LASTEXITCODE
         $code = 0
         [void][int]::TryParse(([string]$http).Trim(), [ref]$code)
@@ -365,7 +365,7 @@ function Invoke-ModelProbe {
         [System.IO.File]::WriteAllText($cfgFile, ($headerLines -join ([Environment]::NewLine)), (New-Object System.Text.UTF8Encoding($false)))
 
         $sw = [System.Diagnostics.Stopwatch]::StartNew()
-        $http = & curl.exe -s -S --max-time $TimeoutSec --config $cfgFile -w "%{http_code}" -o $outFile -X POST $Url -H "Content-Type: application/json" --data-binary ("@" + $bodyFile) 2>$errFile
+        $http = & curl.exe -s -S --ssl-no-revoke --max-time $TimeoutSec --config $cfgFile -w "%{http_code}" -o $outFile -X POST $Url -H "Content-Type: application/json" --data-binary ("@" + $bodyFile) 2>$errFile
         $sw.Stop()
         $exit = $LASTEXITCODE
 
